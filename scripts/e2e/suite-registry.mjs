@@ -919,6 +919,30 @@ export const E2E_SUITES = Object.freeze({
       ...SHARED_DB_AND_HELPER_PATHS,
     ],
   },
+  "komga-api": {
+    id: "komga-api",
+    name: "Komga API",
+    timeout: 120,
+    lane: "full",
+    description:
+      "Komga-compatible API suite: auth (Basic + API keys), libraries, series, books, condition-search bodies, comic page streaming, EPUB manifest/resource serving, read progress, readlists and user isolation",
+    vitestTarget: "test/komga-api.e2e-spec.ts",
+    junitOutput: `${TEST_RESULTS_DIR}/komga-api-e2e-junit.xml`,
+    prepareDedicatedDatabase: true,
+    useDedicatedDatabase: true,
+    changedPaths: [
+      "server/src/modules/komga-api/**",
+      "server/src/common/utils/**",
+      "server/src/modules/reader/cbz/**",
+      "server/src/modules/reader/epub/**",
+      "server/src/scripts/komga-openapi-check.ts",
+      "server/test/komga-api.e2e-spec.ts",
+      "server/test/e2e/komga/**",
+      "server/test/e2e/opds/**",
+      "server/test/e2e/metadata-write/**",
+      ...SHARED_DB_AND_HELPER_PATHS,
+    ],
+  },
 });
 
 export function listE2ESuites() {
