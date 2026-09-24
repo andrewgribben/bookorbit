@@ -50,7 +50,7 @@ describe('settings navigation model', () => {
 
 describe('visibleSettingsNav', () => {
   it('drops groups with no reachable destination', () => {
-    expect(visibleSettingsNav(NOBODY).map((group) => group.id)).toEqual(['you'])
+    expect(visibleSettingsNav(NOBODY).map((group) => group.id)).toEqual(['you', 'devices'])
   })
 
   it('keeps every group for a superuser', () => {

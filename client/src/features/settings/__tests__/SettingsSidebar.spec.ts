@@ -82,8 +82,8 @@ describe('SettingsSidebar', () => {
   })
 
   it('only shows groups the user has access to', () => {
-    expect(mountSidebar({ rail: true }).findAll('[data-testid="rail-group"]')).toHaveLength(1)
-    expect(mountSidebar({ rail: true, perms: ['manage_libraries'] }).findAll('[data-testid="rail-group"]')).toHaveLength(2)
+    expect(mountSidebar({ rail: true }).findAll('[data-testid="rail-group"]')).toHaveLength(2)
+    expect(mountSidebar({ rail: true, perms: ['manage_libraries'] }).findAll('[data-testid="rail-group"]')).toHaveLength(3)
   })
 
   it('applies notification access rules in collapsed rail mode', () => {
