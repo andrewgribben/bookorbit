@@ -1532,6 +1532,7 @@
         "email": "Email",
         "opds": "OPDS",
         "komga": "Komga",
+        "feeds": "Feeds",
         "kobo": "Kobo",
         "koreader": "KOReader",
         "tts": "Text-to-Speech",
@@ -2994,6 +2995,19 @@
         "createKeyFailed": "Failed to create API key",
         "deleteKeyFailed": "Failed to delete API key"
       },
+      "feeds": {
+        "title": "Audiobook podcast feeds",
+        "hint": "Enable a public podcast-compatible RSS feed for individual audiobooks. Feed URLs use a random UUID and are not indexed.",
+        "searchPlaceholder": "Search audiobooks",
+        "empty": "No audiobooks found in libraries you can access.",
+        "loadFailed": "Failed to load audiobook feeds",
+        "updateFailed": "Failed to update podcast feed",
+        "enabled": "Podcast feed enabled",
+        "disabled": "Podcast feed disabled",
+        "copy": "Copy",
+        "urlCopied": "Feed URL copied to clipboard",
+        "urlCopyFailed": "Failed to copy the feed URL"
+      },
       "tabs": {
         "general": "General",
         "ebook": "eBook",
@@ -3607,6 +3621,7 @@
         "koreader": "Progress sync and document matching.",
         "opds": "Catalog feeds for third-party reading apps.",
         "komga": "Activate the Komga-compatible endpoint and manage API keys for reading apps.",
+        "feeds": "Public podcast RSS feeds for individual audiobooks.",
         "email": "SMTP delivery and send-to-device addresses.",
         "hardcover": "Sync reading status and reviews with Hardcover.",
         "users": "Accounts, roles, permissions, and invitations.",
@@ -12051,6 +12066,7 @@
     "koboSync": "Kobo Sync",
     "koreaderSync": "KOReader Sync",
     "komgaApi": "Komga API",
+    "feeds": "Feeds",
     "bookDock": "Book Dock",
     "whatsNew": "What's New",
     "annotations": "Annotations",

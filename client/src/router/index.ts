@@ -433,6 +433,12 @@ export const routes: RouteRecordRaw[] = [
             meta: { maxWidth: 'max-w-4xl', title: () => t('titles.komgaApi') },
           },
           {
+            path: 'feeds',
+            name: 'settings-feeds',
+            component: () => import('@/features/settings/FeedsSettings.vue'),
+            meta: { maxWidth: 'max-w-4xl', title: () => t('titles.feeds') },
+          },
+          {
             path: 'email',
             name: 'settings-email',
             component: () => import('@/features/email/components/EmailSettings.vue'),
