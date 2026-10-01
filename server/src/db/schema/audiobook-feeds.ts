@@ -1,8 +1,7 @@
-import { boolean, index, integer, pgTable, serial, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgTable, serial, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { users } from './auth';
 import { books } from './books';
-import { timestamptz } from './columns';
 
 export const audiobookPodcastFeeds = pgTable(
   'audiobook_podcast_feeds',
@@ -16,8 +15,8 @@ export const audiobookPodcastFeeds = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     enabled: boolean('enabled').notNull().default(true),
-    createdAt: timestamptz('created_at').defaultNow().notNull(),
-    updatedAt: timestamptz('updated_at')
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()
       .notNull()
       .$onUpdateFn(() => new Date()),
