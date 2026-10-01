@@ -132,7 +132,7 @@ export class MetadataService {
       }
 
       if (options.deferFilenameOnly && data.hasEmbeddedMetadata === false) {
-        if (data.cover) await this.persistCover(bookId, data.cover, true);
+        if (data.cover) await this.persistSourceCover(bookId, format, data.cover);
         this.logger.debug(
           `[${event}] [end] bookId=${bookId} format=${format} durationMs=${Date.now() - startedAt} filenameOnly=true coverExtracted=${data.cover != null} - metadata deferred to next source`,
         );
