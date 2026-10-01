@@ -9339,7 +9339,8 @@
         "booklore": "Booklore",
         "grimmory": "Grimmory",
         "audiobookshelf": "Audiobookshelf",
-        "calibreWebAutomated": "Calibre-Web Automated"
+        "calibreWebAutomated": "Calibre-Web Automated",
+        "komga": "Komga"
       },
       "fields": {
         "type": "Source Type",
@@ -9360,11 +9361,14 @@
         "apiMode": "Live API",
         "backupMode": "Backup file",
         "baseUrl": "Audiobookshelf URL",
+        "komgaBaseUrl": "Komga URL",
         "apiToken": "API token",
         "apiTokenPlaceholder": "Enter an administrator API token",
+        "komgaApiTokenPlaceholder": "Enter a Komga user API key",
         "secretSaved": "Saved - leave unchanged",
         "allowPrivateNetwork": "Allow private network access",
         "allowPrivateNetworkHint": "Enable this only when Audiobookshelf is hosted on a trusted local or private network.",
+        "komgaAllowPrivateNetworkHint": "Enable this only when Komga is hosted on a trusted local or private network.",
         "backupPath": "Backup file path",
         "backupPathHint": "Enter an absolute server path inside the configured migration import directory.",
         "cwaAppDatabasePath": "Calibre-Web Automated app.db snapshot",
@@ -9375,8 +9379,8 @@
       "validation": {
         "nameRequired": "Source name is required",
         "databaseFieldsRequired": "Host, user, database, and source name are required",
-        "apiFieldsRequired": "Audiobookshelf URL, API token, and source name are required",
-        "baseUrlInvalid": "Audiobookshelf URL must be a clean HTTP or HTTPS origin without a path",
+        "apiFieldsRequired": "Source URL, API token, and source name are required",
+        "baseUrlInvalid": "Source URL must be a clean HTTP or HTTPS origin without a path",
         "backupPathRequired": "Backup file path and source name are required",
         "backupPathAbsolute": "Backup file path must be an absolute path",
         "cwaAppDatabasePathRequired": "The Calibre-Web Automated app.db snapshot path is required",

@@ -20,6 +20,9 @@ import { AudiobookshelfSourceAdapter } from './adapters/audiobookshelf/audiobook
 import { CalibreWebAutomatedNormalizer } from './adapters/calibre-web-automated/calibre-web-automated-normalizer';
 import { CalibreWebAutomatedSnapshotConnector } from './adapters/calibre-web-automated/calibre-web-automated-snapshot.connector';
 import { CalibreWebAutomatedSourceAdapter } from './adapters/calibre-web-automated/calibre-web-automated-source.adapter';
+import { KomgaApiConnector } from './adapters/komga/komga-api.connector';
+import { KomgaNormalizer } from './adapters/komga/komga-normalizer';
+import { KomgaSourceAdapter } from './adapters/komga/komga-source.adapter';
 
 describe('MigrationModule', () => {
   it('registers expected controllers and providers', () => {
@@ -40,6 +43,9 @@ describe('MigrationModule', () => {
         CalibreWebAutomatedSnapshotConnector,
         CalibreWebAutomatedNormalizer,
         CalibreWebAutomatedSourceAdapter,
+        KomgaApiConnector,
+        KomgaNormalizer,
+        KomgaSourceAdapter,
         MigrationPlannerService,
         PathMappingValidationService,
         MigrationExecutorService,

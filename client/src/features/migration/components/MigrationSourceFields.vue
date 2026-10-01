@@ -27,6 +27,8 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const isAudiobookshelf = computed(() => draft.value.type === 'audiobookshelf')
+const isKomga = computed(() => draft.value.type === 'komga')
+const isApiTokenSource = computed(() => isAudiobookshelf.value || isKomga.value)
 const isCalibreWebAutomated = computed(() => draft.value.type === 'calibre_web_automated')
 const gridClass = computed(() => (props.wide ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-2'))
 const secretToggleLabel = computed(() => (props.showSecret ? t('migration.source.fields.hideSecret') : t('migration.source.fields.showSecret')))
@@ -35,7 +37,16 @@ const sourceTypeKeys: Record<string, string> = {
   grimmory: 'migration.source.types.grimmory',
   audiobookshelf: 'migration.source.types.audiobookshelf',
   calibre_web_automated: 'migration.source.types.calibreWebAutomated',
+  komga: 'migration.source.types.komga',
 }
+const apiBaseUrlLabel = computed(() => (isKomga.value ? t('migration.source.fields.komgaBaseUrl') : t('migration.source.fields.baseUrl')))
+const apiTokenPlaceholder = computed(() =>
+  isKomga.value ? t('migration.source.fields.komgaApiTokenPlaceholder') : t('migration.source.fields.apiTokenPlaceholder'),
+)
+const allowPrivateNetworkHint = computed(() =>
+  isKomga.value ? t('migration.source.fields.komgaAllowPrivateNetworkHint') : t('migration.source.fields.allowPrivateNetworkHint'),
+)
+const apiBaseUrlPlaceholder = computed(() => (isKomga.value ? 'http://komga.local:25600' : 'http://audiobookshelf.local:13378'))
 
 watch(
   () => draft.value.type,
@@ -113,8 +124,8 @@ function sourceTypeLabel(type: string): string {
       </label>
     </template>
 
-    <template v-else-if="isAudiobookshelf">
-      <fieldset class="min-w-0" :class="wide ? 'md:col-span-2 xl:col-span-2' : 'md:col-span-2'">
+    <template v-else-if="isApiTokenSource">
+      <fieldset v-if="isAudiobookshelf" class="min-w-0" :class="wide ? 'md:col-span-2 xl:col-span-2' : 'md:col-span-2'">
         <legend class="settings-hint">{{ t('migration.source.fields.connectionMode') }}</legend>
         <div class="mt-1 flex min-h-9 flex-wrap items-center gap-x-5 gap-y-2">
           <label class="flex cursor-pointer items-center gap-2">
@@ -128,15 +139,15 @@ function sourceTypeLabel(type: string): string {
         </div>
       </fieldset>
 
-      <template v-if="draft.audiobookshelfMode === 'api'">
+      <template v-if="isKomga || draft.audiobookshelfMode === 'api'">
         <label class="block" :class="wide ? 'md:col-span-2' : ''">
-          <span class="settings-hint">{{ t('migration.source.fields.baseUrl') }}</span>
+          <span class="settings-hint">{{ apiBaseUrlLabel }}</span>
           <input
             v-model="draft.baseUrl"
             class="input-field mt-1 w-full"
             type="url"
             inputmode="url"
-            placeholder="http://audiobookshelf.local:13378"
+            :placeholder="apiBaseUrlPlaceholder"
             :disabled="disabled"
           />
         </label>
@@ -149,9 +160,7 @@ function sourceTypeLabel(type: string): string {
               class="input-field w-full pe-10"
               :class="{ 'input-secret': !showSecret }"
               type="text"
-              :placeholder="
-                draft.apiToken === '********' ? t('migration.source.fields.secretSaved') : t('migration.source.fields.apiTokenPlaceholder')
-              "
+              :placeholder="draft.apiToken === '********' ? t('migration.source.fields.secretSaved') : apiTokenPlaceholder"
               :disabled="disabled"
             />
             <Button
@@ -175,7 +184,7 @@ function sourceTypeLabel(type: string): string {
           </label>
         </div>
         <p class="text-xs text-muted-foreground" :class="wide ? 'md:col-span-2 xl:col-span-4' : 'md:col-span-2'">
-          {{ t('migration.source.fields.allowPrivateNetworkHint') }}
+          {{ allowPrivateNetworkHint }}
         </p>
       </template>
 
