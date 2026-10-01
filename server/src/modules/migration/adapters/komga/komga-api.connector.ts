@@ -130,14 +130,9 @@ export class KomgaApiConnector {
   }
 
   async fetchSourceRecords(config: KomgaConnectionConfig): Promise<KomgaSourceRecords> {
+    // Komga only returns readProgress for the authenticated principal. Import that
+    // single user rather than listing other accounts without progress.
     const [status, currentUser] = await Promise.all([this.getStatus(config), this.getCurrentUser(config)]);
-    const warnings: string[] = [];
-    const listedUsers = await this.getUsers(config);
-    const users = listedUsers && listedUsers.length > 0 ? listedUsers : [currentUser];
-    if (!users.some((user) => user.id === currentUser.id)) users.unshift(currentUser);
-    if (listedUsers && listedUsers.length > 1) {
-      warnings.push('Komga read progress is only available for the authenticated API key user; other users are listed without progress.');
-    }
 
     const [libraries, series, books, collections, readLists] = await Promise.all([
       this.getLibraries(config),
@@ -150,37 +145,31 @@ export class KomgaApiConnector {
     return {
       sourceVersion: status.sourceVersion,
       authenticatedUserId: currentUser.id,
-      users,
+      users: [currentUser],
       libraries,
       series,
       books,
       collections,
       readLists,
-      warnings,
+      warnings: [],
     };
   }
 
   async fetchSnapshotSummary(config: KomgaConnectionConfig): Promise<KomgaApiSnapshotSummary> {
-    const [status, currentUser] = await Promise.all([this.getStatus(config), this.getCurrentUser(config)]);
-    const warnings: string[] = [];
-    const [libraries, listedUsers, firstBooks, firstSeries, firstCollections, firstReadLists] = await Promise.all([
+    const [status] = await Promise.all([this.getStatus(config), this.getCurrentUser(config)]);
+    const [libraries, firstBooks, firstSeries, firstCollections, firstReadLists] = await Promise.all([
       this.getLibraries(config),
-      this.getUsers(config),
       this.getBooksPage(config, 0),
       this.getSeriesPage(config, 0),
       this.getCollectionsPage(config, 0),
       this.getReadListsPage(config, 0),
     ]);
-    const users = listedUsers && listedUsers.length > 0 ? listedUsers : [currentUser];
-    if (listedUsers && listedUsers.length > 1) {
-      warnings.push('Komga read progress is only available for the authenticated API key user; other users are listed without progress.');
-    }
 
     return {
       sourceVersion: status.sourceVersion,
-      warnings,
+      warnings: [],
       counts: {
-        users: users.length,
+        users: 1,
         libraries: libraries.length,
         series: firstSeries.totalElements,
         books: firstBooks.totalElements,

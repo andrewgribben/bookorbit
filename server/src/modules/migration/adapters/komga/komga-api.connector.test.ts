@@ -117,10 +117,6 @@ describe('KomgaApiConnector pagination and snapshot counts', () => {
     const connector = new KomgaApiConnector();
     vi.spyOn(connector, 'getStatus').mockResolvedValue({ sourceVersion: '1.27.1' });
     vi.spyOn(connector, 'getCurrentUser').mockResolvedValue({ id: 'u1', email: 'admin@example.com', roles: ['ADMIN'] });
-    vi.spyOn(connector, 'getUsers').mockResolvedValue([
-      { id: 'u1', email: 'admin@example.com', roles: ['ADMIN'] },
-      { id: 'u2', email: 'reader@example.com', roles: ['USER'] },
-    ]);
     vi.spyOn(connector, 'getLibraries').mockResolvedValue([{ id: 'lib1', name: 'Comics', root: '/comics' }]);
     vi.spyOn(connector, 'getBooksPage').mockResolvedValue({ content: [], totalElements: 12_000, totalPages: 60, number: 0, size: 200, last: false });
     vi.spyOn(connector, 'getSeriesPage').mockResolvedValue({ content: [], totalElements: 400, totalPages: 2, number: 0, size: 200, last: false });
@@ -129,8 +125,8 @@ describe('KomgaApiConnector pagination and snapshot counts', () => {
 
     await expect(connector.fetchSnapshotSummary(config)).resolves.toEqual({
       sourceVersion: '1.27.1',
-      warnings: ['Komga read progress is only available for the authenticated API key user; other users are listed without progress.'],
-      counts: { users: 2, libraries: 1, series: 400, books: 12_000, collections: 3, readLists: 5 },
+      warnings: [],
+      counts: { users: 1, libraries: 1, series: 400, books: 12_000, collections: 3, readLists: 5 },
     });
   });
 
@@ -138,7 +134,6 @@ describe('KomgaApiConnector pagination and snapshot counts', () => {
     const connector = new KomgaApiConnector();
     vi.spyOn(connector, 'getStatus').mockResolvedValue({ sourceVersion: null });
     vi.spyOn(connector, 'getCurrentUser').mockResolvedValue({ id: 'u1', email: 'admin@example.com', roles: ['ADMIN'] });
-    vi.spyOn(connector, 'getUsers').mockResolvedValue([{ id: 'u1', email: 'admin@example.com', roles: ['ADMIN'] }]);
     vi.spyOn(connector, 'getLibraries').mockResolvedValue([{ id: 'lib1', root: '/comics' }]);
     vi.spyOn(connector, 'getSeriesPage').mockResolvedValue({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 200, last: true });
     vi.spyOn(connector, 'getCollectionsPage').mockResolvedValue({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 200, last: true });

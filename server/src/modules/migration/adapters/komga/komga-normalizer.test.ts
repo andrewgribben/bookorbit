@@ -140,18 +140,12 @@ describe('KomgaNormalizer', () => {
     const result = normalizer.normalize(
       source({
         authenticatedUserId: 'user-1',
-        users: [
-          { id: 'user-1', email: 'maya@example.com', roles: ['ADMIN'] },
-          { id: 'user-2', email: 'other@example.com', roles: ['USER'] },
-        ],
-        warnings: ['Komga read progress is only available for the authenticated API key user; other users are listed without progress.'],
+        users: [{ id: 'user-1', email: 'maya@example.com', roles: ['ADMIN'] }],
       }),
     );
 
-    expect(result.data.users).toHaveLength(2);
+    expect(result.data.users).toHaveLength(1);
     expect(result.data.userBookStatuses.every((status) => status.sourceUserId === 'user-1')).toBe(true);
-    expect(result.warnings).toContain(
-      'Komga read progress is only available for the authenticated API key user; other users are listed without progress.',
-    );
+    expect(result.data.userFileProgress.every((progress) => progress.sourceUserId === 'user-1')).toBe(true);
   });
 });

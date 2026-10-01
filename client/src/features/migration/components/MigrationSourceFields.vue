@@ -140,6 +140,14 @@ function sourceTypeLabel(type: string): string {
       </fieldset>
 
       <template v-if="isKomga || draft.audiobookshelfMode === 'api'">
+        <p
+          v-if="isKomga"
+          class="text-xs text-muted-foreground"
+          :class="wide ? 'md:col-span-2 xl:col-span-4' : 'md:col-span-2'"
+          data-testid="komga-progress-guidance"
+        >
+          {{ t('migration.source.komga.progressScopeHint') }}
+        </p>
         <label class="block" :class="wide ? 'md:col-span-2' : ''">
           <span class="settings-hint">{{ apiBaseUrlLabel }}</span>
           <input

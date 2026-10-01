@@ -9395,6 +9395,9 @@
         "logicalRootGuidance": "Book path mapping uses the logical Calibre library root stored in app.db, not the host folder containing these database snapshots.",
         "compatibilityNote": "Schema behavior is verified against Calibre-Web Automated v4.0.6. Its databases do not expose a reliable application release version."
       },
+      "komga": {
+        "progressScopeHint": "Komga only exposes reading progress for the user that owns the API key. Use that user's key; metadata, collections, and read lists still import for the whole library."
+      },
       "mediaPath": {
         "hintRequired": "Required for migrating book covers.",
         "hintAbsolute": "Use an absolute path (for example: /books). Relative paths are not supported.",
