@@ -175,6 +175,8 @@ export class AudiobookFeedService {
   }
 
   private applyNoIndex(reply: FastifyReply): void {
+    // Podcast apps load cover/enclosure URLs cross-origin; match OPDS media responses.
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     reply.header('X-Robots-Tag', NOINDEX_ROBOTS_HEADER);
   }
 
