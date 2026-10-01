@@ -92,6 +92,7 @@ import { BookDuplicatesModule } from './modules/book-duplicates/book-duplicates.
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { BookMoveModule } from './modules/book-move/book-move.module';
 import { AudiobookModule } from './modules/audiobook/audiobook.module';
+import { AudiobookFeedModule } from './modules/audiobook-feed/audiobook-feed.module';
 import { TtsModule } from './modules/tts/tts.module';
 import { SearchModule } from './modules/search/search.module';
 import { WatchDownloadModule } from './modules/watch-download/watch-download.module';
@@ -142,6 +143,7 @@ import { PodcastModule } from './modules/podcast/podcast.module';
     PathModule,
     BookModule,
     AudiobookModule,
+    AudiobookFeedModule,
     CatalogModule,
     CoverModule,
     CollectionModule,
