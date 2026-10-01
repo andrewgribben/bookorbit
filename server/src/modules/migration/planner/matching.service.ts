@@ -38,12 +38,18 @@ export class MatchingService {
 
     const matches: PlannedBookMatch[] = [];
     const unresolved: PlannedUnresolvedBook[] = [];
+    const pendingTitleAuthor: Array<{
+      sourceBook: SourceBook;
+      attempts: MatchAttempt[];
+      ambiguousStrategy: MatchAttempt | null;
+    }> = [];
 
+    // Cheap identity lookups first. Title/author SQL is expensive at library scale, so
+    // only run it for books that still need a match after ISBN/ASIN/hash/path.
     const isbnIndex = await this.batchLookupIsbns(sourceBooks);
     const asinIndex = await this.batchLookupAsins(sourceBooks);
     const hashIndex = await this.batchLookupFileHashes(sourceBooks);
     const filePathIndex = await this.batchLookupFilePaths(sourceBooks, pathMappings);
-    const titleAuthorIndex = await this.batchLookupTitleAuthors(sourceBooks);
 
     sourceBooksLoop: for (const sourceBook of sourceBooks) {
       const attempts: MatchAttempt[] = [];
@@ -98,6 +104,16 @@ export class MatchingService {
         }
       }
 
+      pendingTitleAuthor.push({ sourceBook, attempts, ambiguousStrategy });
+    }
+
+    const titleAuthorIndex =
+      pendingTitleAuthor.length > 0
+        ? await this.batchLookupTitleAuthors(pendingTitleAuthor.map((entry) => entry.sourceBook))
+        : new Map<string, LookupResult>();
+
+    for (const { sourceBook, attempts, ambiguousStrategy: priorAmbiguous } of pendingTitleAuthor) {
+      let ambiguousStrategy = priorAmbiguous;
       const titleKey = normalizeTitle(sourceBook.title);
       if (titleKey) {
         attempts.push('title_author');
@@ -122,7 +138,9 @@ export class MatchingService {
     }
 
     const durationMs = Date.now() - startMs;
-    this.logger.log(`[book.matching] [end] matched=${matches.length} unresolved=${unresolved.length} durationMs=${durationMs} - matching completed`);
+    this.logger.log(
+      `[book.matching] [end] matched=${matches.length} unresolved=${unresolved.length} titleAuthorCandidates=${pendingTitleAuthor.length} durationMs=${durationMs} - matching completed`,
+    );
     return { matches, unresolved };
   }
 

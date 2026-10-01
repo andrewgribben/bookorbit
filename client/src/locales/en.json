@@ -1001,8 +1001,8 @@
         "remove": "Remove",
         "pathValidation": "Path validation",
         "pathValidationMapped": "{mapped} of {total} source books have a mapped path",
-        "pathValidationUnmatched": "{count} mapped paths not found on disk - those books will fall back to ISBN / title matching",
-        "pathValidationAllMatched": "All {count} mapped paths found on disk",
+        "pathValidationUnmatched": "{count} mapped paths not found in your BookOrbit library - those books will fall back to ISBN / title matching",
+        "pathValidationAllMatched": "All {count} mapped paths found in your BookOrbit library",
         "saveMappings": "Save Mappings",
         "runDryRun": "Run Dry-Run",
         "matched": "Matched:",
@@ -9437,8 +9437,8 @@
       "pathValidation": {
         "title": "Path validation",
         "mappedSummary": "{mapped} of {total} source books have a mapped path",
-        "unmatched": "{count} mapped paths not found on disk",
-        "allMatched": "All {count} mapped paths found on disk"
+        "unmatched": "{count} mapped paths not found in your BookOrbit library",
+        "allMatched": "All {count} mapped paths found in your BookOrbit library"
       }
     },
     "dryRun": {
