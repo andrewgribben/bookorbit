@@ -715,6 +715,13 @@
       "when": 1790700000000,
       "tag": "0101_add_derive_series_from_folder",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1790857000000,
+      "tag": "0102_add_user_api_keys",
+      "breakpoints": true
     }
   ]
 }
