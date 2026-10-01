@@ -1,5 +1,6 @@
 import { computed, ref, shallowReactive, toRaw, toValue, type MaybeRefOrGetter } from 'vue'
 import type {
+  AudiobookChapter,
   BookCommunityRating,
   BookMetadataLockField,
   ComicMetadataFields,
@@ -153,6 +154,7 @@ export interface MetadataPatch {
   narrators?: string[]
   durationSeconds?: number | null
   abridged?: boolean
+  chapters?: AudiobookChapter[]
   googleBooksId?: string | null
   goodreadsId?: string | null
   amazonId?: string | null
