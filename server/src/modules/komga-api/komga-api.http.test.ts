@@ -12,6 +12,7 @@ import { KomgaBookQueryService } from './komga-book-query.service';
 import { KomgaBookService } from './komga-book.service';
 import { KomgaCollectionController } from './komga-collection.controller';
 import { KomgaCollectionService } from './komga-collection.service';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { KomgaLibraryController } from './komga-library.controller';
 import { KomgaReadListController } from './komga-readlist.controller';
 import { KomgaReadListService } from './komga-readlist.service';
@@ -107,6 +108,8 @@ describe('Komga HTTP surface', () => {
         { provide: SeriesService, useValue: seriesService },
       ],
     })
+      .overrideGuard(KomgaEnabledGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(KomgaAuthGuard)
       .useValue({
         canActivate: (context: { switchToHttp: () => { getRequest: () => { user?: RequestUser } } }) => {

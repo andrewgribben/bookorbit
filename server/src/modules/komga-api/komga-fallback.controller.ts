@@ -1,11 +1,13 @@
-import { Controller, Get, Res } from '@nestjs/common';
+import { Controller, Get, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { Public } from '../../common/decorators/public.decorator';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 
 /** Stub endpoints that KMReader expects but are not part of the Komga API spec. */
 @Controller('komga')
 @Public()
+@UseGuards(KomgaEnabledGuard)
 export class KomgaFallbackController {
   @Get('sse/v1/events')
   events(@Res() reply: FastifyReply): void {

@@ -9,13 +9,14 @@ import { LibraryService } from '../library/library.service';
 import { KomgaApiKeyService } from './komga-api-key.service';
 import { maskApiKey } from './komga-api-key';
 import { KomgaAuthGuard } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { decodeKomgaId } from './komga-ids';
 import { toKomgaApiKey, toKomgaUser } from './komga.mappers';
 import { KomgaApiKeyRequestDto } from './dto/komga-query.dto';
 
 @Controller('komga')
 @Public()
-@UseGuards(KomgaAuthGuard)
+@UseGuards(KomgaEnabledGuard, KomgaAuthGuard)
 export class KomgaUserController {
   constructor(
     private readonly libraryService: LibraryService,

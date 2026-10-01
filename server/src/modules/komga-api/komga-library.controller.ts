@@ -5,11 +5,12 @@ import { Public } from '../../common/decorators/public.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { LibraryService } from '../library/library.service';
 import { KomgaAuthGuard } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { toKomgaLibrary } from './komga.mappers';
 
 @Controller('komga')
 @Public()
-@UseGuards(KomgaAuthGuard)
+@UseGuards(KomgaEnabledGuard, KomgaAuthGuard)
 export class KomgaLibraryController {
   constructor(private readonly libraryService: LibraryService) {}
 

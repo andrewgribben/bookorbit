@@ -21,6 +21,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { KomgaAuthGuard } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { toKomgaPage } from './komga-ids';
 import { KomgaBookQueryService } from './komga-book-query.service';
 import { KomgaBookService } from './komga-book.service';
@@ -42,7 +43,7 @@ function decodeResourcePath(encodedPath: string): string {
 /** Static segments before :bookId or Nest captures them as the id. */
 @Controller('komga')
 @Public()
-@UseGuards(KomgaAuthGuard)
+@UseGuards(KomgaEnabledGuard, KomgaAuthGuard)
 export class KomgaBookController {
   constructor(
     private readonly bookService: KomgaBookService,

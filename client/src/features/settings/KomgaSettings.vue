@@ -1,33 +1,68 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Copy, Plus, Trash2 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { api } from '@/lib/api'
 import { copyToClipboard } from '@/lib/clipboard'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
 import SettingsSection from './components/SettingsSection.vue'
 
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
+const canManageSettings = computed(() => hasPermission('manage_app_settings'))
 
+const komgaEnabled = ref(false)
 const baseUrl = `${window.location.origin}/komga`
 const keys = ref<Array<{ id: number; label: string; keyPrefix: string; createdAt: string; lastUsedAt: string | null }>>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
 const showCreateForm = ref(false)
 const newLabel = ref('')
 const creating = ref(false)
 const newKeyRevealed = ref<string | null>(null)
 
-async function loadKeys() {
+async function loadSettings() {
+  loading.value = true
+  error.value = null
   try {
-    const response = await api('/api/v1/user/api-keys')
-    if (!response.ok) throw new Error(t('settings.reader.komga.loadFailed'))
-    keys.value = await response.json()
+    const [settingsRes, keysRes] = await Promise.all([api('/api/v1/app-settings'), api('/api/v1/user/api-keys')])
+    if (settingsRes.ok) {
+      const settings = await settingsRes.json()
+      const row = settings.find((s: { key: string; value: string }) => s.key === 'komga_enabled')
+      komgaEnabled.value = row?.value === 'true'
+    }
+    if (!keysRes.ok) throw new Error(t('settings.reader.komga.loadFailed'))
+    keys.value = await keysRes.json()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : t('settings.reader.komga.loadFailed'))
+    error.value = err instanceof Error ? err.message : t('settings.reader.komga.loadFailed')
+  } finally {
+    loading.value = false
   }
 }
 
-onMounted(loadKeys)
+onMounted(loadSettings)
+
+async function toggleKomga() {
+  const newVal = !komgaEnabled.value
+  try {
+    const res = await api('/api/v1/app-settings/komga_enabled', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: String(newVal) }),
+    })
+    if (res.ok) {
+      komgaEnabled.value = newVal
+      toast.success(newVal ? t('settings.reader.komga.serverEnabled') : t('settings.reader.komga.serverDisabled'))
+    } else {
+      toast.error(t('settings.reader.komga.updateSettingsFailed'))
+    }
+  } catch {
+    toast.error(t('settings.reader.komga.updateSettingsFailed'))
+  }
+}
 
 async function createKey() {
   if (!newLabel.value.trim()) return
@@ -93,9 +128,31 @@ async function copyRevealedKey() {
 </script>
 
 <template>
-  <div>
+  <div v-if="loading" class="settings-loading-state">
+    {{ t('common.loading') }}
+  </div>
+  <div v-else-if="error" class="settings-error-state">{{ error }}</div>
+  <template v-else>
+    <!-- Server Toggle -->
+    <div v-if="canManageSettings" class="mb-6">
+      <p class="settings-group-label">{{ t('settings.reader.komga.server') }}</p>
+      <div class="settings-card">
+        <div class="flex flex-col gap-3 px-4 py-3.5 bg-card md:flex-row md:items-center md:justify-between md:px-5 md:py-4">
+          <div class="min-w-0">
+            <p class="settings-label">
+              {{ t('settings.reader.komga.apiServer') }}
+            </p>
+            <p class="settings-hint">
+              {{ t('settings.reader.komga.apiServerHint') }}
+            </p>
+          </div>
+          <ToggleSwitch :model-value="komgaEnabled" class="self-start md:self-auto" @update:model-value="toggleKomga()" />
+        </div>
+      </div>
+    </div>
+
     <!-- API URL -->
-    <SettingsSection :title="t('settings.reader.komga.endpoint')" class="mb-6">
+    <SettingsSection v-if="komgaEnabled" :title="t('settings.reader.komga.endpoint')" class="mb-6">
       <div class="flex items-center gap-2">
         <code class="flex-1 px-3 py-2 bg-muted rounded text-sm font-mono break-all">{{ baseUrl }}</code>
         <Button variant="outline" size="sm" class="shrink-0" @click="copyBaseUrl">
@@ -107,7 +164,7 @@ async function copyRevealedKey() {
     </SettingsSection>
 
     <!-- API Keys -->
-    <SettingsSection :title="t('settings.reader.komga.apiKeys')">
+    <SettingsSection v-if="komgaEnabled" :title="t('settings.reader.komga.apiKeys')">
       <!-- Create form -->
       <div v-if="showCreateForm" class="border border-border rounded-lg p-4 md:p-5 bg-card mb-4 space-y-4">
         <div>
@@ -161,5 +218,5 @@ async function copyRevealedKey() {
         {{ t('settings.reader.komga.addKey') }}
       </Button>
     </SettingsSection>
-  </div>
+  </template>
 </template>

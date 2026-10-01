@@ -5,13 +5,14 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { KomgaAuthGuard } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { KomgaCollectionService } from './komga-collection.service';
 import { KomgaLibraryPageQueryDto } from './dto/komga-query.dto';
 
 /** Read-only: BookOrbit has no series-set entity. */
 @Controller('komga')
 @Public()
-@UseGuards(KomgaAuthGuard)
+@UseGuards(KomgaEnabledGuard, KomgaAuthGuard)
 export class KomgaCollectionController {
   constructor(private readonly collectionService: KomgaCollectionService) {}
 

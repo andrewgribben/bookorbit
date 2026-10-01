@@ -5,13 +5,14 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { KomgaAuthGuard } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { KomgaReadListService } from './komga-readlist.service';
 import { KomgaLibraryPageQueryDto, KomgaReadListWriteDto } from './dto/komga-query.dto';
 
 /** Komga readlists map directly onto BookOrbit collections: user-scoped, ordered sets of books. */
 @Controller('komga')
 @Public()
-@UseGuards(KomgaAuthGuard)
+@UseGuards(KomgaEnabledGuard, KomgaAuthGuard)
 export class KomgaReadListController {
   constructor(private readonly readListService: KomgaReadListService) {}
 

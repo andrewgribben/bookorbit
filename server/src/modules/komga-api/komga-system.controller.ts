@@ -3,10 +3,12 @@ import type { FastifyReply } from 'fastify';
 
 import { Public } from '../../common/decorators/public.decorator';
 import { KomgaAuthGuard, type KomgaAuthenticatedRequest } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { KomgaSessionService } from './komga-session.service';
 
 @Controller('komga')
 @Public()
+@UseGuards(KomgaEnabledGuard)
 export class KomgaSystemController {
   constructor(private readonly sessionService: KomgaSessionService) {}
 

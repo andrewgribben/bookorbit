@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { CommonModule } from '../../common/common.module';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { BookModule } from '../book/book.module';
 import { CollectionModule } from '../collection/collection.module';
 import { LibraryModule } from '../library/library.module';
@@ -17,6 +18,7 @@ import { KomgaBookQueryService } from './komga-book-query.service';
 import { KomgaBookService } from './komga-book.service';
 import { KomgaCollectionController } from './komga-collection.controller';
 import { KomgaCollectionService } from './komga-collection.service';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { KomgaFallbackController } from './komga-fallback.controller';
 import { KomgaLibraryController } from './komga-library.controller';
 import { KomgaReadListController } from './komga-readlist.controller';
@@ -29,7 +31,7 @@ import { KomgaSystemController } from './komga-system.controller';
 import { KomgaUserController } from './komga-user.controller';
 
 @Module({
-  imports: [BookModule, CollectionModule, LibraryModule, CbzModule, EpubModule, SeriesModule, UserModule, CommonModule],
+  imports: [AppSettingsModule, BookModule, CollectionModule, LibraryModule, CbzModule, EpubModule, SeriesModule, UserModule, CommonModule],
   controllers: [
     KomgaUserController,
     KomgaLibraryController,
@@ -45,6 +47,7 @@ import { KomgaUserController } from './komga-user.controller';
     KomgaRepository,
     KomgaAuthService,
     KomgaAuthGuard,
+    KomgaEnabledGuard,
     KomgaApiKeyService,
     KomgaBookQueryService,
     KomgaBookService,

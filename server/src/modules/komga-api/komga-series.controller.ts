@@ -6,6 +6,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { SeriesService } from '../series/series.service';
 import { KomgaAuthGuard } from './komga-auth.guard';
+import { KomgaEnabledGuard } from './komga-enabled.guard';
 import { decodeKomgaId, toKomgaPage } from './komga-ids';
 import { KomgaBookQueryService } from './komga-book-query.service';
 import { KomgaBookService } from './komga-book.service';
@@ -14,7 +15,7 @@ import { KomgaBookQueryDto, KomgaSearchBodyDto, KomgaSeriesQueryDto, mergeKomgaS
 
 @Controller('komga')
 @Public()
-@UseGuards(KomgaAuthGuard)
+@UseGuards(KomgaEnabledGuard, KomgaAuthGuard)
 export class KomgaSeriesController {
   constructor(
     private readonly komgaSeriesService: KomgaSeriesService,

@@ -7,6 +7,7 @@ import { hash } from 'bcryptjs';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { AppModule } from '../../../src/app.module';
+import { APP_SETTING_KEYS } from '../../../src/common/constants/app-settings.constants';
 import { GlobalExceptionFilter } from '../../../src/common/filters/http-exception.filter';
 import { DB } from '../../../src/db';
 import * as schema from '../../../src/db/schema';
@@ -46,6 +47,13 @@ export async function createKomgaE2EContext(): Promise<OpdsE2EContext> {
   await app.getHttpAdapter().getInstance().ready();
 
   const db = app.get<Db>(DB);
+  await db
+    .insert(schema.appSettings)
+    .values({ key: APP_SETTING_KEYS.KOMGA_ENABLED, value: 'true' })
+    .onConflictDoUpdate({
+      target: schema.appSettings.key,
+      set: { value: 'true' },
+    });
   return { app, db, adminToken: await createAdminSession(app, db), fixture, envSnapshot };
 }
 
