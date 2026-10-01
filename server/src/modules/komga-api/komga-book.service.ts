@@ -239,6 +239,7 @@ export class KomgaBookService {
       bookId: info.bookId,
       absolutePath: info.path,
       format: info.format === 'unknown' ? null : info.format,
+      mediaOverlayAvailable: info.mediaOverlayAvailable,
     });
 
     reply.header('Content-Disposition', contentDispositionHeader('attachment', filename, 'download'));
