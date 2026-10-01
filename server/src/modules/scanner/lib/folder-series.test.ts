@@ -168,7 +168,9 @@ describe('seriesNameFromDirectory', () => {
     ['Blake et Mortimer', 'Blake et Mortimer'],
     ['One_Piece', 'One Piece'],
     ['Akira [Digital] {Kodansha}', 'Akira'],
-    ['Spider-Man 2099 (1992)', 'Spider-Man 2099'],
+    ['Spider-Man 2099 (1992)', 'Spider-Man 2099 (1992)'],
+    ['Supergirl (2025)', 'Supergirl (2025)'],
+    ['Supergirl 6 (2011)', 'Supergirl 6 (2011)'],
     ['Chateau dans le ciel (Le)', 'Chateau dans le ciel (Le)'],
     ['[Scans]', null],
   ])('%s -> %s', (directory, name) => {

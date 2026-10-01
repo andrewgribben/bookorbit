@@ -192,7 +192,9 @@ function normalizeBook(book: KomgaBookRecord, seriesById: Map<string, KomgaSerie
   const metadata = book.metadata ?? {};
   const authors = normalizeAuthors(metadata.authors ?? []);
   const { isbn10, isbn13 } = normalizeIsbn(metadata.isbn);
-  const seriesName = normalizeNullableText(book.seriesTitle) ?? normalizeNullableText(series?.metadata?.title) ?? normalizeNullableText(series?.name);
+  // Prefer Komga's series entity name (usually the library folder, e.g. "Supergirl 6 (2011)")
+  // over ComicInfo/metadata titles that often collapse reboots into a bare series name.
+  const seriesName = normalizeNullableText(series?.name) ?? normalizeNullableText(book.seriesTitle) ?? normalizeNullableText(series?.metadata?.title);
   const seriesIndex = normalizeSeriesIndex(metadata.number) ?? normalizeSeriesIndex(book.number);
   const publishedYear = normalizePublishedYear(metadata.releaseDate);
   const pageCount = normalizePositiveInteger(book.media?.pagesCount);
