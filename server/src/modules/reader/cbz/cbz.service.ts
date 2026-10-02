@@ -60,6 +60,12 @@ interface RarCache {
   pages: string[];
 }
 
+export interface CbzPageEntry {
+  name: string;
+  /** Null when the archive format does not expose per-entry sizes. */
+  sizeBytes: number | null;
+}
+
 @Injectable()
 export class CbzService {
   // CBZ: byte-offset index per fileId
@@ -197,6 +203,29 @@ export class CbzService {
     if (fmt === 'cbz') return (await this.getCbzIndex(fileId, file.absolutePath)).length;
     if (fmt === 'cbr') return (await this.getRarCache(fileId, file.absolutePath)).pages.length;
     if (fmt === 'cb7') return (await this.getSevenZPages(fileId, file.absolutePath)).length;
+
+    throw new NotFoundException(`Unsupported comic format: ${fmt}`);
+  }
+
+  /**
+   * Page names in reading order, with byte sizes where the archive format exposes them.
+   *
+   * CBR page sizes are not available through the unrar binding without extracting each entry, so
+   * they stay null rather than being approximated.
+   */
+  async listPages(fileId: number, user: RequestUser): Promise<CbzPageEntry[]> {
+    const file = await this.getFile(fileId, user);
+    const fmt = await this.resolveFormat(fileId, file.absolutePath, file.format);
+
+    if (fmt === 'cbz') {
+      return (await this.getCbzIndex(fileId, file.absolutePath)).map((entry) => ({ name: entry.name, sizeBytes: entry.uncompressedSize }));
+    }
+    if (fmt === 'cbr') {
+      return (await this.getRarCache(fileId, file.absolutePath)).pages.map((name) => ({ name, sizeBytes: null }));
+    }
+    if (fmt === 'cb7') {
+      return (await this.getSevenZPages(fileId, file.absolutePath)).map((name) => ({ name, sizeBytes: null }));
+    }
 
     throw new NotFoundException(`Unsupported comic format: ${fmt}`);
   }

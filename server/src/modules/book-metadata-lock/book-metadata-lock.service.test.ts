@@ -77,6 +77,24 @@ describe('BookMetadataLockService', () => {
     expect(result.skippedFields).toEqual(['title', 'narrators', 'googleBooksId', 'hardcoverEditionId', 'comicIssueNumber']);
   });
 
+  it('skips locked chapters in automated dto updates', async () => {
+    const { service } = makeService(['chapters']);
+
+    const result = await service.filterAutomatedBookUpdate(12, {
+      audioMetadata: {
+        chapters: [{ title: 'Chapter 1', startMs: 0 }],
+        narrators: ['Allowed Narrator'],
+      },
+    });
+
+    expect(result.dto).toEqual({
+      audioMetadata: {
+        narrators: ['Allowed Narrator'],
+      },
+    });
+    expect(result.skippedFields).toEqual(['chapters']);
+  });
+
   it('assertFieldsUnlocked passes when none of the checked fields are locked', async () => {
     const { service } = makeService(['cover']);
 
@@ -90,14 +108,17 @@ describe('BookMetadataLockService', () => {
     await expect(service.isFieldLocked(1, 'title')).resolves.toBe(false);
   });
 
-  it('filterResolvedMetadata passes chapters through regardless of lock state', async () => {
-    const { service } = makeService(['title', 'cover']);
-
+  it('filterResolvedMetadata skips chapters when the chapters lock is set', async () => {
+    const unlocked = makeService(['title', 'cover']);
     const chapters = [{ title: 'Ch 1', startMs: 0 }];
-    const result = await service.filterResolvedMetadata(1, { title: 'Locked', chapters }, {});
+    const unlockedResult = await unlocked.service.filterResolvedMetadata(1, { title: 'Locked', chapters }, {});
+    expect(unlockedResult.resolved.chapters).toEqual(chapters);
+    expect('title' in unlockedResult.resolved).toBe(false);
 
-    expect(result.resolved.chapters).toEqual(chapters);
-    expect('title' in result.resolved).toBe(false);
+    const locked = makeService(['title', 'cover', 'chapters']);
+    const lockedResult = await locked.service.filterResolvedMetadata(1, { title: 'Locked', chapters }, {});
+    expect(lockedResult.resolved.chapters).toBeUndefined();
+    expect(lockedResult.skippedFields).toEqual(['title', 'chapters']);
   });
 
   it('filters resolved series memberships as a grouped series update', async () => {

@@ -14,6 +14,7 @@ const { t } = useI18n()
 const props = defineProps<{
   organizationMode: OrganizationMode
   organizationModeLocked?: boolean
+  deriveSeriesFromFolder: boolean
   allowedFormats: string[]
   addedAtSource: AddedAtSource
   canRecomputeAddedAt?: boolean
@@ -26,6 +27,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:organizationMode': [value: OrganizationMode]
+  'update:deriveSeriesFromFolder': [value: boolean]
   'update:allowedFormats': [value: string[]]
   'update:addedAtSource': [value: AddedAtSource]
   'update:excludePatterns': [value: string[]]
@@ -165,6 +167,10 @@ async function confirmRecompute() {
   await nextTick()
   sourceGroup.value?.querySelector<HTMLInputElement>('input:checked')?.focus()
 }
+
+function handleDeriveSeriesChange(event: Event) {
+  emit('update:deriveSeriesFromFolder', (event.target as HTMLInputElement).checked)
+}
 </script>
 
 <template>
@@ -225,6 +231,35 @@ async function confirmRecompute() {
           {{ t('library.creator.scanner.mode.cannotChange') }}
         </p>
       </template>
+
+      <label
+        v-if="organizationMode === 'book_per_file'"
+        class="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors focus-within:ring-2 focus-within:ring-ring"
+        :class="deriveSeriesFromFolder ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-primary/40'"
+      >
+        <input
+          type="checkbox"
+          class="mt-0.5 accent-primary"
+          :checked="deriveSeriesFromFolder"
+          aria-describedby="series-from-folders-hint"
+          @change="handleDeriveSeriesChange"
+        />
+        <span class="min-w-0">
+          <span class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-semibold text-foreground">{{ t('library.creator.scanner.seriesFromFolders.title') }}</span>
+            <span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {{ t('library.creator.scanner.seriesFromFolders.badge') }}
+            </span>
+          </span>
+          <span id="series-from-folders-hint" class="mt-1.5 block space-y-1.5 text-xs text-muted-foreground leading-relaxed">
+            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.why') }}</span>
+            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.how') }}</span>
+            <span class="block font-mono text-[11px] text-muted-foreground">{{ t('library.creator.scanner.seriesFromFolders.example') }}</span>
+            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.whenNot') }}</span>
+            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.precedence') }}</span>
+          </span>
+        </span>
+      </label>
     </LibraryCreatorCard>
 
     <LibraryCreatorCard :label="t('library.creator.scanner.import.title')" label-id="import-formats-title">

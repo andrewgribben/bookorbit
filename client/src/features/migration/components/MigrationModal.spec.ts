@@ -361,7 +361,7 @@ describe('MigrationModal reset setup', () => {
     await findButton(wrapper, 'Test Connection').trigger('click')
 
     expect(migrationApiMocks.testSource).not.toHaveBeenCalled()
-    expect(toastMocks.error).toHaveBeenCalledWith('Audiobookshelf URL must be a clean HTTP or HTTPS origin without a path')
+    expect(toastMocks.error).toHaveBeenCalledWith('Source URL must be a clean HTTP or HTTPS origin without a path')
   })
 
   it('tests a CWA snapshot using exactly its fixed mode and two paths', async () => {

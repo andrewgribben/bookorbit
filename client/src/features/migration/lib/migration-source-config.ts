@@ -55,6 +55,7 @@ export function createMigrationSourceDraft(type = 'booklore'): MigrationSourceDr
 export function defaultMigrationSourceName(type: string): string {
   if (type === 'audiobookshelf') return 'Audiobookshelf'
   if (type === 'calibre_web_automated') return 'Calibre-Web Automated'
+  if (type === 'komga') return 'Komga'
   if (type === 'grimmory') return 'Grimmory'
   return 'Booklore'
 }
@@ -70,6 +71,10 @@ export function hydrateMigrationSourceDraft(draft: MigrationSourceDraft, source:
     hydrated.apiToken = asString(config.apiToken) ?? ''
     hydrated.allowPrivateNetwork = config.allowPrivateNetwork === true
     hydrated.backupPath = asString(config.backupPath) ?? ''
+  } else if (source.type === 'komga') {
+    hydrated.baseUrl = asString(config.baseUrl) ?? ''
+    hydrated.apiToken = asString(config.apiToken) ?? ''
+    hydrated.allowPrivateNetwork = config.allowPrivateNetwork === true
   } else if (source.type === 'calibre_web_automated') {
     hydrated.cwaAppDatabasePath = asString(config.appDatabasePath) ?? ''
     hydrated.cwaMetadataDatabasePath = asString(config.metadataDatabasePath) ?? ''
@@ -92,6 +97,14 @@ export function buildMigrationSourceConnectionConfig(draft: MigrationSourceDraft
       mode: 'snapshot',
       appDatabasePath: draft.cwaAppDatabasePath.trim(),
       metadataDatabasePath: draft.cwaMetadataDatabasePath.trim(),
+    }
+  }
+
+  if (draft.type === 'komga') {
+    return {
+      baseUrl: normalizeBaseUrl(draft.baseUrl),
+      apiToken: draft.apiToken,
+      allowPrivateNetwork: draft.allowPrivateNetwork,
     }
   }
 
@@ -132,6 +145,11 @@ export function validateMigrationSourceDraft(draft: MigrationSourceDraft): Migra
     if (!appDatabasePath.startsWith('/')) return 'cwaAppDatabasePathAbsolute'
     if (!metadataDatabasePath) return 'cwaMetadataDatabasePathRequired'
     return metadataDatabasePath.startsWith('/') ? null : 'cwaMetadataDatabasePathAbsolute'
+  }
+
+  if (draft.type === 'komga') {
+    if (!draft.baseUrl.trim() || !draft.apiToken.trim()) return 'apiFieldsRequired'
+    return isValidBaseUrl(draft.baseUrl) ? null : 'baseUrlInvalid'
   }
 
   if (draft.type !== 'audiobookshelf') {

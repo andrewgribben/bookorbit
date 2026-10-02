@@ -89,6 +89,24 @@ describe('LibraryCreatorModal', () => {
     wrapper.unmount()
   })
 
+  it('clears series from folders when leaving file-as-book mode', async () => {
+    const full = makeLibrary({ id: 7, name: 'Library', organizationMode: 'book_per_file' })
+    apiMock.mockImplementation(async (url) => jsonResponse(String(url).endsWith('/libraries/7') ? full : null))
+    const listEntry = { id: 7, name: 'Library', folders: [], coverAspectRatio: '2/3' } as unknown as Library
+    const wrapper = await mountCreator({ library: listEntry })
+    await navButton(wrapper, 'Scanning').trigger('click')
+    const scanner = () => wrapper.getComponent(LibraryCreatorScanner)
+
+    scanner().vm.$emit('update:deriveSeriesFromFolder', true)
+    await flushPromises()
+    expect(scanner().props('deriveSeriesFromFolder')).toBe(true)
+
+    scanner().vm.$emit('update:organizationMode', 'book_per_folder')
+    await flushPromises()
+    expect(scanner().props('organizationMode')).toBe('book_per_folder')
+    expect(scanner().props('deriveSeriesFromFolder')).toBe(false)
+    wrapper.unmount()
+  })
   it('offers every section while creating, with no step order to follow', async () => {
     const wrapper = await mountCreator()
 

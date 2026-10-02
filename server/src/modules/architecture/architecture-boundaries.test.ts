@@ -53,6 +53,7 @@ describe('Architecture boundaries', () => {
       'src/modules/kobo/services/kobo-settings.service.ts',
       'src/modules/kobo/services/kobo-sync-history.service.ts',
       'src/modules/kobo/services/kobo-sync.service.ts',
+      'src/modules/komga-api/komga-api-key.service.ts',
       'src/modules/koreader/koreader-chapter-extractor.service.ts',
       'src/modules/metadata/metadata.service.ts',
       'src/modules/position-converter/epub-dom.service.ts',

@@ -35,9 +35,11 @@ import MetadataSearchDrawer from './MetadataSearchDrawer.vue'
 import MetadataFieldLabel from './MetadataFieldLabel.vue'
 import RichDescriptionEditor from './RichDescriptionEditor.vue'
 import SeriesMembershipEditor from './SeriesMembershipEditor.vue'
+import AudiobookChapterEditor from './AudiobookChapterEditor.vue'
 import WriteAndRenameResultPanel from '../WriteAndRenameResultPanel.vue'
 import type { MetadataDiffApply, MetadataPatch } from '../../../composables/useMetadataDiff'
 import { type EditableSeriesMembership, normalizeSeriesMemberships, useMetadataEditor } from '../../../composables/useMetadataEditor'
+import { validateChapters } from '../../../lib/audiobook-chapters'
 import { type MetadataRefreshPreview, useRefreshMetadata } from '../../../composables/useRefreshMetadata'
 import { type FileMetadata, useFileMetadata } from '../../../composables/useFileMetadata'
 import { useWriteAndRename } from '../../../composables/useWriteAndRename'
@@ -155,7 +157,7 @@ const FIELD_CONTROL_CLASS =
   'w-full h-10 sm:h-8 rounded-lg border border-input bg-background px-3 pr-11 text-sm outline-none focus:ring-1 focus:ring-ring transition-shadow disabled:opacity-50 disabled:cursor-not-allowed'
 const FIELD_CONTROL_MONO_CLASS = `${FIELD_CONTROL_CLASS} font-mono`
 
-const { form, saving, error, isDirty, syncFromBook, reset, save } = useMetadataEditor()
+const { form, saving, error, isDirty, chaptersDirty, syncFromBook, reset, save } = useMetadataEditor()
 const {
   lockedFields,
   updating: updatingLocks,
@@ -345,7 +347,23 @@ const hasPendingChanges = computed(() => isDirty.value || locksDirty.value || Bo
 const hasInvalidSeriesIndex = computed(() =>
   form.seriesMemberships.some((membership) => membership.seriesIndex !== null && !isValidSeriesIndex(membership.seriesIndex)),
 )
+const chapterDurationMs = computed(() => (form.durationSeconds != null && form.durationSeconds > 0 ? form.durationSeconds * 1000 : null))
+const hasInvalidChapters = computed(
+  () => isPrimaryAudio.value && form.chapters.length > 0 && validateChapters(form.chapters, chapterDurationMs.value).length > 0,
+)
 const isSeriesLocked = computed(() => isLocked('seriesName') || isLocked('seriesIndex'))
+const audioTrackFiles = computed(() =>
+  props.book.files
+    .filter((file): file is typeof file & { filename: string } => typeof file.filename === 'string' && file.filename.length > 0)
+    .map((file) => ({
+      filename: file.filename,
+      durationSeconds: file.durationSeconds,
+      format: file.format,
+    })),
+)
+function isAudioFileFormat(format: string) {
+  return FORMAT_TO_GROUP[format] === 'audio'
+}
 const communityRatingLines = computed(() =>
   form.communityRatings.map((rating) => formatCommunityRatingLine(rating, availableMetadataProviders.value ?? [])),
 )
@@ -361,6 +379,11 @@ async function submit() {
   const pendingMedia = panel?.pendingMedia ?? []
   const lockedOnServer = (medium: CoverMedium | null) => props.book.lockedFields.includes(coverLockField(medium))
   if (panel && !(await panel.confirm(pendingMedia.filter((medium) => !lockedOnServer(medium))))) return
+
+  // Chapter edits are intentional; lock them with the save so a later scan cannot wipe them.
+  if (chaptersDirty.value && !isLocked('chapters')) {
+    await replaceLocks(props.book.id, [...lockedFields.value, 'chapters'], 'chapters')
+  }
 
   const locksChanged = locksDirty.value
   const result = await save(props.book.id, lockedFields.value)
@@ -584,6 +607,14 @@ function applyAudioPatch(formPatch: MetadataPatch, skippedFields: BookMetadataLo
       updated++
     }
   }
+  if (formPatch.chapters !== undefined) {
+    if (isLocked('chapters')) {
+      trackLockedField('chapters', skippedFields)
+    } else {
+      form.chapters = formPatch.chapters
+      updated++
+    }
+  }
   return updated
 }
 
@@ -661,7 +692,7 @@ const {
 const coverMutationPending = computed(() => Boolean(coverPanel.value?.busy))
 const formMutationPending = computed(() => autoFilling.value || loadingFromFile.value || coverMutationPending.value)
 const formDisabled = computed(() => saving.value || writingAndRenaming.value || formMutationPending.value)
-const submitDisabled = computed(() => formDisabled.value || !hasPendingChanges.value || hasInvalidSeriesIndex.value)
+const submitDisabled = computed(() => formDisabled.value || !hasPendingChanges.value || hasInvalidSeriesIndex.value || hasInvalidChapters.value)
 let dismissTimer: ReturnType<typeof setTimeout> | null = null
 
 function pluralizeField(count: number): string {
@@ -742,6 +773,7 @@ function buildPreviewPatch(preview: MetadataRefreshPreview): MetadataPatch {
     narrators: preview.audioMetadata?.narrators,
     durationSeconds: preview.audioMetadata?.durationSeconds ?? undefined,
     abridged: preview.audioMetadata?.abridged ?? undefined,
+    chapters: preview.audioMetadata?.chapters,
   }
 }
 
@@ -1334,6 +1366,19 @@ function handleCoverChanged(medium: CoverMedium | null) {
                     />
                   </span>
                 </MetadataFieldLabel>
+
+                <div v-if="isPrimaryAudio" class="col-span-2 border-t border-border pt-2.5">
+                  <AudiobookChapterEditor
+                    v-model="form.chapters"
+                    :duration-seconds="form.durationSeconds"
+                    :locked="isLocked('chapters')"
+                    :disabled="formDisabled"
+                    :is-updating="isUpdatingLock"
+                    :audio-tracks="audioTrackFiles"
+                    :is-audio-format="isAudioFileFormat"
+                    @toggle-lock="handleLockToggle('chapters')"
+                  />
+                </div>
               </div>
 
               <MetadataFieldLabel

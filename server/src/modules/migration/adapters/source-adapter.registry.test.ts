@@ -28,27 +28,35 @@ describe('SourceAdapterRegistry', () => {
       snapshot: vi.fn(),
       exportData: vi.fn(),
     };
+    const komgaAdapter = {
+      type: 'komga',
+      validate: vi.fn(),
+      snapshot: vi.fn(),
+      exportData: vi.fn(),
+    };
     return {
       registry: new SourceAdapterRegistry(
         bookloreAdapter as never,
         grimmoryAdapter as never,
         audiobookshelfAdapter as never,
         calibreWebAutomatedAdapter as never,
+        komgaAdapter as never,
       ),
       bookloreAdapter,
       grimmoryAdapter,
       audiobookshelfAdapter,
       calibreWebAutomatedAdapter,
+      komgaAdapter,
     };
   }
 
   it('lists supported source types in sorted order', () => {
     const { registry } = makeRegistry();
-    expect(registry.listTypes()).toEqual(['audiobookshelf', 'booklore', 'calibre_web_automated', 'grimmory']);
+    expect(registry.listTypes()).toEqual(['audiobookshelf', 'booklore', 'calibre_web_automated', 'grimmory', 'komga']);
   });
 
   it('retrieves adapter by normalized source type', () => {
-    const { registry, bookloreAdapter, grimmoryAdapter, audiobookshelfAdapter, calibreWebAutomatedAdapter } = makeRegistry();
+    const { registry, bookloreAdapter, grimmoryAdapter, audiobookshelfAdapter, calibreWebAutomatedAdapter, komgaAdapter } = makeRegistry();
 
     expect(registry.get('booklore')).toBe(bookloreAdapter);
     expect(registry.get('  BOOKLORE ')).toBe(bookloreAdapter);
@@ -58,6 +66,8 @@ describe('SourceAdapterRegistry', () => {
     expect(registry.get('  AUDIOBOOKSHELF ')).toBe(audiobookshelfAdapter);
     expect(registry.get('calibre_web_automated')).toBe(calibreWebAutomatedAdapter);
     expect(registry.get('  CALIBRE_WEB_AUTOMATED ')).toBe(calibreWebAutomatedAdapter);
+    expect(registry.get('komga')).toBe(komgaAdapter);
+    expect(registry.get('  KOMGA ')).toBe(komgaAdapter);
   });
 
   it('throws BadRequestException for unsupported source types', () => {
