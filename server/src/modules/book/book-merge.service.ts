@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { basename, dirname, extname, join, relative } from 'path';
@@ -12,7 +12,9 @@ import type { RequestUser } from '../../common/types/request-user';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { selectPrimaryFileKeepingCurrent } from '../../common/utils/primary-file-selection.utils';
 import { SelfWriteRegistry } from '../../common/services/self-write-registry.service';
+import type { BookCoverSlotRow } from '../book-cover-store/book-cover-store.repository';
 import { BookCoverStore } from '../book-cover-store/book-cover-store.service';
+import { CoverSlotReconciler } from '../metadata/cover-slot-reconciler.service';
 import { FileLockService, bookOperationLockKey } from '../file-write/file-lock.service';
 import { LibraryService } from '../library/library.service';
 import { buildSuppressionPaths, moveFile, moveFileBack, pathExists, removeEmptyDirs, withCollisionSuffix } from '../book-move/book-move.utils';
@@ -65,6 +67,7 @@ export class BookMergeService {
     private readonly lockService: FileLockService,
     private readonly selfWriteRegistry: SelfWriteRegistry,
     private readonly coverStore: BookCoverStore,
+    @Optional() private readonly coverReconciler?: CoverSlotReconciler,
   ) {}
 
   async mergeBooks(targetBookId: number, sourceBookIds: number[], user: RequestUser): Promise<BookMergeResult> {
@@ -126,6 +129,12 @@ export class BookMergeService {
       throw new BadRequestException('The selected books have no content files to merge');
     }
 
+    // Read cover slots before the source books disappear so ebook/audio art can move with them.
+    const sourceCovers = new Map<number, BookCoverSlotRow[]>();
+    for (const source of sources) {
+      sourceCovers.set(source.id, await this.coverStore.slotsForAdoption(source.id));
+    }
+
     const planned = await this.planMoves(target, sourceFiles);
     const completed: PlannedMove[] = [];
     const roots = [...new Set([target.libraryFolderPath, ...sources.map((source) => source.libraryFolderPath)])];
@@ -155,9 +164,12 @@ export class BookMergeService {
       await this.applyDatabaseMerge(target, sources, completed);
 
       for (const source of sources) {
-        await this.coverStore.removeCoverDirectory(source.id).catch(() => undefined);
+        await this.handOverCovers(source.id, sourceCovers.get(source.id) ?? [], targetBookId);
+        await this.moveSidecarCovers(source.folderPath, target.folderPath);
         await this.cleanupSourceFolder(source.folderPath, source.libraryFolderPath);
       }
+
+      void this.coverReconciler?.enqueue([targetBookId], { filesChanged: true });
 
       return {
         targetBookId,
@@ -310,6 +322,42 @@ export class BookMergeService {
         })
         .where(eq(books.id, target.id));
     });
+  }
+
+  /** Target keeps its own art and takes the source's for any medium it had no cover for. */
+  private async handOverCovers(sourceBookId: number, sourceSlots: BookCoverSlotRow[], targetBookId: number): Promise<void> {
+    try {
+      await this.coverStore.adoptSlots(sourceBookId, sourceSlots, targetBookId);
+      await this.coverStore.removeCoverDirectory(sourceBookId);
+    } catch (error) {
+      this.logger.warn(
+        `[${EVENT}] [fail] sourceBookId=${sourceBookId} targetBookId=${targetBookId} errorClass=${error instanceof Error ? error.name : 'Error'} error="${sanitizeLogValue(error instanceof Error ? error.message : String(error))}" - merged book covers not handed over`,
+      );
+      await this.coverStore.removeCoverDirectory(sourceBookId).catch(() => undefined);
+    }
+  }
+
+  /** Carry folder cover.jpg (etc.) into the target when that name is free there. */
+  private async moveSidecarCovers(sourceFolderPath: string, targetFolderPath: string): Promise<void> {
+    try {
+      const entries = await readdir(sourceFolderPath);
+      for (const entry of entries) {
+        const extension = extname(entry).toLowerCase();
+        const stem = basename(entry, extension).toLowerCase();
+        if (!SIDECAR_COVER_NAMES.has(stem) || !SIDECAR_COVER_EXTENSIONS.has(extension)) continue;
+        const from = join(sourceFolderPath, entry);
+        const to = join(targetFolderPath, entry);
+        if (await pathExists(to)) continue;
+        await moveFile(from, to).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `[${EVENT}] [fail] from="${sanitizeLogValue(from)}" to="${sanitizeLogValue(to)}" error="${sanitizeLogValue(message)}" - sidecar cover move failed`,
+          );
+        });
+      }
+    } catch {
+      // Source folder may already be empty or gone.
+    }
   }
 
   private async cleanupSourceFolder(sourceFolderPath: string, libraryRoot: string): Promise<void> {
