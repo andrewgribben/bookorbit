@@ -10,11 +10,13 @@ import { api } from '@/lib/api'
 import { copyToClipboard } from '@/lib/clipboard'
 import { useBookDownload } from '@/features/book/composables/useBookDownload'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
+import { useLibraries } from '@/features/library/composables/useLibraries'
 import { useBookFileTree, type SortKey, type TreeFile } from '@/features/book/composables/useBookFileTree'
 import FilesHeroBar from '../files/FilesHeroBar.vue'
 import FileListCard from '../files/FileListCard.vue'
 import FileDetailCard from '../files/FileDetailCard.vue'
 import WriteBackCard from '../files/WriteBackCard.vue'
+import MergeBooksSheet from '@/features/book/components/MergeBooksSheet.vue'
 import AddBookFileModal from './AddBookFileModal.vue'
 
 const props = defineProps<{ book: BookDetail }>()
@@ -23,7 +25,8 @@ const emit = defineEmits<{ refetch: [] }>()
 const { t } = useI18n()
 const router = useRouter()
 const { downloadFile: downloadBookFile } = useBookDownload()
-const { hasPermission } = usePermissions()
+const { hasPermission, isDemoRestrictedAccount } = usePermissions()
+const { libraries, fetchLibraries } = useLibraries()
 
 const book = toRef(props, 'book')
 const {
@@ -46,6 +49,11 @@ const canUpload = computed(() => hasPermission(Permission.LibraryUpload))
 const canDownload = computed(() => hasPermission('library_download'))
 const canEdit = computed(() => hasPermission('library_edit_metadata'))
 const canDelete = computed(() => hasPermission('library_delete_books'))
+const library = computed(() => libraries.value.find((entry) => entry.id === props.book.libraryId) ?? null)
+const canMerge = computed(() => canEdit.value && !isDemoRestrictedAccount.value && library.value?.organizationMode === 'book_per_folder')
+const mergeOpen = ref(false)
+
+void fetchLibraries()
 
 /**
  * The rail turns into a sheet on the CSS side at 40rem of *tab* width, so the decision to open one
@@ -135,6 +143,15 @@ function downloadFile(file: TreeFile) {
 
 function goToMetadata() {
   router.push({ name: 'book-detail', params: { bookId: props.book.id }, query: { tab: 'edit' } })
+}
+
+function openMergeSheet() {
+  mergeOpen.value = true
+}
+
+function onMerged() {
+  mergeOpen.value = false
+  emit('refetch')
 }
 
 const copiedPathFileId = ref<number | null>(null)
@@ -237,11 +254,13 @@ async function confirmDelete() {
       :format-shares="formatShares"
       :folder-segments="folderSegments.relative"
       :can-upload="canUpload"
+      :can-merge="canMerge"
       :sort-key="sortKey"
       :sort-direction="sortDirection"
       :sort-options="sortOptions"
       @sort="handleSort"
       @add-file="openAddFileModal"
+      @merge="openMergeSheet"
     />
 
     <!-- Empty state -->
@@ -393,6 +412,13 @@ async function confirmDelete() {
   </div>
 
   <AddBookFileModal v-if="addFileModalOpen" :book-id="book.id" @close="closeAddFileModal" @uploaded="onFilesAdded" />
+
+  <MergeBooksSheet
+    :open="mergeOpen"
+    :target-book="{ id: book.id, libraryId: book.libraryId, title: book.title }"
+    @update:open="mergeOpen = $event"
+    @merged="onMerged"
+  />
 </template>
 
 <style scoped>

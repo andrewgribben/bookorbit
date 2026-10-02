@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 
+import { SelfWriteRegistryModule } from '../../common/self-write-registry.module';
 import { AchievementModule } from '../achievement/achievement.module';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { EmbeddingModule } from '../embedding/embedding.module';
@@ -17,6 +18,7 @@ import { PositionConverterModule } from '../position-converter/position-converte
 import { UserBookStatusModule } from '../user-book-status/user-book-status.module';
 import { AudiobookEbookProgressSyncService } from './audiobook-ebook-progress-sync.service';
 import { AudiolessEpubService } from './audioless-epub.service';
+import { BookMergeService } from './book-merge.service';
 import { BookReadService } from './book-read.service';
 import { BookQueryBuilder } from './book-query-builder.service';
 import { BookSortBuilder } from './book-sort-builder.service';
@@ -43,6 +45,7 @@ import { ReadingAttemptController } from './reading-attempt.controller';
     UserBookStatusModule,
     AchievementModule,
     PositionConverterModule,
+    SelfWriteRegistryModule,
   ],
   controllers: [BookController, ReadingAttemptController],
   providers: [
@@ -54,6 +57,7 @@ import { ReadingAttemptController } from './reading-attempt.controller';
     BookAuthorSortKeyBackfillService,
     AudiobookEbookProgressSyncService,
     AudiolessEpubService,
+    BookMergeService,
   ],
   exports: [BookService, BookReadService, BookQueryBuilder, AudiolessEpubService],
 })

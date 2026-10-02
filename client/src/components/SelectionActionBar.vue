@@ -8,6 +8,7 @@ import {
   FolderInput,
   FolderMinus,
   FolderPlus,
+  GitMerge,
   ImageDown,
   Lock,
   Loader2,
@@ -86,6 +87,7 @@ const emit = defineEmits<{
   'set-field': [field: BulkEditableField, value: BulkEditableValue]
   'lock-metadata': [locked: boolean]
   'move-to-library': []
+  merge: []
   delete: []
   exit: []
 }>()
@@ -108,6 +110,7 @@ const canBulkActions = computed(() => !isDemoRestrictedAccount.value)
 const canDownload = computed(() => hasPermission('library_download') && canBulkActions.value)
 const canEditMetadata = computed(() => hasPermission('library_edit_metadata') && canBulkActions.value)
 const canMoveToLibrary = computed(() => hasPermission('library_edit_metadata') && canBulkActions.value)
+const canMerge = computed(() => canEditMetadata.value && !props.queryScoped && props.count === 2)
 const canShowMoreMenu = computed(() => canDownload.value || canEditMetadata.value || canMoveToLibrary.value)
 const canShare = computed(() => hasPermission('email_send') || canDownload.value)
 const numericFieldSelected = computed(() => bulkField.value === 'publishedYear')
@@ -185,6 +188,11 @@ function onReExtractCover() {
 function onMoveToLibrary() {
   if (props.count === 0) return
   emit('move-to-library')
+}
+
+function onMerge() {
+  if (!canMerge.value) return
+  emit('merge')
 }
 
 function resetFieldEditor() {
@@ -333,6 +341,15 @@ watch(
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top">{{ t('components.selectionActionBar.editIndividually') }}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip v-if="canMerge">
+              <TooltipTrigger as-child>
+                <button data-testid="action-merge-books" :class="[BTN_ICON, BTN_PRIMARY]" @click="onMerge">
+                  <GitMerge :size="ICON_SIZE" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{{ t('components.selectionActionBar.mergeBooks') }}</TooltipContent>
             </Tooltip>
 
             <div v-if="canBulkActions" :class="DIVIDER" />

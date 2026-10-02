@@ -32,7 +32,9 @@ import ViewHeader from '@/components/ViewHeader.vue'
 import SelectionActionBar from '@/components/SelectionActionBar.vue'
 import AddToCollectionSheet from '@/features/collection/components/AddToCollectionSheet.vue'
 import MoveToLibrarySheet from '@/features/book/components/MoveToLibrarySheet.vue'
+import MergeBooksSheet from '@/features/book/components/MergeBooksSheet.vue'
 import { useMoveToLibraryTarget } from '@/features/book/composables/useMoveToLibraryTarget'
+import { useMergeBooksSelection } from '@/features/book/composables/useMergeBooksSelection'
 import BulkEditMetadataDialog from '@/features/book/components/BulkEditMetadataDialog.vue'
 import { useBulkEditMetadata } from '@/features/book/composables/useBulkEditMetadata'
 import type { BulkEditFields } from '@/features/book/composables/useBulkEditMetadata'
@@ -442,6 +444,19 @@ const {
 } = useMoveToLibraryTarget({
   getSelectionPayload: () => getSelectionPayload(),
   selectedCount: computed(() => (querySelection.value ? querySelection.value.total : selectedCount.value)),
+})
+
+const {
+  mergeOpen,
+  mergeCandidates,
+  openMergeForSelection,
+  setMergeOpen,
+  handleMerged: handleBooksMerged,
+} = useMergeBooksSelection(selectedIds, books, (sourceIds) => {
+  const removed = new Set(sourceIds)
+  books.value = books.value.filter((book) => !removed.has(book.id))
+  exitSelectionMode()
+  resetBooks()
 })
 
 const { onBookMissing, onBookRestored, onBookMoved, onBookTransferred } = useBookEvents()
@@ -1067,6 +1082,7 @@ defineOptions({ name: 'HomeView' })
       @export-metadata="openMetadataExport(querySelection ? 'all-matching' : 'selected')"
       @add-to-collection="addToCollectionOpen = true"
       @move-to-library="openMoveForSelection"
+      @merge="openMergeForSelection"
       @edit="handleEditSelected"
       @edit-individually="handleEditIndividually"
       @refresh-metadata="handleBulkRefreshMetadata"
@@ -1108,6 +1124,8 @@ defineOptions({ name: 'HomeView' })
       @update:open="setMoveOpen"
       @moved="handleBooksMoved"
     />
+
+    <MergeBooksSheet :open="mergeOpen" :candidates="mergeCandidates" @update:open="setMergeOpen" @merged="handleBooksMerged" />
 
     <BulkEditMetadataDialog
       :open="bulkEditOpen"
