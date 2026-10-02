@@ -89,4 +89,46 @@ describe('BookMergeService', () => {
     await expect(service.mergeBooks(1, [2], USER)).rejects.toThrow(/Folder as Book/);
     expect(libraryService.verifyUserAccess).toHaveBeenCalledWith(USER.id, 9, false);
   });
+
+  it('allows merge across different library folder roots in the same library', async () => {
+    const booksChain = {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([
+        {
+          id: 1,
+          libraryId: 9,
+          libraryFolderId: 3,
+          folderPath: '/ebooks/Keep',
+          primaryFileId: 10,
+          status: 'present',
+          organizationMode: 'book_per_folder',
+          formatPriority: ['epub', 'm4b'],
+          libraryFolderPath: '/ebooks',
+          title: 'Keep',
+        },
+        {
+          id: 2,
+          libraryId: 9,
+          libraryFolderId: 4,
+          folderPath: '/audiobooks/Merge',
+          primaryFileId: 11,
+          status: 'present',
+          organizationMode: 'book_per_folder',
+          formatPriority: ['epub', 'm4b'],
+          libraryFolderPath: '/audiobooks',
+          title: 'Merge',
+        },
+      ]),
+    };
+    const filesChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockResolvedValue([]),
+    };
+    db.select.mockReturnValueOnce(booksChain).mockReturnValueOnce(filesChain);
+
+    await expect(service.mergeBooks(1, [2], USER)).rejects.toThrow(/no content files/);
+    expect(libraryService.verifyUserAccess).toHaveBeenCalledWith(USER.id, 9, false);
+  });
 });

@@ -115,9 +115,6 @@ export class BookMergeService {
       if (source.libraryId !== target.libraryId) {
         throw new BadRequestException('Books must be in the same library to merge');
       }
-      if (source.libraryFolderId !== target.libraryFolderId) {
-        throw new BadRequestException('Books must be in the same library folder to merge');
-      }
       if (source.organizationMode === 'book_per_file') {
         throw new BadRequestException('Cannot merge books from a File as Book library');
       }
@@ -131,12 +128,13 @@ export class BookMergeService {
 
     const planned = await this.planMoves(target, sourceFiles);
     const completed: PlannedMove[] = [];
+    const roots = [...new Set([target.libraryFolderPath, ...sources.map((source) => source.libraryFolderPath)])];
     const suppressionPaths = buildSuppressionPaths({
       sourcePaths: planned.map((move) => move.from),
       targetPaths: planned.map((move) => move.to),
       sourceFolderPath: sources[0]!.folderPath,
       targetFolderPath: target.folderPath,
-      roots: [target.libraryFolderPath],
+      roots,
     });
 
     this.selfWriteRegistry.begin(suppressionPaths);
@@ -158,7 +156,7 @@ export class BookMergeService {
 
       for (const source of sources) {
         await this.coverStore.removeCoverDirectory(source.id).catch(() => undefined);
-        await this.cleanupSourceFolder(source.folderPath, target.libraryFolderPath);
+        await this.cleanupSourceFolder(source.folderPath, source.libraryFolderPath);
       }
 
       return {
