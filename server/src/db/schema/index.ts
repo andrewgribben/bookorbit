@@ -7,6 +7,7 @@ export * from './custom-icons';
 export * from './migration';
 export * from './libraries';
 export * from './books';
+export * from './audiobook-feeds';
 export * from './book-covers';
 export * from './book-duplicates';
 export * from './book-move';

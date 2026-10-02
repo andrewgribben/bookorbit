@@ -404,6 +404,14 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
         keywords: 'komga api key client reader app connection',
       },
       {
+        id: 'feeds',
+        routeName: 'settings-feeds',
+        labelKey: 'settings.common.nav.feeds',
+        descriptionKey: 'settings.nav.descriptions.feeds',
+        icon: Podcast,
+        keywords: 'podcast feed rss audiobook public share uuid',
+      },
+      {
         id: 'email',
         routeName: 'settings-email',
         labelKey: 'settings.common.nav.email',
