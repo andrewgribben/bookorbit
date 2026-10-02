@@ -117,6 +117,20 @@ describe('sanitizeSourceForApi', () => {
     expect(result.connectionConfig).toEqual({ mode: 'backup', backupPath: '/imports/backup.audiobookshelf' });
   });
 
+  it('redacts Komga API tokens without changing connection fields', () => {
+    const result = sanitizeSourceForApi(
+      makeSource({
+        type: 'komga',
+        connectionConfig: { baseUrl: 'https://komga.example.com', apiToken: 'token-value', allowPrivateNetwork: true },
+      }),
+    );
+    expect(result.connectionConfig).toEqual({
+      baseUrl: 'https://komga.example.com',
+      apiToken: '********',
+      allowPrivateNetwork: true,
+    });
+  });
+
   it('round-trips the path-only Calibre-Web Automated config without adding secret fields', () => {
     const result = sanitizeSourceForApi(
       makeSource({

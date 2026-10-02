@@ -64,6 +64,20 @@ describe('parseConnectionConfig', () => {
       metadataDatabasePath: '/imports/metadata.db',
     });
   });
+
+  it('parses Komga API config through its dedicated parser', () => {
+    expect(
+      parseConnectionConfig(' KOMGA ', {
+        baseUrl: 'https://komga.example.com/',
+        apiToken: 'secret',
+        allowPrivateNetwork: true,
+      }),
+    ).toEqual({
+      baseUrl: 'https://komga.example.com',
+      apiToken: 'secret',
+      allowPrivateNetwork: true,
+    });
+  });
 });
 
 describe('PASSWORD_REDACTED_SENTINEL', () => {

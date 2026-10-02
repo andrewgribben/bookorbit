@@ -1,6 +1,7 @@
 import { parseBookloreConnectionConfig } from '../adapters/booklore/booklore-connection-config';
 import { parseAudiobookshelfConnectionConfig } from '../adapters/audiobookshelf/audiobookshelf-connection-config';
 import { parseCalibreWebAutomatedConnectionConfig } from '../adapters/calibre-web-automated/calibre-web-automated-connection-config';
+import { parseKomgaConnectionConfig } from '../adapters/komga/komga-connection-config';
 import { asRecord } from './coerce';
 
 export function parseConnectionConfig(type: string, raw: unknown): unknown {
@@ -10,6 +11,9 @@ export function parseConnectionConfig(type: string, raw: unknown): unknown {
   }
   if (normalizedType === 'calibre_web_automated') {
     return parseCalibreWebAutomatedConnectionConfig(raw);
+  }
+  if (normalizedType === 'komga') {
+    return parseKomgaConnectionConfig(raw);
   }
   if (normalizedType === 'booklore' || normalizedType === 'grimmory') {
     return parseBookloreConnectionConfig(raw);

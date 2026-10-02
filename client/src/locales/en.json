@@ -1001,8 +1001,8 @@
         "remove": "Remove",
         "pathValidation": "Path validation",
         "pathValidationMapped": "{mapped} of {total} source books have a mapped path",
-        "pathValidationUnmatched": "{count} mapped paths not found on disk - those books will fall back to ISBN / title matching",
-        "pathValidationAllMatched": "All {count} mapped paths found on disk",
+        "pathValidationUnmatched": "{count} mapped paths not found in your BookOrbit library - those books will fall back to ISBN / title matching",
+        "pathValidationAllMatched": "All {count} mapped paths found in your BookOrbit library",
         "saveMappings": "Save Mappings",
         "runDryRun": "Run Dry-Run",
         "matched": "Matched:",
@@ -1095,6 +1095,7 @@
         "booksUnit": "{count, plural, one {book} other {books}}",
         "folderCount": "{count, plural, =0 {no folders} one {# folder} other {# folders}}",
         "fileMode": "File mode",
+        "fileModeSeriesFromFolders": "File mode, series from folders",
         "folderMode": "Folder mode",
         "emptyTitle": "No libraries yet",
         "emptyHint": "Add a library to start organizing your books.",
@@ -1530,6 +1531,8 @@
         "usersAccess": "Users & Access",
         "email": "Email",
         "opds": "OPDS",
+        "komga": "Komga",
+        "feeds": "Feeds",
         "kobo": "Kobo",
         "koreader": "KOReader",
         "tts": "Text-to-Speech",
@@ -2963,6 +2966,48 @@
         "labelCopied": "{label} copied",
         "copyLabelFailed": "Failed to copy {label}"
       },
+      "komga": {
+        "title": "Komga API",
+        "server": "Server",
+        "apiServer": "Komga Compatible API",
+        "apiServerHint": "Allow Komga-compatible apps to browse and download books",
+        "serverEnabled": "Komga API enabled",
+        "serverDisabled": "Komga API disabled",
+        "updateSettingsFailed": "Failed to update Komga settings",
+        "endpoint": "API URL",
+        "endpointHint": "Use this URL in Komga-compatible apps like KMReader, Panels, or Suwatte.",
+        "apiKeys": "API Keys",
+        "addKey": "Add key",
+        "createKey": "Create",
+        "creating": "Creating...",
+        "keyLabel": "Label",
+        "keyLabelPlaceholder": "e.g. kmreader",
+        "noKeys": "No API keys yet. Create one to connect a Komga app.",
+        "keyCreated": "API key created, copy it now: it won't be shown again.",
+        "keyCreatedHint": "Enter this key in your Komga app instead of a password.",
+        "keyDeleted": "API key deleted.",
+        "copy": "Copy",
+        "urlCopied": "Komga URL copied to clipboard",
+        "urlCopyFailed": "Failed to copy the Komga URL",
+        "keyCopied": "API key copied to clipboard",
+        "keyCopyFailed": "Failed to copy the API key",
+        "loadFailed": "Failed to load API keys",
+        "createKeyFailed": "Failed to create API key",
+        "deleteKeyFailed": "Failed to delete API key"
+      },
+      "feeds": {
+        "title": "Audiobook podcast feeds",
+        "hint": "Enable a public podcast-compatible RSS feed for individual audiobooks. Feed URLs use a random UUID and are not indexed.",
+        "searchPlaceholder": "Search audiobooks",
+        "empty": "No audiobooks found in libraries you can access.",
+        "loadFailed": "Failed to load audiobook feeds",
+        "updateFailed": "Failed to update podcast feed",
+        "enabled": "Podcast feed enabled",
+        "disabled": "Podcast feed disabled",
+        "copy": "Copy",
+        "urlCopied": "Feed URL copied to clipboard",
+        "urlCopyFailed": "Failed to copy the feed URL"
+      },
       "tabs": {
         "general": "General",
         "ebook": "eBook",
@@ -3575,6 +3620,8 @@
         "kobo": "Sync endpoint, store proxy, and shelf mapping.",
         "koreader": "Progress sync and document matching.",
         "opds": "Catalog feeds for third-party reading apps.",
+        "komga": "Activate the Komga-compatible endpoint and manage API keys for reading apps.",
+        "feeds": "Public podcast RSS feeds for individual audiobooks.",
         "email": "SMTP delivery and send-to-device addresses.",
         "hardcover": "Sync reading status and reviews with Hardcover.",
         "users": "Accounts, roles, permissions, and invitations.",
@@ -8811,6 +8858,15 @@
             "hint": "Treats every file as an individual book. Best suited for libraries with one format per title. Avoid if your audiobooks span multiple files."
           }
         },
+        "seriesFromFolders": {
+          "title": "Group files into series by folder",
+          "badge": "Komga / Kavita layout",
+          "why": "Recommended if you are coming from Komga or Kavita, or if your comics and manga are organised with one folder per series and carry no ComicInfo.xml. Without this option, every file stays a standalone book.",
+          "how": "Each folder becomes a series and each file in it one volume or chapter, numbered from its name: T01, Vol. 2, #3, c12, chapter 5, 12화, 第3巻. When nothing in a folder is numbered, files follow their alphabetical order.",
+          "example": "Blake et Mortimer/Blake et Mortimer T01.cbz → series \"Blake et Mortimer\", book 1",
+          "whenNot": "Leave it off if your folders are grouped by author, publisher or genre rather than by series.",
+          "precedence": "A series named inside a file (ComicInfo.xml, OPF) is kept; the folder fills in books that have none. Turning this on or off rescans the library."
+        },
         "addedAt": {
           "title": "Date added",
           "hint": "Choose what a book's \"date added\" reflects. This applies to books imported from now on.",
@@ -9283,7 +9339,8 @@
         "booklore": "Booklore",
         "grimmory": "Grimmory",
         "audiobookshelf": "Audiobookshelf",
-        "calibreWebAutomated": "Calibre-Web Automated"
+        "calibreWebAutomated": "Calibre-Web Automated",
+        "komga": "Komga"
       },
       "fields": {
         "type": "Source Type",
@@ -9304,11 +9361,14 @@
         "apiMode": "Live API",
         "backupMode": "Backup file",
         "baseUrl": "Audiobookshelf URL",
+        "komgaBaseUrl": "Komga URL",
         "apiToken": "API token",
         "apiTokenPlaceholder": "Enter an administrator API token",
+        "komgaApiTokenPlaceholder": "Enter a Komga user API key",
         "secretSaved": "Saved - leave unchanged",
         "allowPrivateNetwork": "Allow private network access",
         "allowPrivateNetworkHint": "Enable this only when Audiobookshelf is hosted on a trusted local or private network.",
+        "komgaAllowPrivateNetworkHint": "Enable this only when Komga is hosted on a trusted local or private network.",
         "backupPath": "Backup file path",
         "backupPathHint": "Enter an absolute server path inside the configured migration import directory.",
         "cwaAppDatabasePath": "Calibre-Web Automated app.db snapshot",
@@ -9319,8 +9379,8 @@
       "validation": {
         "nameRequired": "Source name is required",
         "databaseFieldsRequired": "Host, user, database, and source name are required",
-        "apiFieldsRequired": "Audiobookshelf URL, API token, and source name are required",
-        "baseUrlInvalid": "Audiobookshelf URL must be a clean HTTP or HTTPS origin without a path",
+        "apiFieldsRequired": "Source URL, API token, and source name are required",
+        "baseUrlInvalid": "Source URL must be a clean HTTP or HTTPS origin without a path",
         "backupPathRequired": "Backup file path and source name are required",
         "backupPathAbsolute": "Backup file path must be an absolute path",
         "cwaAppDatabasePathRequired": "The Calibre-Web Automated app.db snapshot path is required",
@@ -9334,6 +9394,9 @@
         "importRootGuidance": "Both snapshot files must be readable server paths below the configured MIGRATION_IMPORT_ROOT directory.",
         "logicalRootGuidance": "Book path mapping uses the logical Calibre library root stored in app.db, not the host folder containing these database snapshots.",
         "compatibilityNote": "Schema behavior is verified against Calibre-Web Automated v4.0.6. Its databases do not expose a reliable application release version."
+      },
+      "komga": {
+        "progressScopeHint": "Komga only exposes reading progress for the user that owns the API key. Use that user's key; metadata, collections, and read lists still import for the whole library."
       },
       "mediaPath": {
         "hintRequired": "Required for migrating book covers.",
@@ -9374,8 +9437,8 @@
       "pathValidation": {
         "title": "Path validation",
         "mappedSummary": "{mapped} of {total} source books have a mapped path",
-        "unmatched": "{count} mapped paths not found on disk",
-        "allMatched": "All {count} mapped paths found on disk"
+        "unmatched": "{count} mapped paths not found in your BookOrbit library",
+        "allMatched": "All {count} mapped paths found in your BookOrbit library"
       }
     },
     "dryRun": {
@@ -12009,6 +12072,8 @@
     "opds": "OPDS",
     "koboSync": "Kobo Sync",
     "koreaderSync": "KOReader Sync",
+    "komgaApi": "Komga API",
+    "feeds": "Feeds",
     "bookDock": "Book Dock",
     "whatsNew": "What's New",
     "annotations": "Annotations",
