@@ -135,10 +135,11 @@ export function indexSeriesFolder(
 }
 
 export function seriesNameFromDirectory(directoryName: string): string | null {
+  // Keep trailing years: Mylar/Komga libraries rely on names like "Supergirl (2016)" vs
+  // "Supergirl (2025)" as distinct series. Only strip bracket/brace scanner noise.
   const name = normalizeSpacing(directoryName)
     .replace(/\[[^\]]*\]/g, ' ')
     .replace(/\{[^}]*\}/g, ' ')
-    .replace(/\s*\((?:19|20)\d{2}\)\s*$/u, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return name || null;
