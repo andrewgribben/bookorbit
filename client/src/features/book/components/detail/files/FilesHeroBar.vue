@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleCheck, FilePlus, TriangleAlert } from '@lucide/vue'
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleCheck, FilePlus, GitMerge, TriangleAlert } from '@lucide/vue'
 import type { BookDetail } from '@bookorbit/types'
 import { formatBytes } from '@/lib/formatting'
 import { formatList } from '@/i18n/formatters'
@@ -19,12 +19,13 @@ const props = defineProps<{
   formatShares: FormatShare[]
   folderSegments: string[]
   canUpload: boolean
+  canMerge?: boolean
   sortKey: SortKey
   sortDirection: SortDirection
   sortOptions: { key: SortKey; label: string }[]
 }>()
 
-const emit = defineEmits<{ sort: [key: SortKey]; addFile: [] }>()
+const emit = defineEmits<{ sort: [key: SortKey]; addFile: []; merge: [] }>()
 
 const { t } = useI18n()
 const { coverUrl } = useCoverVersions()
@@ -54,6 +55,9 @@ function handleSort(key: SortKey) {
 }
 function handleAddFile() {
   emit('addFile')
+}
+function handleMerge() {
+  emit('merge')
 }
 </script>
 
@@ -141,6 +145,16 @@ function handleAddFile() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <button
+        v-if="canMerge"
+        data-testid="files-merge-into"
+        class="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-input px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        @click="handleMerge"
+      >
+        <GitMerge class="size-4" aria-hidden="true" />
+        {{ t('book.merge.actionInto') }}
+      </button>
 
       <button
         v-if="canUpload"

@@ -4508,6 +4508,7 @@
       "BookBulkMoveLibrary": "Move books to another library",
       "BookReadingStateReset": "Reset reading state",
       "BookWriteAndRename": "Write metadata and rename file",
+      "BookMerge": "Merge books",
       "CollectionCreate": "Create collection",
       "CollectionUpdate": "Update collection",
       "CollectionDelete": "Delete collection",
@@ -6664,6 +6665,27 @@
         "openDetails": "Open details"
       }
     },
+    "merge": {
+      "action": "Merge books",
+      "actionInto": "Merge into this book",
+      "titleInto": "Merge into this book",
+      "titleChoose": "Merge books",
+      "descriptionInto": "Move files from other books into “{title}”. Source books are removed after their files move.",
+      "descriptionChoose": "Choose which book to keep. The other book’s files move into its folder, then that book is removed.",
+      "thisBook": "this book",
+      "searchPlaceholder": "Search books in this library",
+      "searchHint": "Type at least two characters to find a book to merge in.",
+      "noResults": "No matching books found.",
+      "selectTarget": "Select the book to keep",
+      "confirmInto": "{count, plural, =0 {Merge books} one {Merge # book in} other {Merge # books in}}",
+      "confirmChoose": "Merge into selected",
+      "success": "Merged {books, plural, one {# book} other {# books}} ({count, plural, one {# file} other {# files}} moved)",
+      "failed": "Could not merge books",
+      "untitled": "Untitled",
+      "unknownAuthor": "Unknown author",
+      "noFormats": "No formats",
+      "fileAsBookOnly": "Merge is only available in Folder as Book libraries."
+    },
     "move": {
       "title": "{count, plural, one {Move # book} other {Move # books}}",
       "subtitle": "Files move on disk into the destination library. This can change who can see these books.",
@@ -7939,6 +7961,7 @@
       "lockAll": "Lock all",
       "unlockAll": "Unlock all",
       "exportMetadata": "Export metadata",
+      "mergeBooks": "Merge books",
       "deleteSelected": "Delete selected",
       "exitSelection": "Exit selection",
       "downloadFilesZipLabel": "Download files as ZIP:",

@@ -162,6 +162,25 @@ describe('SelectionActionBar demo restriction', () => {
     expect(wrapper.emitted('lock-metadata')?.map((args) => args[0])).toEqual([true, false])
   })
 
+  it('shows merge only when exactly two books are selected', async () => {
+    const pair = mount(SelectionActionBar, {
+      props: { visible: true, count: 2, inCollection: false, inFlight: null },
+      global: globalStubs,
+    })
+    expect(pair.find('[data-testid="action-merge-books"]').exists()).toBe(true)
+    await pair.find('[data-testid="action-merge-books"]').trigger('click')
+    expect(pair.emitted('merge')).toHaveLength(1)
+
+    const triple = mountBar()
+    expect(triple.find('[data-testid="action-merge-books"]').exists()).toBe(false)
+
+    const queryScoped = mount(SelectionActionBar, {
+      props: { visible: true, count: 2, inCollection: false, inFlight: null, queryScoped: true },
+      global: globalStubs,
+    })
+    expect(queryScoped.find('[data-testid="action-merge-books"]').exists()).toBe(false)
+  })
+
   it('emits set-field from the field editor flow', async () => {
     const wrapper = mountBar()
     await wrapper.find('[data-testid="action-bulk-set-field"]').trigger('click')

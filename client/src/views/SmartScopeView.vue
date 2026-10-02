@@ -33,7 +33,9 @@ import SmartScopeEditorPanel from '@/features/smart-scope/components/SmartScopeE
 import SelectionActionBar from '@/components/SelectionActionBar.vue'
 import AddToCollectionSheet from '@/features/collection/components/AddToCollectionSheet.vue'
 import MoveToLibrarySheet from '@/features/book/components/MoveToLibrarySheet.vue'
+import MergeBooksSheet from '@/features/book/components/MergeBooksSheet.vue'
 import { useMoveToLibraryTarget } from '@/features/book/composables/useMoveToLibraryTarget'
+import { useMergeBooksSelection } from '@/features/book/composables/useMergeBooksSelection'
 import BulkEditMetadataDialog from '@/features/book/components/BulkEditMetadataDialog.vue'
 import MetadataExportDialog from '@/features/book/components/MetadataExportDialog.vue'
 import SendBookDialog from '@/features/email/components/SendBookDialog.vue'
@@ -270,6 +272,19 @@ const {
   selectedCount,
 })
 
+const {
+  mergeOpen,
+  mergeCandidates,
+  openMergeForSelection,
+  setMergeOpen,
+  handleMerged: handleBooksMerged,
+} = useMergeBooksSelection(selectedIds, books, (sourceIds) => {
+  const removed = new Set(sourceIds)
+  books.value = books.value.filter((book) => !removed.has(book.id))
+  exitSelectionMode()
+  resetBooks()
+})
+
 // A moved book keeps its collection and scope membership, so only the stale
 // selection needs clearing here.
 function handleBooksMoved() {
@@ -492,6 +507,7 @@ defineOptions({ name: 'SmartScopeView' })
       @lock-metadata="handleBulkSetMetadataLock"
       @delete="handleDeleteSelected"
       @move-to-library="openMoveForSelection"
+      @merge="openMergeForSelection"
       @exit="exitSelectionMode"
     />
 
@@ -522,6 +538,8 @@ defineOptions({ name: 'SmartScopeView' })
       @update:open="setMoveOpen"
       @moved="handleBooksMoved"
     />
+
+    <MergeBooksSheet :open="mergeOpen" :candidates="mergeCandidates" @update:open="setMergeOpen" @merged="handleBooksMerged" />
     <BulkEditMetadataDialog
       :open="bulkEditOpen"
       :book-count="bulkEditCount"
