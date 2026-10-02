@@ -44,7 +44,7 @@ function source(overrides: Partial<KomgaSourceRecords> = {}): KomgaSourceRecords
     series: [
       {
         id: 'series-1',
-        name: 'Harbor Cycle',
+        name: 'Harbor Cycle (2024)',
         metadata: {
           title: 'Harbor Cycle',
           publisher: 'North Light Press',
@@ -79,7 +79,7 @@ describe('KomgaNormalizer', () => {
       publishedYear: 2024,
       language: 'en',
       pageCount: 20,
-      seriesName: 'Harbor Cycle',
+      seriesName: 'Harbor Cycle (2024)',
       seriesIndex: '1',
       filePath: '/comics/harbor/01.cbz',
       genres: ['Fantasy', 'Adventure'],
@@ -134,6 +134,23 @@ describe('KomgaNormalizer', () => {
     expect(result.data.books.map((entry) => entry.sourceBookId)).toEqual(['book-3']);
     expect(result.data.userBookStatuses[0]).toMatchObject({ sourceBookId: 'book-3', status: 'read', percentage: 100 });
     expect(result.counters.deletedBooksSkipped).toBe(1);
+  });
+
+  it('prefers Komga series entity name over short ComicInfo/metadata titles', () => {
+    const result = normalizer.normalize(
+      source({
+        series: [
+          {
+            id: 'series-1',
+            name: 'Supergirl 6 (2011)',
+            metadata: { title: 'Supergirl' },
+          },
+        ],
+        books: [book({ seriesId: 'series-1', seriesTitle: 'Supergirl' })],
+      }),
+    );
+
+    expect(result.data.books[0]?.seriesName).toBe('Supergirl 6 (2011)');
   });
 
   it('keeps progress only for the authenticated API key user', () => {
