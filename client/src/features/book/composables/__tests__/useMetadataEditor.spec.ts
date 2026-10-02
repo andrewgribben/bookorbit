@@ -133,6 +133,54 @@ describe('useMetadataEditor', () => {
     })
   })
 
+  it('includes changed chapters in audioMetadata and reports chaptersDirty', async () => {
+    const book = makeBook({
+      files: [
+        {
+          id: 12,
+          format: 'm4b',
+          role: 'primary',
+          sizeBytes: 10,
+          absolutePath: '/books/test.m4b',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          filename: 'test.m4b',
+          durationSeconds: 3600,
+        },
+      ],
+      audioMetadata: {
+        narrators: [],
+        durationSeconds: 3600,
+        abridged: false,
+        chapters: [{ title: 'Intro', startMs: 0 }],
+      },
+    })
+    apiMock.mockResolvedValue({ ok: true, json: async () => book })
+
+    const { form, load, save, chaptersDirty } = useMetadataEditor()
+    load(book)
+    expect(chaptersDirty.value).toBe(false)
+
+    form.chapters = [
+      { title: 'Intro', startMs: 0 },
+      { title: 'Chapter 1', startMs: 60_000 },
+    ]
+    expect(chaptersDirty.value).toBe(true)
+    await save(book.id, ['chapters'])
+
+    const [, req] = apiMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(String(req.body))).toEqual({
+      metadata: {
+        audioMetadata: {
+          chapters: [
+            { title: 'Intro', startMs: 0 },
+            { title: 'Chapter 1', startMs: 60_000 },
+          ],
+        },
+      },
+      lockedFields: ['chapters'],
+    })
+  })
+
   it('sends only changed fields in the metadata payload', async () => {
     const book = makeBook({ title: 'Original Title', publisher: 'Original Publisher' })
     apiMock.mockResolvedValue({ ok: true, json: async () => book })
