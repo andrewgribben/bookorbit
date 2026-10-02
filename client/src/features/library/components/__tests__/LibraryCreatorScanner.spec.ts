@@ -8,6 +8,7 @@ function mountScanner(overrides: Partial<InstanceType<typeof LibraryCreatorScann
   return mount(LibraryCreatorScanner, {
     props: {
       organizationMode: 'book_per_folder',
+      deriveSeriesFromFolder: false,
       organizationModeLocked: false,
       allowedFormats: [],
       addedAtSource: 'imported',
@@ -25,6 +26,38 @@ describe('LibraryCreatorScanner', () => {
 
     expect(wrapper.emitted('update:organizationMode')).toEqual([['book_per_file']])
     expect(wrapper.text()).toContain('This is the one setting you cannot change later.')
+  })
+
+  it('hides series from folders unless each file is its own book', () => {
+    const wrapper = mountScanner({ organizationMode: 'book_per_folder' })
+
+    expect(wrapper.find('input[aria-describedby="series-from-folders-hint"]').exists()).toBe(false)
+  })
+
+  it('offers series from folders in file mode and explains who it is for', () => {
+    const wrapper = mountScanner({ organizationMode: 'book_per_file' })
+
+    const checkbox = wrapper.get('input[aria-describedby="series-from-folders-hint"]')
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.text()).toContain('Komga')
+    expect(wrapper.text()).toContain('Kavita')
+    expect(wrapper.text()).toContain('Leave it off if your folders are grouped by author')
+  })
+
+  it('emits series from folders when toggled', async () => {
+    const wrapper = mountScanner({ organizationMode: 'book_per_file' })
+
+    await wrapper.get('input[aria-describedby="series-from-folders-hint"]').setValue(true)
+
+    expect(wrapper.emitted('update:deriveSeriesFromFolder')).toEqual([[true]])
+  })
+
+  it('stays available when the organization mode is locked', () => {
+    const wrapper = mountScanner({ organizationMode: 'book_per_file', organizationModeLocked: true, deriveSeriesFromFolder: true })
+
+    const checkbox = wrapper.get('input[aria-describedby="series-from-folders-hint"]')
+    expect(checkbox.attributes('disabled')).toBeUndefined()
+    expect((checkbox.element as HTMLInputElement).checked).toBe(true)
   })
 
   it('shows only the chosen mode, with the reason it is fixed, once the library exists', () => {
