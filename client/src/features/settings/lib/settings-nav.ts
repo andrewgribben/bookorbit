@@ -396,6 +396,22 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
         isVisible: anyPermission('opds_access'),
       },
       {
+        id: 'komga',
+        routeName: 'settings-komga',
+        labelKey: 'settings.common.nav.komga',
+        descriptionKey: 'settings.nav.descriptions.komga',
+        icon: Link2,
+        keywords: 'komga api key client reader app connection',
+      },
+      {
+        id: 'feeds',
+        routeName: 'settings-feeds',
+        labelKey: 'settings.common.nav.feeds',
+        descriptionKey: 'settings.nav.descriptions.feeds',
+        icon: Podcast,
+        keywords: 'podcast feed rss audiobook public share uuid',
+      },
+      {
         id: 'email',
         routeName: 'settings-email',
         labelKey: 'settings.common.nav.email',

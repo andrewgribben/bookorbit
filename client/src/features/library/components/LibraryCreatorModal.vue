@@ -274,6 +274,7 @@ const sectionProps = computed(() => ({
   scanner: {
     organizationMode: form.organizationMode,
     organizationModeLocked: !creating.value,
+    deriveSeriesFromFolder: form.deriveSeriesFromFolder,
     allowedFormats: form.allowedFormats,
     addedAtSource: form.addedAtSource,
     canRecomputeAddedAt: !creating.value,
@@ -464,6 +465,16 @@ function handleCheckFolders(paths: string[]) {
   void creator.checkFolders(paths)
 }
 
+function handleOrganizationModeUpdate(value: OrganizationMode) {
+  form.organizationMode = value
+  // The server rejects the flag outside book_per_file.
+  if (value !== 'book_per_file') form.deriveSeriesFromFolder = false
+}
+
+function handleDeriveSeriesFromFolderUpdate(value: boolean) {
+  form.deriveSeriesFromFolder = value
+}
+
 function handleNestedModalChange(value: boolean) {
   nestedModalOpen.value = value
 }
@@ -488,7 +499,8 @@ const sectionListeners = {
   'update:coverAspectRatio': (value: CoverAspectRatio) => (form.coverAspectRatio = value),
   'update:folders': handleFoldersUpdate,
   'update:localFolders': (value: string[]) => (form.localFolders = value),
-  'update:organizationMode': (value: OrganizationMode) => (form.organizationMode = value),
+  'update:organizationMode': handleOrganizationModeUpdate,
+  'update:deriveSeriesFromFolder': handleDeriveSeriesFromFolderUpdate,
   'update:addedAtSource': (value: Library['addedAtSource']) => (form.addedAtSource = value),
   recompute: handleRecomputeAddedAt,
   check: handleCheckFolders,

@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import { readApiErrorDetail } from '@/lib/api-error'
 import {
   FORMAT_TO_GROUP,
+  type AudiobookChapter,
   type BookCommunityRating,
   type BookDetail,
   type BookMetadataLockField,
@@ -10,6 +11,7 @@ import {
   type CustomMetadataBookValue,
   type CustomMetadataBookValueInput,
 } from '@bookorbit/types'
+import { chaptersForPayload, normalizeEditableChapters } from '../lib/audiobook-chapters'
 
 export type EditableSeriesMembership = {
   seriesName: string
@@ -68,6 +70,10 @@ const AUDIO_FIELDS = {
   durationSeconds: 'durationSeconds',
   abridged: 'abridged',
 } as const
+
+function audioChaptersEqual(left: readonly AudiobookChapter[], right: readonly AudiobookChapter[]): boolean {
+  return JSON.stringify(chaptersForPayload(left)) === JSON.stringify(chaptersForPayload(right))
+}
 
 function normalizePageCount(value: number | null): number | null {
   return typeof value === 'number' && value > 0 ? value : null
@@ -149,6 +155,7 @@ export function useMetadataEditor() {
     narrators: [] as string[],
     durationSeconds: null as number | null,
     abridged: false as boolean,
+    chapters: [] as AudiobookChapter[],
     googleBooksId: null as string | null,
     goodreadsId: null as string | null,
     amazonId: null as string | null,
@@ -205,6 +212,7 @@ export function useMetadataEditor() {
     form.narrators = book.audioMetadata?.narrators?.map((n) => n.name) ?? []
     form.durationSeconds = book.audioMetadata?.durationSeconds ?? null
     form.abridged = book.audioMetadata?.abridged ?? false
+    form.chapters = normalizeEditableChapters(book.audioMetadata?.chapters)
     form.googleBooksId = book.providerIds.google ?? null
     form.goodreadsId = book.providerIds.goodreads ?? null
     form.amazonId = book.providerIds.amazon ?? null
@@ -290,6 +298,9 @@ export function useMetadataEditor() {
           audioMetadata[payloadKey] = form[formKey]
         }
       }
+      if (!audioChaptersEqual(form.chapters, previous.chapters)) {
+        audioMetadata.chapters = chaptersForPayload(form.chapters)
+      }
       if (Object.keys(audioMetadata).length > 0) {
         payload.audioMetadata = audioMetadata
       }
@@ -336,5 +347,11 @@ export function useMetadataEditor() {
     }
   }
 
-  return { form, saving, error, isDirty, load, syncFromBook, reset, save }
+  const chaptersDirty = computed(() => {
+    if (!includeAudioMetadata.value) return false
+    const previous = JSON.parse(snapshot.value) as typeof form
+    return !audioChaptersEqual(form.chapters, previous.chapters)
+  })
+
+  return { form, saving, error, isDirty, chaptersDirty, load, syncFromBook, reset, save }
 }

@@ -168,7 +168,7 @@ function makeController() {
   };
 
   return {
-    controller: new BookController(bookService as never, fileWriteService as never),
+    controller: new BookController(bookService as never, { mergeBooks: vi.fn() } as never, fileWriteService as never),
     bookService,
     fileWriteService,
   };

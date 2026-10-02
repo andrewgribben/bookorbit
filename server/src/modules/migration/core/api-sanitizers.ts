@@ -117,6 +117,12 @@ function redactConnectionConfig(type: string, raw: unknown): unknown {
       apiToken: typeof config.apiToken === 'string' && config.apiToken.length > 0 ? PASSWORD_REDACTED_SENTINEL : '',
     };
   }
+  if (normalizedType === 'komga') {
+    return {
+      ...config,
+      apiToken: typeof config.apiToken === 'string' && config.apiToken.length > 0 ? PASSWORD_REDACTED_SENTINEL : '',
+    };
+  }
   if (normalizedType !== 'booklore' && normalizedType !== 'grimmory') return config;
 
   return {

@@ -169,7 +169,8 @@ export class BookMetadataLockService {
     this.copyResolvedField(filteredResolved, resolved, 'hardcoverEditionId', 'hardcoverEditionId', lockedSet, skippedFields);
 
     if (resolved.chapters !== undefined) {
-      filteredResolved.chapters = resolved.chapters;
+      if (lockedSet.has('chapters')) skippedFields.add('chapters');
+      else filteredResolved.chapters = resolved.chapters;
     }
 
     if (resolved.coverUrl !== undefined) {
@@ -303,8 +304,11 @@ export class BookMetadataLockService {
       }
 
       if ('chapters' in dto.audioMetadata) {
-        filteredAudioMetadata.chapters = dto.audioMetadata.chapters;
-        hasAudioMetadata = true;
+        if (lockedSet.has('chapters')) skippedFields.add('chapters');
+        else {
+          filteredAudioMetadata.chapters = dto.audioMetadata.chapters;
+          hasAudioMetadata = true;
+        }
       }
 
       if (hasAudioMetadata) {
@@ -447,6 +451,7 @@ export class BookMetadataLockService {
       this.addFieldIfPresent(fields, dto.audioMetadata, 'narrators', 'narrators');
       this.addFieldIfPresent(fields, dto.audioMetadata, 'durationSeconds', 'durationSeconds');
       this.addFieldIfPresent(fields, dto.audioMetadata, 'abridged', 'abridged');
+      this.addFieldIfPresent(fields, dto.audioMetadata, 'chapters', 'chapters');
     }
 
     if (dto.comicMetadata) {

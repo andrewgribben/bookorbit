@@ -23,6 +23,58 @@ describe('migration source configuration', () => {
     })
   })
 
+  it('builds a normalized Komga API configuration without a connection mode', () => {
+    const draft = createMigrationSourceDraft('komga')
+    draft.name = 'Saved Komga'
+    draft.baseUrl = ' https://komga.example.test/ '
+    draft.apiToken = '********'
+    draft.allowPrivateNetwork = true
+
+    expect(draft.name).toBe('Saved Komga')
+    expect(validateMigrationSourceDraft(draft)).toBeNull()
+    expect(buildMigrationSourceConnectionConfig(draft)).toEqual({
+      baseUrl: 'https://komga.example.test',
+      apiToken: '********',
+      allowPrivateNetwork: true,
+    })
+  })
+
+  it('hydrates Komga API configurations onto the shared URL and token fields', () => {
+    const draft = createMigrationSourceDraft()
+
+    hydrateMigrationSourceDraft(draft, {
+      type: 'komga',
+      name: 'Live Komga',
+      connectionConfig: {
+        baseUrl: 'http://komga.local:25600',
+        apiToken: '********',
+        allowPrivateNetwork: true,
+      },
+    })
+
+    expect(draft).toMatchObject({
+      type: 'komga',
+      name: 'Live Komga',
+      baseUrl: 'http://komga.local:25600',
+      apiToken: '********',
+      allowPrivateNetwork: true,
+      host: '',
+      backupPath: '',
+    })
+  })
+
+  it('validates Komga required fields and rejects a URL with a path', () => {
+    const draft = createMigrationSourceDraft('komga')
+    expect(validateMigrationSourceDraft(draft)).toBe('apiFieldsRequired')
+
+    draft.baseUrl = 'https://komga.example.test/api'
+    draft.apiToken = 'token'
+    expect(validateMigrationSourceDraft(draft)).toBe('baseUrlInvalid')
+
+    draft.baseUrl = 'https://komga.example.test'
+    expect(validateMigrationSourceDraft(draft)).toBeNull()
+  })
+
   it('hydrates API and backup configurations without mixing mode-specific fields', () => {
     const draft = createMigrationSourceDraft()
 

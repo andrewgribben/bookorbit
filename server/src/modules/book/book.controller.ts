@@ -23,12 +23,14 @@ import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { contentDispositionHeader } from '../../common/utils/content-disposition.utils';
+import { sendFileWithRange } from '../../common/utils/range-response.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
 import { imageContentTypeFromPath } from '../../common/image-content-type';
 import type { RequestUser } from '../../common/types/request-user';
 import { FileWriteService } from '../file-write/file-write.service';
+import { BookMergeService } from './book-merge.service';
 import { BookService } from './book.service';
 import { BookQueryPipe } from './pipes/book-query.pipe';
 import { BulkBookIdsDto } from './dto/bulk-book-ids.dto';
@@ -40,6 +42,7 @@ import { BulkSetMetadataLockDto } from './dto/bulk-set-metadata-lock.dto';
 import { BulkEditMetadataDto } from './dto/bulk-edit-metadata.dto';
 import { DeleteBooksDto } from './dto/delete-books.dto';
 import { ExportBooksDto } from './dto/export-books.dto';
+import { MergeBooksDto } from './dto/merge-books.dto';
 import { MetadataExportDto } from './dto/metadata-export.dto';
 import { SaveProgressDto } from './dto/save-progress.dto';
 import { UpsertAudioProgressDto } from './dto/upsert-audio-progress.dto';
@@ -53,7 +56,7 @@ import { SearchBooksDto } from './dto/search-books.dto';
 import { UpdateBookFileDto } from './dto/update-book-file.dto';
 import { SetStatusDto } from '../user-book-status/dto/set-status.dto';
 import { Permission, AuditAction, AuditResource } from '@bookorbit/types';
-import type { BookDeletionAuditMeta } from '@bookorbit/types';
+import type { BookDeletionAuditMeta, BookMergeResult } from '@bookorbit/types';
 import type { BookQuery } from '@bookorbit/types';
 import { UpdateBookMetadataLocksDto } from '../book-metadata-lock/dto/update-book-metadata-locks.dto';
 import { UpdateReadAloudSyncSettingsDto } from './dto/update-read-aloud-sync-settings.dto';
@@ -98,6 +101,7 @@ export class BookController {
 
   constructor(
     private readonly bookService: BookService,
+    private readonly bookMergeService: BookMergeService,
     private readonly fileWriteService: FileWriteService,
   ) {}
 
@@ -405,31 +409,10 @@ export class BookController {
     const mimeType = resolveBookMimeType(format);
     const filename = originalFilename;
 
-    reply.header('Accept-Ranges', 'bytes');
     reply.header('Content-Disposition', contentDispositionHeader('inline', filename, 'download'));
     reply.type(mimeType);
 
-    if (rangeHeader) {
-      const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-      if (match) {
-        const start = parseInt(match[1], 10);
-        const end = match[2] ? parseInt(match[2], 10) : size - 1;
-        if (start >= size || end < start || end >= size) {
-          reply.status(416);
-          reply.header('Content-Range', `bytes */${size}`);
-          reply.send();
-          return;
-        }
-        reply.status(206);
-        reply.header('Content-Range', `bytes ${start}-${end}/${size}`);
-        reply.header('Content-Length', end - start + 1);
-        reply.send(createReadStream(path, { start, end }));
-        return;
-      }
-    }
-
-    reply.header('Content-Length', size);
-    reply.send(createReadStream(path));
+    sendFileWithRange(reply, path, size, rangeHeader);
   }
 
   @Get('files/:fileId/download')
@@ -683,6 +666,26 @@ export class BookController {
   })
   writeAndRename(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: RequestUser) {
     return this.bookService.writeAndRename(id, user);
+  }
+
+  @Post(':id/merge')
+  @RequirePermission(Permission.LibraryEditMetadata)
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot merge books')
+  @Auditable({
+    action: AuditAction.BookMerge,
+    resource: AuditResource.Book,
+    getResourceId: (req) => parseInt(req.params['id'] as string, 10),
+    description: (req, responseBody) => {
+      const result = responseBody as BookMergeResult | undefined;
+      const sourceCount = result?.mergedSourceBookIds.length ?? (req.body as MergeBooksDto | undefined)?.sourceBookIds?.length ?? 0;
+      const moved = result?.movedFileCount;
+      return moved == null
+        ? `Merged ${sourceCount} book${sourceCount !== 1 ? 's' : ''} into book #${req.params['id']}`
+        : `Merged ${sourceCount} book${sourceCount !== 1 ? 's' : ''} into book #${req.params['id']} (${moved} file${moved !== 1 ? 's' : ''} moved)`;
+    },
+  })
+  mergeBooks(@Param('id', ParseIntPipe) id: number, @Body() dto: MergeBooksDto, @CurrentUser() user: RequestUser) {
+    return this.bookMergeService.mergeBooks(id, dto.sourceBookIds, user);
   }
 
   @Get(':id/write-log')

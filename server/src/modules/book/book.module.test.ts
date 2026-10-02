@@ -15,6 +15,7 @@ import { BookQueryBuilder } from './book-query-builder.service';
 import { BookReadService } from './book-read.service';
 import { BookSortBuilder } from './book-sort-builder.service';
 import { BookController } from './book.controller';
+import { BookMergeService } from './book-merge.service';
 import { BookModule } from './book.module';
 import { BookRepository } from './book.repository';
 import { BookService } from './book.service';
@@ -35,6 +36,7 @@ describe('BookModule', () => {
       BookAuthorSortKeyBackfillService,
       AudiobookEbookProgressSyncService,
       AudiolessEpubService,
+      BookMergeService,
     ]);
     // AudiolessEpubService is exported so the Kobo download path can strip narration itself,
     // without routing through BookService and its RequestUser-based access checks.
