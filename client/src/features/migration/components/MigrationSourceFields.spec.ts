@@ -9,7 +9,7 @@ function mountFields(type = 'audiobookshelf', wide = false) {
   const wrapper = mount(MigrationSourceFields, {
     props: {
       draft,
-      supportedTypes: ['booklore', 'grimmory', 'audiobookshelf', 'calibre_web_automated'],
+      supportedTypes: ['booklore', 'grimmory', 'audiobookshelf', 'calibre_web_automated', 'komga'],
       disabled: false,
       showSecret: false,
       testingMediaPath: false,
@@ -27,7 +27,7 @@ describe('MigrationSourceFields', () => {
     const { wrapper } = mountFields()
     const options = wrapper.findAll('option').map((option) => option.text())
 
-    expect(options).toEqual(['Booklore', 'Grimmory', 'Audiobookshelf', 'Calibre-Web Automated'])
+    expect(options).toEqual(['Booklore', 'Grimmory', 'Audiobookshelf', 'Calibre-Web Automated', 'Komga'])
     expect(wrapper.text()).not.toContain('calibre_web_automated')
   })
 
@@ -126,5 +126,20 @@ describe('MigrationSourceFields', () => {
     expect(testPathButton).toBeDefined()
     await testPathButton?.trigger('click')
     expect(wrapper.emitted('testMediaPath')).toHaveLength(1)
+  })
+
+  it('shows Komga API fields without Audiobookshelf backup mode controls', async () => {
+    const { draft, wrapper } = mountFields('komga')
+
+    expect(wrapper.get('input[type="url"]').attributes('placeholder')).toContain('komga.local')
+    expect(wrapper.text()).toContain('Komga URL')
+    expect(wrapper.text()).toContain('API token')
+    expect(wrapper.text()).toContain('Allow private network access')
+    expect(wrapper.text()).toContain('when Komga is hosted')
+    expect(wrapper.find('input[type="radio"]').exists()).toBe(false)
+    expect(wrapper.find('input[placeholder="/imports/audiobookshelf/backup.audiobookshelf"]').exists()).toBe(false)
+
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    expect(draft.allowPrivateNetwork).toBe(true)
   })
 })

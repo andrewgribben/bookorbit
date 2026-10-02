@@ -5,6 +5,7 @@ import { BookloreSourceAdapter } from './booklore/booklore-source.adapter';
 import { GrimmorySourceAdapter } from './grimmory/grimmory-source.adapter';
 import { AudiobookshelfSourceAdapter } from './audiobookshelf/audiobookshelf-source.adapter';
 import { CalibreWebAutomatedSourceAdapter } from './calibre-web-automated/calibre-web-automated-source.adapter';
+import { KomgaSourceAdapter } from './komga/komga-source.adapter';
 
 @Injectable()
 export class SourceAdapterRegistry {
@@ -15,8 +16,9 @@ export class SourceAdapterRegistry {
     grimmoryAdapter: GrimmorySourceAdapter,
     audiobookshelfAdapter: AudiobookshelfSourceAdapter,
     calibreWebAutomatedAdapter: CalibreWebAutomatedSourceAdapter,
+    komgaAdapter: KomgaSourceAdapter,
   ) {
-    const adapters: SourceAdapter<any>[] = [bookloreAdapter, grimmoryAdapter, audiobookshelfAdapter, calibreWebAutomatedAdapter];
+    const adapters: SourceAdapter<any>[] = [bookloreAdapter, grimmoryAdapter, audiobookshelfAdapter, calibreWebAutomatedAdapter, komgaAdapter];
     this.adaptersByType = new Map(adapters.map((adapter) => [adapter.type, adapter]));
   }
 

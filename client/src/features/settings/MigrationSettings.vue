@@ -952,6 +952,8 @@ async function onRunDryRun() {
     return
   }
 
+  const previousPlanId = plan.value?.id ?? null
+  const previousPlanCreatedAt = plan.value?.createdAt ?? null
   busy.dryRun = true
   try {
     const artifact = await createDryRunPlan({ profileId: currentProfile.id })
@@ -960,7 +962,24 @@ async function onRunDryRun() {
     const unresolved = artifact.summary?.unresolvedBooks ?? 0
     toast.success(t('settings.admin.migration.dryRunCompleted', { matched, unresolved }))
   } catch (error) {
-    toast.error(getErrorMessage(error, t('settings.admin.migration.dryRunFailed')))
+    try {
+      await refreshWorkflowState()
+    } catch {
+      // Ignore refresh failures; surface the original dry-run error below.
+    }
+    const recovered = plan.value
+    const recoveredForProfile = recovered != null && recovered.profileId === currentProfile.id
+    const isNewer =
+      recoveredForProfile &&
+      recovered.id !== previousPlanId &&
+      (previousPlanCreatedAt == null || new Date(recovered.createdAt).getTime() > new Date(previousPlanCreatedAt).getTime())
+    if (isNewer && recovered) {
+      const matched = recovered.summary?.matchedBooks ?? 0
+      const unresolved = recovered.summary?.unresolvedBooks ?? 0
+      toast.success(t('settings.admin.migration.dryRunCompleted', { matched, unresolved }))
+    } else {
+      toast.error(getErrorMessage(error, t('settings.admin.migration.dryRunFailed')))
+    }
   } finally {
     busy.dryRun = false
   }
