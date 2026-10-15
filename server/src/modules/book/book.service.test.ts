@@ -962,7 +962,15 @@ describe('BookService', () => {
         authorRows: [{ id: 1, name: 'Author One', sortName: null }],
         genreRows: [],
         communityRatingRows: [],
-        fileRows: [{ format: 'epub', role: 'primary', mediaOverlayAvailable: false }],
+        fileRows: [
+          {
+            format: 'epub',
+            role: 'content',
+            mediaOverlayAvailable: false,
+            absolutePath: '/comics/Supergirl (2025)/Supergirl 014.cbz',
+            libraryFolderPath: '/comics',
+          },
+        ],
       });
       pipeline.runWithSources.mockResolvedValue({
         resolved: { title: 'New Title' },
@@ -1012,7 +1020,11 @@ describe('BookService', () => {
           abridged: undefined,
         },
         7,
-        { coverMedia: { hasEbook: true, hasAudio: false }, lockedCoverSlots: [] },
+        {
+          coverMedia: { hasEbook: true, hasAudio: false },
+          lockedCoverSlots: [],
+          folderSeries: { name: 'Supergirl (2025)', index: '14' },
+        },
       );
       expect(updateSpy).not.toHaveBeenCalled();
       expect(metadataService.downloadAndSaveCover).not.toHaveBeenCalled();
@@ -1086,6 +1098,7 @@ describe('BookService', () => {
       expect(pipeline.runWithSources).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ cover: null, audioCover: null }), 7, {
         coverMedia: { hasEbook: true, hasAudio: true },
         lockedCoverSlots: ['ebook'],
+        folderSeries: null,
       });
       expect(metadataService.downloadAndSaveCover).toHaveBeenCalledTimes(1);
       expect(metadataService.downloadAndSaveCover).toHaveBeenCalledWith(audioCoverChoices, 1, 'audio');

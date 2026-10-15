@@ -30,6 +30,7 @@ import { extractCbzMetadata, extractCbrMetadata, extractCb7Metadata } from '../m
 import { parseFb2File } from '../metadata/lib/fb2-parser';
 import { parseMobiFile } from '../metadata/lib/mobi-parser';
 import { parsePdfFile, type PdfParseWarning } from '../metadata/lib/pdf-parser';
+import { folderSeriesFromFilePath } from '../metadata-fetch/folder-series-source';
 import { basename, dirname, extname, join, relative } from 'path';
 import { tmpdir } from 'os';
 
@@ -366,6 +367,17 @@ export class BookService {
     if (meta.lubimyczytacId) providerIds[MetadataProviderKey.LUBIMYCZYTAC] = meta.lubimyczytacId;
     if (meta.aladinId) providerIds[MetadataProviderKey.ALADIN] = meta.aladinId;
     return providerIds;
+  }
+
+  private resolveFolderSeries(
+    fileRows: readonly { absolutePath?: string | null; libraryFolderPath?: string | null; role?: string | null }[] | null | undefined,
+  ): ReturnType<typeof folderSeriesFromFilePath> {
+    if (!fileRows?.length) return null;
+    const contentFile =
+      fileRows.find((file) => file.role === 'content' && file.absolutePath && file.libraryFolderPath) ??
+      fileRows.find((file) => file.absolutePath && file.libraryFolderPath);
+    if (!contentFile?.absolutePath || !contentFile.libraryFolderPath) return null;
+    return folderSeriesFromFilePath(contentFile.absolutePath, contentFile.libraryFolderPath);
   }
 
   private applyResolvedProviderIds(
@@ -2894,11 +2906,15 @@ export class BookService {
       const coverInputs = coverFetchInputs(coverState);
       Object.assign(existingFields, coverInputs.existing);
 
+      const folderSeries = this.resolveFolderSeries(fileRows);
       const {
         resolved,
         providerIds: resolvedProviderIds,
         diagnostics,
-      } = await this.pipeline.runWithSources(searchParams, existingFields, book.books.libraryId, coverInputs.options);
+      } = await this.pipeline.runWithSources(searchParams, existingFields, book.books.libraryId, {
+        ...coverInputs.options,
+        folderSeries,
+      });
 
       if (preview) {
         const previewResult = this.buildMetadataRefreshPreview(resolved, resolvedProviderIds);
