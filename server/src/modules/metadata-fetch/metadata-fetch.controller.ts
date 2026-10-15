@@ -1,8 +1,10 @@
 import { Controller, Get, MessageEvent, Query, Sse } from '@nestjs/common';
 import {
   CoverMedia,
+  isMetadataLocalSourceKey,
   METADATA_PROVIDER_STATUS_EVENT,
   MetadataCandidate,
+  MetadataFieldSourceKey,
   MetadataProviderInfo,
   MetadataProviderKey,
   Permission,
@@ -62,11 +64,21 @@ export class MetadataFetchController {
         this.metadataPreferences.getForLibrary(libraryId),
       ]);
       const { fields } = libraryPreferences.effective;
-      return this.providerInfosForKeys(enabledProviderKeys, new Set(fieldRuleProviderKeys), fields.cover.providers, fields.audioCover.providers);
+      return this.providerInfosForKeys(
+        enabledProviderKeys,
+        new Set(fieldRuleProviderKeys),
+        this.remoteProviderKeys(fields.cover.providers),
+        this.remoteProviderKeys(fields.audioCover.providers),
+      );
     }
 
     const [providerKeys, preferences] = await Promise.all([this.resolveEnabledProviderKeys(), this.metadataPreferences.getGlobal()]);
-    return this.providerInfosForKeys(providerKeys, undefined, preferences.fields.cover.providers, preferences.fields.audioCover.providers);
+    return this.providerInfosForKeys(
+      providerKeys,
+      undefined,
+      this.remoteProviderKeys(preferences.fields.cover.providers),
+      this.remoteProviderKeys(preferences.fields.audioCover.providers),
+    );
   }
 
   @Get('providers/runtime')
@@ -75,7 +87,7 @@ export class MetadataFetchController {
     const config = await this.providerConfig.getConfig();
     const statuses = await this.providerConfig.getProviderStatuses(config);
     const registered = new Set(this.registry.all().map((p) => p.key));
-    const keys = statuses.map((s) => s.key).filter((key) => registered.has(key));
+    const keys = statuses.map((s) => s.key).filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key) && registered.has(key));
     return this.throttleTracker.snapshot(keys);
   }
 
@@ -173,6 +185,10 @@ export class MetadataFetchController {
     }
 
     return this.resolveFieldRuleProviderKeys(undefined, libraryId, coverMedia);
+  }
+
+  private remoteProviderKeys(providers: readonly MetadataFieldSourceKey[]): MetadataProviderKey[] {
+    return providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key));
   }
 
   private providerInfosForKeys(

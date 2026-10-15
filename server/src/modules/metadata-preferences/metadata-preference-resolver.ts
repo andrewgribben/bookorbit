@@ -164,7 +164,7 @@ export class MetadataPreferenceResolver {
   seedAudioCoverRule(cover: unknown): FieldPreference {
     const fallback = this.getDefaultPreferences().fields.audioCover;
     const normalized = this.normalizeFieldPreference('cover', cover, this.getDefaultPreferences().fields.cover);
-    const tunedForAudio = normalized.providers.some((provider) => AUDIOBOOK_ONLY_PROVIDERS.has(provider));
+    const tunedForAudio = normalized.providers.some((provider) => !isMetadataLocalSourceKey(provider) && AUDIOBOOK_ONLY_PROVIDERS.has(provider));
     return {
       enabled: normalized.enabled,
       mergeStrategy: normalized.mergeStrategy,

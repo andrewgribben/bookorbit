@@ -561,7 +561,7 @@ export class MetadataFetchPipeline {
       if (!fieldPreference.enabled) continue;
       if (media && !this.fieldApplies(field, media)) continue;
       for (const providerKey of fieldPreference.providers) {
-        if (!eligible.has(providerKey)) continue;
+        if (isMetadataLocalSourceKey(providerKey) || !eligible.has(providerKey)) continue;
         fieldRuleProviders.add(providerKey);
         if (providerConfig[providerKey]?.enabled === false) {
           disabledFieldRuleProviders.add(providerKey);
