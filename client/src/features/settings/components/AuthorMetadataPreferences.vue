@@ -9,7 +9,7 @@ import type {
   AuthorMetadataPreferences,
   AuthorMetadataProviderInfo,
   AuthorMetadataProviderKey,
-  MetadataProviderKey,
+  MetadataFieldSourceKey,
   ProviderStatus,
 } from '@bookorbit/types'
 import { Plus } from '@lucide/vue'
@@ -30,7 +30,7 @@ const fields = computed(() => ALL_AUTHOR_METADATA_FIELDS)
 // them unchanged.
 const statuses = computed<ProviderStatus[]>(() =>
   providers.value.map((provider) => ({
-    key: provider.key as unknown as MetadataProviderKey,
+    key: provider.key as unknown as MetadataFieldSourceKey,
     label: provider.label,
     configured: true,
     enabled: true,
@@ -87,8 +87,8 @@ function preferenceFor(field: AuthorMetadataField): AuthorFieldPreference | null
   return preferences.value?.fields[field] ?? null
 }
 
-function providersFor(field: AuthorMetadataField): MetadataProviderKey[] {
-  return (preferenceFor(field)?.providers ?? []) as unknown as MetadataProviderKey[]
+function providersFor(field: AuthorMetadataField): MetadataFieldSourceKey[] {
+  return (preferenceFor(field)?.providers ?? []) as unknown as MetadataFieldSourceKey[]
 }
 
 function update(field: AuthorMetadataField, patch: Partial<AuthorFieldPreference>) {
@@ -109,7 +109,7 @@ function onMergeStrategyChange(field: AuthorMetadataField, mergeStrategy: Author
   update(field, { mergeStrategy })
 }
 
-function onProvidersChange(field: AuthorMetadataField, next: MetadataProviderKey[]) {
+function onProvidersChange(field: AuthorMetadataField, next: MetadataFieldSourceKey[]) {
   // The shared chip list is typed for book providers, so drop anything that is
   // not a registered author provider or cannot return this field.
   const filtered = (next as unknown as AuthorMetadataProviderKey[]).filter((key) => providerSupportsAuthorField(key, field))
@@ -180,7 +180,7 @@ defineExpose({ save })
             :providers="providersFor(field)"
             :statuses="statuses"
             :disabled="saving || !preferences.fields[field].enabled"
-            @update:providers="(next: MetadataProviderKey[]) => onProvidersChange(field, next)"
+            @update:providers="(next) => onProvidersChange(field, next)"
           />
           <button
             v-for="provider in unassignedProviders(field)"
