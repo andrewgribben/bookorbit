@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueDraggable } from 'vue-draggable-plus'
 import { GripVertical, Slash, X } from '@lucide/vue'
-import type { MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
+import type { MetadataFieldSourceKey, ProviderStatus } from '@bookorbit/types'
 import { providerChipStyle, PROVIDER_SHORT_LABELS } from '@/lib/provider-colors'
 import { PROVIDER_DND_GROUP, toProviderDragItems } from '../lib/provider-drag'
 import { isProviderUsable, providerRank, skipReasonFor } from '../lib/field-rules'
@@ -11,19 +11,19 @@ import { isProviderUsable, providerRank, skipReasonFor } from '../lib/field-rule
 const { t } = useI18n()
 
 const props = defineProps<{
-  providers: MetadataProviderKey[]
+  providers: MetadataFieldSourceKey[]
   statuses: ProviderStatus[]
   disabled?: boolean
 }>()
 
-const emit = defineEmits<{ 'update:providers': [value: MetadataProviderKey[]] }>()
+const emit = defineEmits<{ 'update:providers': [value: MetadataFieldSourceKey[]] }>()
 
 interface ProviderChipItem {
-  key: MetadataProviderKey
+  key: MetadataFieldSourceKey
   dragId: string
 }
 
-function statusFor(key: MetadataProviderKey) {
+function statusFor(key: MetadataFieldSourceKey) {
   return props.statuses.find((s) => s.key === key)
 }
 
@@ -68,12 +68,12 @@ function chipTitle(chip: (typeof chips.value)[number]) {
   return t(`settings.metadata.fieldRules.providerState.${chip.skipReason}Detail`, { provider: chip.label })
 }
 
-function sameOrder(a: MetadataProviderKey[], b: MetadataProviderKey[]) {
+function sameOrder(a: MetadataFieldSourceKey[], b: MetadataFieldSourceKey[]) {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
 function commitProviders() {
-  const seen = new Set<MetadataProviderKey>()
+  const seen = new Set<MetadataFieldSourceKey>()
   const deduplicated = localProviders.value.filter((item) => {
     if (seen.has(item.key)) return false
     seen.add(item.key)

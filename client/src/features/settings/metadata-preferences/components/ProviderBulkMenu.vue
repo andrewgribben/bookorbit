@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowDownToLine, ArrowUpToLine, Check, Filter, Trash2 } from '@lucide/vue'
-import type { FieldPreference, MetadataField, MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataFieldSourceKey, ProviderStatus } from '@bookorbit/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -24,13 +24,13 @@ const props = defineProps<{
   fields: Record<MetadataField, FieldPreference>
   statuses: ProviderStatus[]
   /** The provider the field list is filtered to, if any. */
-  filter: MetadataProviderKey | null
+  filter: MetadataFieldSourceKey | null
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
-  filterChange: [provider: MetadataProviderKey | null]
-  bulk: [provider: MetadataProviderKey, action: ProviderBulkAction]
+  filterChange: [provider: MetadataFieldSourceKey | null]
+  bulk: [provider: MetadataFieldSourceKey, action: ProviderBulkAction]
 }>()
 
 // Only providers that appear somewhere can be reordered or removed in bulk, so lead with
@@ -38,7 +38,7 @@ const emit = defineEmits<{
 const entries = computed(() =>
   props.statuses
     .map((status) => {
-      const key = status.key as MetadataProviderKey
+      const key = status.key
       return {
         key,
         label: status.label,
@@ -56,7 +56,7 @@ const activeLabel = computed(() => {
   return props.statuses.find((status) => status.key === props.filter)?.label ?? props.filter
 })
 
-function setFilter(provider: MetadataProviderKey | null) {
+function setFilter(provider: MetadataFieldSourceKey | null) {
   emit('filterChange', provider)
 }
 
@@ -64,7 +64,7 @@ function clearFilter() {
   setFilter(null)
 }
 
-function runBulk(provider: MetadataProviderKey, action: ProviderBulkAction) {
+function runBulk(provider: MetadataFieldSourceKey, action: ProviderBulkAction) {
   emit('bulk', provider, action)
 }
 </script>

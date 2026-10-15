@@ -1456,6 +1456,7 @@ export class BookRepository {
           role: bookFiles.role,
           sizeBytes: bookFiles.sizeBytes,
           absolutePath: bookFiles.absolutePath,
+          libraryFolderPath: libraryFolders.path,
           createdAt: bookFiles.createdAt,
           durationSeconds: bookFiles.durationSeconds,
           sortOrder: bookFiles.sortOrder,
@@ -1464,6 +1465,7 @@ export class BookRepository {
           mediaOverlayCheckedAt: bookFiles.mediaOverlayCheckedAt,
         })
         .from(bookFiles)
+        .innerJoin(libraryFolders, eq(libraryFolders.id, bookFiles.libraryFolderId))
         .where(eq(bookFiles.bookId, id))
         .orderBy(asc(bookFiles.sortOrder), asc(bookFiles.id)),
       this.db

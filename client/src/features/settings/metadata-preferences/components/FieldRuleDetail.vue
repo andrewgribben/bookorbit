@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, ChevronDown, ChevronUp, RotateCcw, TriangleAlert, X } from '@lucide/vue'
-import type { FieldPreference, MetadataField, MetadataMergeStrategy, MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataFieldSourceKey, MetadataMergeStrategy, ProviderStatus } from '@bookorbit/types'
 import { Button } from '@/components/ui/button'
 import { providerChipStyle, PROVIDER_SHORT_LABELS } from '@/lib/provider-colors'
 import ProviderAddMenu from './ProviderAddMenu.vue'
@@ -45,7 +45,7 @@ const rows = computed(() =>
 
 const resolved = computed(() => resolvedProviders(props.preference.providers, props.statuses))
 const skipped = computed(() => skippedProviders(props.preference.providers, props.statuses))
-const providerLabel = (key: MetadataProviderKey) => props.statuses.find((entry) => entry.key === key)?.label ?? key
+const providerLabel = (key: MetadataFieldSourceKey) => props.statuses.find((entry) => entry.key === key)?.label ?? key
 
 const mergeOptions = computed(() =>
   (props.field === 'genres' ? GENRE_MERGE_ORDER : STANDARD_MERGE_ORDER).map((value) => ({
@@ -82,7 +82,7 @@ function removeProvider(index: number) {
   update({ providers: props.preference.providers.filter((_, position) => position !== index) })
 }
 
-function addProvider(provider: MetadataProviderKey) {
+function addProvider(provider: MetadataFieldSourceKey) {
   if (props.preference.providers.includes(provider)) return
   update({ providers: [...props.preference.providers, provider] })
 }
@@ -169,7 +169,14 @@ function handleClose() {
         </p>
 
         <div class="mt-3">
-          <ProviderAddMenu :assigned="preference.providers" :statuses="statuses" :disabled="saving" :field-label="fieldLabel" @add="addProvider" />
+          <ProviderAddMenu
+            :field="field"
+            :assigned="preference.providers"
+            :statuses="statuses"
+            :disabled="saving"
+            :field-label="fieldLabel"
+            @add="addProvider"
+          />
         </div>
       </section>
 

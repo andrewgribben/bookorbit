@@ -1,4 +1,4 @@
-import { ALL_METADATA_FIELDS, MetadataFetchPreferences, MetadataProviderKey } from '@bookorbit/types';
+import { ALL_METADATA_FIELDS, MetadataFetchPreferences, MetadataLocalSourceKey, MetadataProviderKey } from '@bookorbit/types';
 
 import { MetadataPreferenceResolver } from './metadata-preference-resolver';
 
@@ -53,17 +53,22 @@ describe('MetadataPreferenceResolver', () => {
       MetadataProviderKey.AUDIBLE,
     ]);
 
-    const fieldsWithoutItunes: (keyof typeof defaults.fields)[] = [
-      'publisher',
-      'publishedYear',
-      'language',
-      'pageCount',
-      'seriesName',
-      'seriesIndex',
-    ];
+    const fieldsWithoutItunes: (keyof typeof defaults.fields)[] = ['publisher', 'publishedYear', 'language', 'pageCount'];
     for (const field of fieldsWithoutItunes) {
       expect(defaults.fields[field].enabled).toBe(true);
       expect(defaults.fields[field].providers).toEqual([
+        MetadataProviderKey.GOODREADS,
+        MetadataProviderKey.GOOGLE,
+        MetadataProviderKey.AMAZON,
+        MetadataProviderKey.KOBO,
+        MetadataProviderKey.OPEN_LIBRARY,
+      ]);
+    }
+
+    for (const field of ['seriesName', 'seriesIndex'] as const) {
+      expect(defaults.fields[field].enabled).toBe(true);
+      expect(defaults.fields[field].providers).toEqual([
+        MetadataLocalSourceKey.FOLDER,
         MetadataProviderKey.GOODREADS,
         MetadataProviderKey.GOOGLE,
         MetadataProviderKey.AMAZON,

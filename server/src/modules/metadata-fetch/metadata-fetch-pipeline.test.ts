@@ -6,6 +6,7 @@ import {
   MetadataCandidate,
   MetadataFetchPreferences,
   MetadataField,
+  MetadataLocalSourceKey,
   MetadataProviderKey,
   ProviderConfigurations,
 } from '@bookorbit/types';
@@ -1038,6 +1039,54 @@ describe('MetadataFetchPipeline', () => {
       volumeName: 'Arkham Asylum',
       pencillers: ['Jock'],
     });
+  });
+
+  it('prefers Folder local source over ComicVine for series fields when configured first', async () => {
+    const prefs = createPreferences((fields) => {
+      fields.seriesName = {
+        enabled: true,
+        providers: [MetadataLocalSourceKey.FOLDER, MetadataProviderKey.COMICVINE],
+        mergeStrategy: 'overwriteIfProvided',
+      };
+      fields.seriesIndex = {
+        enabled: true,
+        providers: [MetadataLocalSourceKey.FOLDER, MetadataProviderKey.COMICVINE],
+        mergeStrategy: 'overwriteIfProvided',
+      };
+      fields.title = {
+        enabled: true,
+        providers: [MetadataProviderKey.COMICVINE],
+        mergeStrategy: 'overwriteIfProvided',
+      };
+    });
+
+    preferencesService.getGlobal.mockResolvedValue(prefs);
+    resolver.resolve.mockReturnValue(prefs);
+    resolver.withForwardCompatibility.mockReturnValue(prefs);
+    registry.all.mockReturnValue([{ key: MetadataProviderKey.COMICVINE }] as never);
+    fetchService.searchCandidates.mockReturnValue(
+      of(
+        candidate(MetadataProviderKey.COMICVINE, '1178918', {
+          title: 'Hero of Kandor, Part Four',
+          seriesName: 'Supergirl',
+          seriesIndex: '14',
+        }),
+      ),
+    );
+
+    const { resolved, sources } = await pipeline.runWithSources(
+      { title: 'Supergirl 14' },
+      { seriesName: 'Supergirl', seriesIndex: '14' },
+      undefined,
+      { folderSeries: { name: 'Supergirl (2025)', index: '14' } },
+    );
+
+    expect(resolved.seriesName).toBe('Supergirl (2025)');
+    expect(resolved.seriesIndex).toBe('14');
+    expect(resolved.title).toBe('Hero of Kandor, Part Four');
+    expect(sources.seriesName).toBe(MetadataLocalSourceKey.FOLDER);
+    expect(sources.seriesIndex).toBe(MetadataLocalSourceKey.FOLDER);
+    expect(sources.title).toBe(MetadataProviderKey.COMICVINE);
   });
 
   it('merges genres from selected providers when genre merge mode is enabled', async () => {

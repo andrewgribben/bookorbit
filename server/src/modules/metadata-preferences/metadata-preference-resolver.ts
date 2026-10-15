@@ -6,10 +6,14 @@ import {
   FieldPreferenceOverrides,
   GENRE_MERGE_STRATEGIES,
   GENRE_MERGE_MODES,
+  isMetadataLocalSourceKey,
+  localSourceSupportsField,
   MAX_METADATA_GENRE_COUNT,
   MetadataFetchPreferences,
   MetadataFetchOptions,
   MetadataField,
+  MetadataFieldSourceKey,
+  MetadataLocalSourceKey,
   MetadataMergeStrategy,
   MetadataProviderKey,
   MERGE_STRATEGIES,
@@ -27,6 +31,8 @@ const DEFAULT_PROVIDER_ORDER: MetadataProviderKey[] = [
   MetadataProviderKey.KOBO,
   MetadataProviderKey.OPEN_LIBRARY,
 ];
+
+const SERIES_DEFAULT_SOURCES: MetadataFieldSourceKey[] = [MetadataLocalSourceKey.FOLDER, ...DEFAULT_PROVIDER_ORDER];
 
 const DEFAULT_MERGE_STRATEGY: MergeStrategy = 'overwriteIfProvided';
 const MERGE_STRATEGY_SET = new Set<MetadataMergeStrategy>(MERGE_STRATEGIES);
@@ -82,6 +88,9 @@ const FIELD_DEFAULTS: Partial<Record<MetadataField, Partial<FieldPreference>>> =
     providers: [MetadataProviderKey.GOODREADS, MetadataProviderKey.GOOGLE, MetadataProviderKey.ITUNES, MetadataProviderKey.KOBO],
   },
   communityRating: { providers: [...COMMUNITY_RATING_PROVIDER_KEYS] },
+  // Folder first so year-suffixed on-disk series names win over bare remote titles.
+  seriesName: { providers: SERIES_DEFAULT_SOURCES },
+  seriesIndex: { providers: SERIES_DEFAULT_SOURCES },
 };
 
 @Injectable()
@@ -124,7 +133,7 @@ export class MetadataPreferenceResolver {
   withForwardCompatibility(preferences: MetadataFetchPreferences, registeredKeys: MetadataProviderKey[]): MetadataFetchPreferences {
     const defaults = this.getDefaultPreferences();
     const fields = {} as Record<MetadataField, FieldPreference>;
-    const registered = new Set(registeredKeys);
+    const registered = new Set<string>(registeredKeys);
     for (const field of ALL_METADATA_FIELDS) {
       const fallback = defaults.fields[field];
       const fp = this.normalizeFieldPreference(field, preferences?.fields?.[field], fallback);
@@ -133,8 +142,10 @@ export class MetadataPreferenceResolver {
         continue;
       }
 
-      const filtered = fp.providers.filter((k) => registered.has(k));
-      const fallbackFiltered = fallback.providers.filter((k) => registered.has(k));
+      const keepSource = (key: MetadataFieldSourceKey) =>
+        isMetadataLocalSourceKey(key) ? localSourceSupportsField(key, field) : registered.has(key);
+      const filtered = fp.providers.filter(keepSource);
+      const fallbackFiltered = fallback.providers.filter(keepSource);
 
       // Preserve explicit provider selections; only drop unavailable providers.
       // If filtering removes all listed providers, fall back to the field default set.
@@ -177,10 +188,12 @@ export class MetadataPreferenceResolver {
 
     const candidate = value as Partial<FieldPreference>;
     const enabled = typeof candidate.enabled === 'boolean' ? candidate.enabled : fallback.enabled;
-    const providers =
+    const rawProviders =
       Array.isArray(candidate.providers) && candidate.providers.every((p) => typeof p === 'string')
-        ? [...candidate.providers]
+        ? [...(candidate.providers as MetadataFieldSourceKey[])]
         : [...fallback.providers];
+    // Drop local sources from fields they cannot supply (e.g. Folder on title).
+    const providers = rawProviders.filter((key) => !isMetadataLocalSourceKey(key) || localSourceSupportsField(key, field));
     const mergeStrategySet = field === 'genres' ? GENRE_MERGE_STRATEGY_SET : MERGE_STRATEGY_SET;
     const mergeStrategy = mergeStrategySet.has(candidate.mergeStrategy as MetadataMergeStrategy)
       ? (candidate.mergeStrategy as MetadataMergeStrategy)
