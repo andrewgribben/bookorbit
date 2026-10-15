@@ -39,6 +39,32 @@ export const ALL_METADATA_FIELDS: MetadataField[] = [
   "abridged",
 ];
 
+/**
+ * Local Field Rules sources read from the library on disk rather than a remote catalog.
+ * They share the provider priority list with remote providers but are not MetadataProviderKey values.
+ */
+export const MetadataLocalSourceKey = {
+  FOLDER: "folder",
+} as const;
+
+export type MetadataLocalSourceKey = (typeof MetadataLocalSourceKey)[keyof typeof MetadataLocalSourceKey];
+
+export const ALL_METADATA_LOCAL_SOURCE_KEYS: MetadataLocalSourceKey[] = [MetadataLocalSourceKey.FOLDER];
+
+export type MetadataFieldSourceKey = MetadataProviderKey | MetadataLocalSourceKey;
+
+export const LOCAL_SOURCE_SUPPORTED_FIELDS: Record<MetadataLocalSourceKey, readonly MetadataField[]> = {
+  [MetadataLocalSourceKey.FOLDER]: ["seriesName", "seriesIndex"],
+};
+
+export function isMetadataLocalSourceKey(value: string): value is MetadataLocalSourceKey {
+  return (ALL_METADATA_LOCAL_SOURCE_KEYS as readonly string[]).includes(value);
+}
+
+export function localSourceSupportsField(source: MetadataLocalSourceKey, field: MetadataField): boolean {
+  return LOCAL_SOURCE_SUPPORTED_FIELDS[source]?.includes(field) ?? false;
+}
+
 export type MergeStrategy = "fillMissing" | "overwrite" | "overwriteIfProvided";
 export type MetadataMergeStrategy = MergeStrategy | "mergeExisting";
 export type GenreMergeMode = "firstProvider" | "merge";
@@ -51,7 +77,7 @@ export const MAX_METADATA_GENRE_COUNT = 50;
 
 export interface FieldPreference {
   enabled: boolean;
-  providers: MetadataProviderKey[];
+  providers: MetadataFieldSourceKey[];
   mergeStrategy: MetadataMergeStrategy;
 }
 
@@ -149,11 +175,13 @@ export interface ProviderConfigurations {
 }
 
 export interface ProviderStatus {
-  key: MetadataProviderKey;
+  key: MetadataFieldSourceKey;
   label: string;
   configured: boolean;
   enabled: boolean;
   hint?: string;
+  /** True for local disk sources such as Folder; omitted for remote catalog providers. */
+  local?: boolean;
 }
 
 export type ProviderConnectionTestStatus = "success" | "warning" | "fail";

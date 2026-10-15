@@ -1,5 +1,5 @@
-import { ALL_METADATA_FIELDS } from '@bookorbit/types'
-import type { FieldPreference, MetadataField, MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
+import { ALL_METADATA_FIELDS, isMetadataLocalSourceKey, localSourceSupportsField } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataFieldSourceKey, ProviderStatus } from '@bookorbit/types'
 
 /** Display grouping for the rule table. Every metadata field belongs to exactly one group. */
 export const FIELD_GROUPS: { id: string; fields: MetadataField[] }[] = [
@@ -41,18 +41,18 @@ export function skipReasonFor(status: ProviderStatus | undefined): ProviderSkipR
  * A provider with no status entry counts as usable: an unknown key is stale data rather
  * than a broken provider, and hiding it would leave no way to remove it.
  */
-export function isProviderUsable(provider: MetadataProviderKey, statuses: ProviderStatus[]): boolean {
+export function isProviderUsable(provider: MetadataFieldSourceKey, statuses: ProviderStatus[]): boolean {
   const status = statuses.find((entry) => entry.key === provider)
   return status ? status.enabled && status.configured : true
 }
 
 /** The providers that will actually be consulted, in priority order. */
-export function resolvedProviders(providers: MetadataProviderKey[], statuses: ProviderStatus[]): MetadataProviderKey[] {
+export function resolvedProviders(providers: MetadataFieldSourceKey[], statuses: ProviderStatus[]): MetadataFieldSourceKey[] {
   return providers.filter((provider) => isProviderUsable(provider, statuses))
 }
 
 /** The providers that stay in the order but are skipped on every fetch. */
-export function skippedProviders(providers: MetadataProviderKey[], statuses: ProviderStatus[]): MetadataProviderKey[] {
+export function skippedProviders(providers: MetadataFieldSourceKey[], statuses: ProviderStatus[]): MetadataFieldSourceKey[] {
   return providers.filter((provider) => !isProviderUsable(provider, statuses))
 }
 
@@ -60,17 +60,17 @@ export function skippedProviders(providers: MetadataProviderKey[], statuses: Pro
  * Display rank for a provider, counting only the ones that will run. A skipped provider
  * has no rank because it never takes a turn, so numbering it would overstate the order.
  */
-export function providerRank(providers: MetadataProviderKey[], index: number, statuses: ProviderStatus[]): number | null {
+export function providerRank(providers: MetadataFieldSourceKey[], index: number, statuses: ProviderStatus[]): number | null {
   const provider = providers[index]
   if (!provider || !isProviderUsable(provider, statuses)) return null
   return providers.slice(0, index + 1).filter((entry) => isProviderUsable(entry, statuses)).length
 }
 
 export function applyProviderAction(
-  providers: MetadataProviderKey[],
-  provider: MetadataProviderKey,
+  providers: MetadataFieldSourceKey[],
+  provider: MetadataFieldSourceKey,
   action: ProviderBulkAction,
-): MetadataProviderKey[] {
+): MetadataFieldSourceKey[] {
   const without = providers.filter((entry) => entry !== provider)
   if (action === 'remove') return without
   if (!providers.includes(provider)) return providers
@@ -78,13 +78,21 @@ export function applyProviderAction(
 }
 
 /** How many fields in a scope currently list the given provider. */
-export function providerUsageCount(fields: Record<MetadataField, FieldPreference>, provider: MetadataProviderKey): number {
+export function providerUsageCount(fields: Record<MetadataField, FieldPreference>, provider: MetadataFieldSourceKey): number {
   return ALL_METADATA_FIELDS.filter((field) => fields[field]?.providers.includes(provider)).length
+}
+
+/** Statuses offered in a field's Add menu: local sources only where they apply. */
+export function statusesForField(field: MetadataField, statuses: ProviderStatus[]): ProviderStatus[] {
+  return statuses.filter((status) => {
+    if (!isMetadataLocalSourceKey(status.key)) return true
+    return localSourceSupportsField(status.key, field)
+  })
 }
 
 export interface FieldFilter {
   query: string
-  provider: MetadataProviderKey | null
+  provider: MetadataFieldSourceKey | null
   overriddenOnly: boolean
   overridden: Set<MetadataField>
 }

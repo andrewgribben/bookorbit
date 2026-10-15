@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Info, Loader2 } from '@lucide/vue'
-import type { FieldPreference, MetadataField, MetadataFetchOptions, MetadataProviderKey } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataFetchOptions, MetadataFieldSourceKey } from '@bookorbit/types'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { useProviderConfig } from './composables/useProviderConfig'
 import { useFieldRuleScopes, type FieldRuleScopeId } from './composables/useFieldRuleScopes'
@@ -18,7 +18,7 @@ const { statuses, fetchConfig } = useProviderConfig()
 const scopes = useFieldRuleScopes()
 
 const query = ref('')
-const providerFilter = ref<MetadataProviderKey | null>(null)
+const providerFilter = ref<MetadataFieldSourceKey | null>(null)
 const overriddenOnly = ref(false)
 /** Advanced options carry the only client-side validation on the page. */
 const optionsValid = ref(true)
@@ -53,7 +53,7 @@ const visibleFields = computed(() => {
   )
 })
 
-type PendingConfirm = { kind: 'clearProviders' } | { kind: 'resetScope' } | { kind: 'bulkRemove'; provider: MetadataProviderKey }
+type PendingConfirm = { kind: 'clearProviders' } | { kind: 'resetScope' } | { kind: 'bulkRemove'; provider: MetadataFieldSourceKey }
 const pendingConfirm = ref<PendingConfirm | null>(null)
 const confirmBusy = ref(false)
 
@@ -107,7 +107,7 @@ function onOptionsValidChange(valid: boolean) {
 
 // Reordering is reversible and stays in the draft; removing a provider from every field is
 // the one bulk action worth a confirmation.
-function onBulk(provider: MetadataProviderKey, action: ProviderBulkAction) {
+function onBulk(provider: MetadataFieldSourceKey, action: ProviderBulkAction) {
   if (action === 'remove') {
     pendingConfirm.value = { kind: 'bulkRemove', provider }
     return

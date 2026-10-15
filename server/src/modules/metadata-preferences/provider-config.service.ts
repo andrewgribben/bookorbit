@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { MetadataProviderKey, ProviderConfigurations, ProviderConnectionTestResult, ProviderStatus } from '@bookorbit/types';
+import { MetadataLocalSourceKey, MetadataProviderKey, ProviderConfigurations, ProviderConnectionTestResult, ProviderStatus } from '@bookorbit/types';
 
 import { stripBearerPrefix, toBearerAuthorization } from '../../common/utils/bearer-token.utils';
 import { amazonRequestHeaders, isAmazonBotChallenge } from '../../common/utils/amazon-http.utils';
@@ -380,6 +380,14 @@ export class ProviderConfigService {
   async getProviderStatuses(config?: ProviderConfigurations): Promise<ProviderStatus[]> {
     const cfg = config ?? (await this.getConfig());
     return [
+      {
+        key: MetadataLocalSourceKey.FOLDER,
+        label: 'Folder',
+        enabled: true,
+        configured: true,
+        local: true,
+        hint: 'Series name and index from the on-disk folder (keeps year suffixes like Supergirl (2025))',
+      },
       {
         key: MetadataProviderKey.GOOGLE,
         label: PROVIDER_LABELS[MetadataProviderKey.GOOGLE],

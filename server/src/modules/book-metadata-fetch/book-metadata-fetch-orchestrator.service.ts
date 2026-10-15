@@ -12,6 +12,7 @@ import { MetadataScoreService } from '../metadata-score/metadata-score.service';
 import { ComicMetadataRepository } from '../metadata/comic-metadata.repository';
 import { MetadataService } from '../metadata/metadata.service';
 import { ExistingMetadataFields, MetadataFetchPipeline, ResolvedMetadataFields } from '../metadata-fetch/metadata-fetch-pipeline';
+import { folderSeriesFromFilePath } from '../metadata-fetch/folder-series-source';
 import { ProviderThrottleTracker } from '../metadata-fetch/provider-throttle.tracker';
 import type { MetadataSearchParams } from '../metadata-fetch/providers/metadata-search-params';
 import { BookMetadataLockService } from '../book-metadata-lock/book-metadata-lock.service';
@@ -257,9 +258,11 @@ export class BookMetadataFetchOrchestratorService implements OnApplicationBootst
         existingFields.comicMetadata = await this.comicMetadataRepository.findByBookId(bookId);
       }
 
+      const folderSeries = this.resolveFolderSeries(fileRows);
       const { resolved, providerIds } = await this.pipeline.runWithSources(searchParams, existingFields, libraryId, {
         ...coverInputs.options,
         ...(preserveExisting ? { preserveExisting: true } : {}),
+        folderSeries,
       });
 
       await this.persistResolved(bookId, resolved, providerIds, authorRows, genreRows, narratorRows);
@@ -454,6 +457,16 @@ export class BookMetadataFetchOrchestratorService implements OnApplicationBootst
       durationSeconds: meta?.durationSeconds ?? null,
       abridged: meta?.abridged ?? null,
     };
+  }
+
+  private resolveFolderSeries(
+    fileRows: readonly { absolutePath?: string | null; libraryFolderPath?: string | null; role?: string | null }[],
+  ): ReturnType<typeof folderSeriesFromFilePath> {
+    const contentFile =
+      fileRows.find((file) => file.role === 'content' && file.absolutePath && file.libraryFolderPath) ??
+      fileRows.find((file) => file.absolutePath && file.libraryFolderPath);
+    if (!contentFile?.absolutePath || !contentFile.libraryFolderPath) return null;
+    return folderSeriesFromFilePath(contentFile.absolutePath, contentFile.libraryFolderPath);
   }
 
   private collectProviderIds(meta: {

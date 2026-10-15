@@ -6,11 +6,13 @@ import {
   CoverMedia,
   CoverMedium,
   FieldPreference,
+  isMetadataLocalSourceKey,
   MetadataCandidate,
   MetadataFetchCoverSlotDiagnostics,
   MetadataFetchDiagnostics,
   MetadataFetchPreferences,
   MetadataField,
+  MetadataLocalSourceKey,
   MetadataMergeStrategy,
   MetadataProviderKey,
   MetadataSeriesMembership,
@@ -18,6 +20,7 @@ import {
   ProviderConfigurations,
   parseSeriesIndex,
 } from '@bookorbit/types';
+import type { DerivedSeries } from '../scanner/lib/folder-series';
 import { firstValueFrom, toArray } from 'rxjs';
 
 import { MetadataPreferenceResolver } from '../metadata-preferences/metadata-preference-resolver';
@@ -75,6 +78,11 @@ export interface MetadataFetchRunOptions {
   coverMedia?: CoverMedia;
   /** Cover slots whose lock is set. A locked slot is neither resolved nor searched for. */
   lockedCoverSlots?: readonly CoverMedium[];
+  /**
+   * Series implied by the book's on-disk folder. Used when Field Rules list the Folder local source
+   * ahead of (or instead of) remote providers for seriesName / seriesIndex.
+   */
+  folderSeries?: DerivedSeries | null;
 }
 
 type ResolvedProviderIds = Partial<Record<MetadataProviderKey, string>>;
@@ -215,6 +223,7 @@ export class MetadataFetchPipeline {
       params.existingProviderIds,
       options,
       coverOnlyProviders,
+      options?.folderSeries ?? null,
     );
 
     const coverSlots: Partial<Record<CoverMedium, MetadataFetchCoverSlotDiagnostics>> = {};
@@ -305,7 +314,9 @@ export class MetadataFetchPipeline {
     const fullRole = new Set<MetadataProviderKey>();
     for (const [field, fieldPreference] of Object.entries(preferences.fields) as [MetadataField, FieldPreference][]) {
       if (!fieldPreference.enabled || field === 'cover' || field === 'audioCover' || !this.fieldApplies(field, media)) continue;
-      for (const provider of fieldPreference.providers) fullRole.add(provider);
+      for (const provider of fieldPreference.providers) {
+        if (!isMetadataLocalSourceKey(provider)) fullRole.add(provider);
+      }
     }
     return new Set(activeProviders.filter((provider) => !fullRole.has(provider)));
   }
@@ -325,7 +336,12 @@ export class MetadataFetchPipeline {
     const mergeStrategy = options?.preserveExisting ? 'fillMissing' : fieldPreference.mergeStrategy;
     const present = !this.isMissing(existingFields[field]);
     if (mergeStrategy === 'fillMissing' && present) return null;
-    const choices = this.orderCoverChoices(medium, fieldPreference.providers, candidates, present);
+    const choices = this.orderCoverChoices(
+      medium,
+      fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
+      candidates,
+      present,
+    );
     return choices.length > 0 ? { choices, pass } : null;
   }
 
@@ -409,7 +425,8 @@ export class MetadataFetchPipeline {
     const pass2Providers = pass1.existingProviderIdsOnly
       ? []
       : preferences.fields[field].providers.filter(
-          (provider) => pass1.activeProviders.includes(provider) && this.registry.editionFollowsMedium(provider),
+          (provider): provider is MetadataProviderKey =>
+            !isMetadataLocalSourceKey(provider) && pass1.activeProviders.includes(provider) && this.registry.editionFollowsMedium(provider),
         );
     if (pass2Providers.length === 0) {
       return {
@@ -544,7 +561,7 @@ export class MetadataFetchPipeline {
       if (!fieldPreference.enabled) continue;
       if (media && !this.fieldApplies(field, media)) continue;
       for (const providerKey of fieldPreference.providers) {
-        if (!eligible.has(providerKey)) continue;
+        if (isMetadataLocalSourceKey(providerKey) || !eligible.has(providerKey)) continue;
         fieldRuleProviders.add(providerKey);
         if (providerConfig[providerKey]?.enabled === false) {
           disabledFieldRuleProviders.add(providerKey);
@@ -648,6 +665,7 @@ export class MetadataFetchPipeline {
     existingProviderIds: Partial<Record<MetadataProviderKey, string>> | undefined,
     options: MetadataFetchRunOptions | undefined,
     coverOnlyProviders: ReadonlySet<MetadataProviderKey>,
+    folderSeries: DerivedSeries | null,
   ): { resolved: ResolvedMetadataFields; sources: Record<string, string>; providerIds: ResolvedProviderIds } {
     const result: ResolvedMetadataFields = {};
     const sources: Record<string, string> = {};
@@ -664,7 +682,7 @@ export class MetadataFetchPipeline {
 
       if (field === 'genres' && preferences.options?.genres.mode === 'merge') {
         const { genres, sourceProvider } = this.mergeGenres(
-          fieldPreference.providers as MetadataProviderKey[],
+          fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
           byProvider,
           blockedGenreTokens,
           genreOptions?.maxCount,
@@ -683,7 +701,10 @@ export class MetadataFetchPipeline {
         const existingValue = existing[field];
         if (mergeStrategy === 'fillMissing' && !this.isMissing(existingValue)) continue;
 
-        const communityRatings = this.collectCommunityRatings(fieldPreference.providers as MetadataProviderKey[], byProvider);
+        const communityRatings = this.collectCommunityRatings(
+          fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
+          byProvider,
+        );
         if (communityRatings.length > 0) {
           result.communityRatings = communityRatings;
           sources.communityRating = communityRatings.map((rating) => rating.provider).join('|');
@@ -692,10 +713,7 @@ export class MetadataFetchPipeline {
       }
 
       for (const providerKey of fieldPreference.providers) {
-        const candidate = byProvider.get(providerKey);
-        if (!candidate) continue;
-
-        const value = this.extractField(candidate, field);
+        const value = this.resolveFieldValue(providerKey, field, byProvider, folderSeries);
         if (value === undefined || value === null) continue;
         if (mergeStrategy !== 'overwrite' && this.isEmptyProviderValue(value)) continue;
 
@@ -712,18 +730,19 @@ export class MetadataFetchPipeline {
         }
 
         const existingValue = existing[field];
+        const candidate = isMetadataLocalSourceKey(providerKey) ? undefined : byProvider.get(providerKey);
         switch (mergeStrategy) {
           case 'fillMissing':
             if (this.isMissing(existingValue)) {
               (result as Record<string, unknown>)[field] = value;
-              this.copyPublishedDateForYear(result, candidate, field);
+              if (candidate) this.copyPublishedDateForYear(result, candidate, field);
               sources[field] = providerKey;
             }
             break;
           case 'overwrite':
           case 'overwriteIfProvided':
             (result as Record<string, unknown>)[field] = value;
-            this.copyPublishedDateForYear(result, candidate, field);
+            if (candidate) this.copyPublishedDateForYear(result, candidate, field);
             sources[field] = providerKey;
             break;
           case 'mergeExisting':
@@ -757,7 +776,9 @@ export class MetadataFetchPipeline {
 
     // Pass through chapters from the first candidate that has them, using the
     // narrators field's provider preference order as the authority for audiobook data.
-    const narratorProviders = preferences.fields['narrators']?.providers ?? [];
+    const narratorProviders = (preferences.fields['narrators']?.providers ?? []).filter(
+      (key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key),
+    );
     const chapterProviders = [...narratorProviders, ...identifying.keys()];
     for (const providerKey of chapterProviders) {
       const candidate = identifying.get(providerKey);
@@ -772,6 +793,23 @@ export class MetadataFetchPipeline {
     if (filteredComicMetadata) result.comicMetadata = filteredComicMetadata;
 
     return { resolved: result, sources, providerIds };
+  }
+
+  private resolveFieldValue(
+    providerKey: string,
+    field: MetadataField,
+    byProvider: Map<string, MetadataCandidate>,
+    folderSeries: DerivedSeries | null,
+  ): unknown {
+    if (providerKey === MetadataLocalSourceKey.FOLDER) {
+      if (!folderSeries) return undefined;
+      if (field === 'seriesName') return folderSeries.name;
+      if (field === 'seriesIndex') return folderSeries.index;
+      return undefined;
+    }
+
+    const candidate = byProvider.get(providerKey);
+    return candidate ? this.extractField(candidate, field) : undefined;
   }
 
   private extractField(candidate: MetadataCandidate, field: MetadataField): unknown {
@@ -940,7 +978,7 @@ export class MetadataFetchPipeline {
       ...(preferences.fields.seriesName?.providers ?? []),
       ...(preferences.fields.title?.providers ?? []),
       ...byProvider.keys(),
-    ] as MetadataProviderKey[];
+    ].filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key));
 
     const seen = new Set<MetadataProviderKey>();
     for (const providerKey of preferredProviders) {

@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { MetadataProviderKey } from '@bookorbit/types';
+import { MetadataLocalSourceKey, MetadataProviderKey } from '@bookorbit/types';
 
 import { ProviderConfigService } from './provider-config.service';
 
@@ -375,6 +375,7 @@ describe('ProviderConfigService', () => {
     });
 
     expect(statuses.map((s) => s.key)).toEqual([
+      MetadataLocalSourceKey.FOLDER,
       MetadataProviderKey.GOOGLE,
       MetadataProviderKey.AMAZON,
       MetadataProviderKey.GOODREADS,
@@ -390,6 +391,11 @@ describe('ProviderConfigService', () => {
       MetadataProviderKey.LUBIMYCZYTAC,
       MetadataProviderKey.ALADIN,
     ]);
+    expect(statuses.find((s) => s.key === MetadataLocalSourceKey.FOLDER)).toMatchObject({
+      enabled: true,
+      configured: true,
+      local: true,
+    });
     expect(statuses.find((s) => s.key === MetadataProviderKey.GOOGLE)?.configured).toBe(false);
     expect(statuses.find((s) => s.key === MetadataProviderKey.GOOGLE)?.hint).toContain('API key required');
     expect(statuses.find((s) => s.key === MetadataProviderKey.AMAZON)?.hint).toContain('Cookie recommended');

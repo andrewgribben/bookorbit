@@ -2,32 +2,33 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus } from '@lucide/vue'
-import type { MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
+import type { MetadataField, MetadataFieldSourceKey, ProviderStatus } from '@bookorbit/types'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { providerChipStyle, PROVIDER_SHORT_LABELS } from '@/lib/provider-colors'
-import { skipReasonFor } from '../lib/field-rules'
+import { skipReasonFor, statusesForField } from '../lib/field-rules'
 
 const { t } = useI18n()
 
 const props = defineProps<{
-  assigned: MetadataProviderKey[]
+  field: MetadataField
+  assigned: MetadataFieldSourceKey[]
   statuses: ProviderStatus[]
   disabled?: boolean
   /** Rendered in the trigger and used as its accessible name. */
   fieldLabel: string
 }>()
 
-const emit = defineEmits<{ add: [provider: MetadataProviderKey] }>()
+const emit = defineEmits<{ add: [provider: MetadataFieldSourceKey] }>()
 
 const open = ref(false)
 
 // Usable providers first: an unconfigured one can still be added, but it is not the
-// choice anyone is looking for.
+// choice anyone is looking for. Local sources only appear on fields they can supply.
 const candidates = computed(() => {
-  const available = props.statuses.filter((status) => !props.assigned.includes(status.key as MetadataProviderKey))
+  const available = statusesForField(props.field, props.statuses).filter((status) => !props.assigned.includes(status.key))
   return available
     .map((status) => ({
-      key: status.key as MetadataProviderKey,
+      key: status.key,
       label: status.label,
       short: PROVIDER_SHORT_LABELS[status.key] ?? status.key,
       skipReason: skipReasonFor(status),
@@ -35,7 +36,7 @@ const candidates = computed(() => {
     .sort((a, b) => Number(Boolean(a.skipReason)) - Number(Boolean(b.skipReason)))
 })
 
-function add(provider: MetadataProviderKey) {
+function add(provider: MetadataFieldSourceKey) {
   emit('add', provider)
   open.value = false
 }

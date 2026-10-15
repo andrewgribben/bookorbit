@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronRight, TriangleAlert } from '@lucide/vue'
-import type { FieldPreference, MetadataField, MetadataMergeStrategy, MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataFieldSourceKey, MetadataMergeStrategy, ProviderStatus } from '@bookorbit/types'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { providerChipStyle, PROVIDER_SHORT_LABELS } from '@/lib/provider-colors'
 import { Badge } from '@/components/ui/badge'
@@ -45,7 +45,7 @@ const detailId = computed(() => `field-rule-detail-${props.field}`)
 
 const mergeSummary = computed(() => t(`settings.metadata.mergeStrategy.${props.preference.mergeStrategy}.label`))
 
-function providerShortLabel(key: MetadataProviderKey): string {
+function providerShortLabel(key: MetadataFieldSourceKey): string {
   return PROVIDER_SHORT_LABELS[key] ?? key
 }
 
@@ -53,7 +53,7 @@ function update(patch: Partial<FieldPreference>) {
   emit('change', props.field, { ...props.preference, ...patch })
 }
 
-function onProvidersChange(providers: MetadataProviderKey[]) {
+function onProvidersChange(providers: MetadataFieldSourceKey[]) {
   update({ providers })
 }
 
@@ -65,7 +65,7 @@ function onEnabledChange(enabled: boolean) {
   update({ enabled })
 }
 
-function addProvider(provider: MetadataProviderKey) {
+function addProvider(provider: MetadataFieldSourceKey) {
   if (props.preference.providers.includes(provider)) return
   update({ providers: [...props.preference.providers, provider] })
 }
@@ -113,6 +113,7 @@ function collapse() {
         />
         <ProviderAddMenu
           v-if="preference.enabled"
+          :field="field"
           :assigned="preference.providers"
           :statuses="statuses"
           :disabled="saving"
