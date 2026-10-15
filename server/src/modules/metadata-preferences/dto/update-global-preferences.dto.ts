@@ -18,14 +18,18 @@ import {
 import { plainToInstance, Type } from 'class-transformer';
 import {
   ALL_METADATA_FIELDS,
+  ALL_METADATA_LOCAL_SOURCE_KEYS,
   GENRE_MERGE_MODES,
   GENRE_MERGE_STRATEGIES,
   MAX_METADATA_GENRE_COUNT,
   MetadataProviderKey,
   PROVIDER_ID_FETCH_MODES,
+  isMetadataLocalSourceKey,
+  localSourceSupportsField,
 } from '@bookorbit/types';
-import type { GenreMergeMode, MetadataField, MetadataMergeStrategy, ProviderIdFetchMode } from '@bookorbit/types';
-const PROVIDER_KEYS = Object.values(MetadataProviderKey);
+import type { GenreMergeMode, MetadataField, MetadataFieldSourceKey, MetadataMergeStrategy, ProviderIdFetchMode } from '@bookorbit/types';
+
+const FIELD_SOURCE_KEYS: MetadataFieldSourceKey[] = [...Object.values(MetadataProviderKey), ...ALL_METADATA_LOCAL_SOURCE_KEYS];
 
 export class FieldPreferenceDto {
   @IsBoolean()
@@ -33,8 +37,8 @@ export class FieldPreferenceDto {
 
   @IsArray()
   @IsString({ each: true })
-  @IsIn(PROVIDER_KEYS, { each: true })
-  providers!: MetadataProviderKey[];
+  @IsIn(FIELD_SOURCE_KEYS, { each: true })
+  providers!: MetadataFieldSourceKey[];
 
   @IsIn(GENRE_MERGE_STRATEGIES)
   mergeStrategy!: MetadataMergeStrategy;
@@ -80,6 +84,12 @@ export class IsFieldPreferencesMapConstraint implements ValidatorConstraintInter
       const instance = plainToInstance(FieldPreferenceDto, v);
       if (validateSync(instance).length > 0) return false;
       if (field !== 'genres' && instance.mergeStrategy === 'mergeExisting') return false;
+      const metadataField = field as MetadataField;
+      for (const source of instance.providers) {
+        if (isMetadataLocalSourceKey(source) && !localSourceSupportsField(source, metadataField)) {
+          return false;
+        }
+      }
     }
     return true;
   }

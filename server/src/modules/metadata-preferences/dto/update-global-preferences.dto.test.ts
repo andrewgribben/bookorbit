@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { MetadataProviderKey } from '@bookorbit/types';
+import { MetadataLocalSourceKey, MetadataProviderKey } from '@bookorbit/types';
 
 import { UpdateGlobalPreferencesDto } from './update-global-preferences.dto';
 
@@ -100,6 +100,48 @@ describe('UpdateGlobalPreferencesDto', () => {
           enabled: true,
           providers: ['unsupported-provider'],
           mergeStrategy: 'replace',
+        },
+      },
+    });
+
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          property: 'fields',
+          constraints: expect.objectContaining({
+            isFieldPreferencesMap: 'fields must be a valid map of field preferences',
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('accepts Folder as a seriesName / seriesIndex source', async () => {
+    const { errors } = await validateInput({
+      fields: {
+        seriesName: {
+          enabled: true,
+          providers: [MetadataLocalSourceKey.FOLDER, MetadataProviderKey.COMICVINE],
+          mergeStrategy: 'overwriteIfProvided',
+        },
+        seriesIndex: {
+          enabled: true,
+          providers: [MetadataLocalSourceKey.FOLDER],
+          mergeStrategy: 'fillMissing',
+        },
+      },
+    });
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects Folder on fields it cannot supply', async () => {
+    const { errors } = await validateInput({
+      fields: {
+        title: {
+          enabled: true,
+          providers: [MetadataLocalSourceKey.FOLDER, MetadataProviderKey.GOOGLE],
+          mergeStrategy: 'overwriteIfProvided',
         },
       },
     });
