@@ -678,7 +678,10 @@ export class MetadataFetchPipeline {
       if (!fieldPreference.enabled) continue;
       // Each cover slot resolves separately, with its own shape preference and fallbacks.
       if (field === 'cover' || field === 'audioCover') continue;
-      const mergeStrategy = options?.preserveExisting ? 'fillMissing' : fieldPreference.mergeStrategy;
+      // Import fetches keep remote providers fill-only so scan data is not clobbered, but local
+      // sources (Folder) still honor the field's configured merge strategy.
+      const remoteMergeStrategy: MetadataMergeStrategy = options?.preserveExisting ? 'fillMissing' : fieldPreference.mergeStrategy;
+      const fieldMergeStrategy = fieldPreference.mergeStrategy;
 
       if (field === 'genres' && preferences.options?.genres.mode === 'merge') {
         const { genres, sourceProvider } = this.mergeGenres(
@@ -689,7 +692,7 @@ export class MetadataFetchPipeline {
         );
         if (!genres.length) continue;
 
-        const resolvedGenres = this.resolveGenreWrite(genres, existing[field], mergeStrategy, genreOptions?.maxCount);
+        const resolvedGenres = this.resolveGenreWrite(genres, existing[field], remoteMergeStrategy, genreOptions?.maxCount);
         if (resolvedGenres) {
           result.genres = resolvedGenres;
           if (sourceProvider) sources.genres = sourceProvider;
@@ -699,7 +702,7 @@ export class MetadataFetchPipeline {
 
       if (field === 'communityRating') {
         const existingValue = existing[field];
-        if (mergeStrategy === 'fillMissing' && !this.isMissing(existingValue)) continue;
+        if (remoteMergeStrategy === 'fillMissing' && !this.isMissing(existingValue)) continue;
 
         const communityRatings = this.collectCommunityRatings(
           fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
@@ -713,6 +716,7 @@ export class MetadataFetchPipeline {
       }
 
       for (const providerKey of fieldPreference.providers) {
+        const mergeStrategy = isMetadataLocalSourceKey(providerKey) ? fieldMergeStrategy : remoteMergeStrategy;
         const value = this.resolveFieldValue(providerKey, field, byProvider, folderSeries);
         if (value === undefined || value === null) continue;
         if (mergeStrategy !== 'overwrite' && this.isEmptyProviderValue(value)) continue;
@@ -747,6 +751,11 @@ export class MetadataFetchPipeline {
             break;
           case 'mergeExisting':
             break;
+          default: {
+            const _exhaustive: never = mergeStrategy;
+            void _exhaustive;
+            break;
+          }
         }
         break;
       }

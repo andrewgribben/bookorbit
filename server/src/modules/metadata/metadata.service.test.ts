@@ -585,13 +585,13 @@ describe('MetadataService', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
 
-    it('leaves a series another source named when the folder only fills gaps', async () => {
-      const { db } = withCurrentSeries('Blake & Mortimer', '6');
+    it('overwrites a series another source named when the folder disagrees', async () => {
+      const { db, updateSet } = withCurrentSeries('Blake & Mortimer', '6');
       const service = makeService(db);
 
-      await expect(service.applyFolderSeries(73, { name: 'Blake et Mortimer', index: '6' })).resolves.toBe('kept');
+      await expect(service.applyFolderSeries(73, { name: 'Blake et Mortimer', index: '6' })).resolves.toBe('updated');
 
-      expect(db.update).not.toHaveBeenCalled();
+      expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ seriesName: 'Blake et Mortimer', seriesIndex: '6' }));
     });
 
     it('never clears an existing index when the folder has no number for the file', async () => {

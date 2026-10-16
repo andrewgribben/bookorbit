@@ -162,9 +162,11 @@ export class MetadataService {
   }
 
   /**
-   * The folder only fills in: it names a book that has no series and keeps the index of a book already
-   * in the folder's series in step. A series named by ComicInfo, an OPF or the user is left alone, and
-   * a folder that has no number for the file never clears an existing index.
+   * Applies the series implied by the on-disk folder (`deriveSeriesFromFolder`).
+   *
+   * The folder name wins over ComicInfo/OPF bare names (e.g. "Supergirl (2025)" over "Supergirl"):
+   * libraries that enable folder-derived series treat the path as authoritative. Locked fields are
+   * still skipped. A folder that has no number for the file never clears an existing index.
    */
   async applyFolderSeries(bookId: number, series: { name: string; index: string | null }): Promise<FolderSeriesOutcome> {
     const [current] = await this.db
@@ -179,7 +181,6 @@ export class MetadataService {
     const currentKey = normalizeMetadataTextKey(current.seriesName);
     const sameSeries = currentKey !== null && currentKey === normalizeMetadataTextKey(name);
 
-    if (currentKey !== null && !sameSeries) return 'kept';
     if (sameSeries && (series.index === null || current.seriesIndex === series.index)) return 'unchanged';
 
     const { dto: filtered } = await this.bookMetadataLockService.filterAutomatedBookUpdate(bookId, {

@@ -1089,6 +1089,55 @@ describe('MetadataFetchPipeline', () => {
     expect(sources.title).toBe(MetadataProviderKey.COMICVINE);
   });
 
+  it('still prefers Folder over existing ComicInfo series during preserveExisting import fetches', async () => {
+    const prefs = createPreferences((fields) => {
+      fields.seriesName = {
+        enabled: true,
+        providers: [MetadataLocalSourceKey.FOLDER, MetadataProviderKey.COMICVINE],
+        mergeStrategy: 'overwrite',
+      };
+      fields.seriesIndex = {
+        enabled: true,
+        providers: [MetadataProviderKey.COMICVINE],
+        mergeStrategy: 'overwriteIfProvided',
+      };
+      fields.title = {
+        enabled: true,
+        providers: [MetadataProviderKey.COMICVINE],
+        mergeStrategy: 'overwriteIfProvided',
+      };
+    });
+
+    preferencesService.getGlobal.mockResolvedValue(prefs);
+    resolver.resolve.mockReturnValue(prefs);
+    resolver.withForwardCompatibility.mockReturnValue(prefs);
+    registry.all.mockReturnValue([{ key: MetadataProviderKey.COMICVINE }] as never);
+    fetchService.searchCandidates.mockReturnValue(
+      of(
+        candidate(MetadataProviderKey.COMICVINE, '1196665', {
+          title: 'The Ego Death of Supergirl, Part One',
+          seriesName: 'Supergirl',
+          seriesIndex: '18',
+        }),
+      ),
+    );
+
+    const { resolved, sources } = await pipeline.runWithSources(
+      { title: 'Supergirl 18' },
+      { title: 'The Ego Death of Supergirl, Part One', seriesName: 'Supergirl', seriesIndex: '18' },
+      undefined,
+      {
+        preserveExisting: true,
+        folderSeries: { name: 'Supergirl (2025)', index: '18' },
+      },
+    );
+
+    expect(resolved.seriesName).toBe('Supergirl (2025)');
+    expect(sources.seriesName).toBe(MetadataLocalSourceKey.FOLDER);
+    expect(resolved.title).toBeUndefined();
+    expect(resolved.seriesIndex).toBeUndefined();
+  });
+
   it('merges genres from selected providers when genre merge mode is enabled', async () => {
     const prefs = createPreferences((fields) => {
       fields.genres = {
