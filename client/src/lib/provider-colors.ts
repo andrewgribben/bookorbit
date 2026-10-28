@@ -1,4 +1,5 @@
 import type { MetadataProviderKey } from '@bookorbit/types'
+import { providerAppearance } from './provider-appearance'
 
 const PROVIDER_HEX: Record<string, string> = {
   google: '#34A853',
@@ -15,11 +16,11 @@ const PROVIDER_HEX: Record<string, string> = {
   kobo: '#e23434',
   lubimyczytac: '#f47373',
   aladin: '#3E7FFF',
-  folder: '#6B8F71',
   auto: '#8B5CF6',
 }
 
-const DEFAULT_COLOR = 'oklch(0.5 0.01 0)'
+// An external provider that declares no colour gets a tuned theme token, legible in both themes.
+const DEFAULT_COLOR = 'var(--muted-foreground)'
 
 export const PROVIDER_SHORT_LABELS: Record<string, string> = {
   google: 'Google',
@@ -36,12 +37,16 @@ export const PROVIDER_SHORT_LABELS: Record<string, string> = {
   kobo: 'Kobo',
   lubimyczytac: 'LubimyCzytac',
   aladin: 'Aladin',
-  folder: 'Folder',
   auto: 'Fetched',
 }
 
+/** A compact name for chips: the built-in short form, else the provider's own label, else its key. */
+export function providerShortLabel(provider: string, label?: string | null): string {
+  return PROVIDER_SHORT_LABELS[provider] ?? label ?? provider
+}
+
 export function getProviderColor(provider: string): string {
-  return PROVIDER_HEX[provider] ?? DEFAULT_COLOR
+  return PROVIDER_HEX[provider] ?? providerAppearance(provider)?.color ?? DEFAULT_COLOR
 }
 
 function makeProviderPillStyle(color: string, bgPct: number, outlinePct: number): Record<string, string> {

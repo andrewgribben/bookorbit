@@ -6,13 +6,12 @@ import {
   CoverMedia,
   CoverMedium,
   FieldPreference,
-  isMetadataLocalSourceKey,
+  MetadataCacheServedProvider,
   MetadataCandidate,
   MetadataFetchCoverSlotDiagnostics,
   MetadataFetchDiagnostics,
   MetadataFetchPreferences,
   MetadataField,
-  MetadataLocalSourceKey,
   MetadataMergeStrategy,
   MetadataProviderKey,
   MetadataSeriesMembership,
@@ -20,18 +19,20 @@ import {
   ProviderConfigurations,
   parseSeriesIndex,
 } from '@bookorbit/types';
-import type { DerivedSeries } from '../scanner/lib/folder-series';
 import { firstValueFrom, toArray } from 'rxjs';
 
+import type { CacheDirective } from '../../common/provider-cache/provider-cache-spec';
 import { MetadataPreferenceResolver } from '../metadata-preferences/metadata-preference-resolver';
 import { ProviderConfigService } from '../metadata-preferences/provider-config.service';
 import { MetadataPreferencesService } from '../metadata-preferences/metadata-preferences.service';
 import { SeriesExpectedCountService } from '../../common/services/series-expected-count.service';
 import { applyGenreFetchOptions, createGenreBlocklistTokenSet, mergeExistingGenres } from '../../common/utils/genre-fetch-options.utils';
 import { normalizeMetadataText, normalizeMetadataTextKey } from '../../common/utils/metadata-text-normalize.utils';
+import { isRunYearQualifiedName } from '../../common/utils/series-run-year.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { canonicalIsbn13, isValidIsbn10, isValidIsbn13, normalizeMetadataIsbn } from '../../common/text-match/isbn-normalize';
 import { acceptAgainstAnchor, resolveCandidateAgreement } from './candidate-agreement';
-import { MetadataFetchService } from './metadata-fetch.service';
+import { MetadataFetchService, type MetadataSearchEvent, type MetadataSearchOptions } from './metadata-fetch.service';
 import { ProviderRegistry } from './provider-registry';
 import { ProviderThrottleTracker } from './provider-throttle.tracker';
 import { MetadataSearchParams } from './providers/metadata-search-params';
@@ -47,6 +48,8 @@ export interface ResolvedCoverChoice {
 }
 
 export type ResolvedMetadataFields = Partial<Record<MetadataField, string | string[] | number | null>> & {
+  isbn10?: string;
+  isbn13?: string;
   /** The ebook slot's first choice. */
   coverUrl?: string;
   coverChoices?: ResolvedCoverChoice[];
@@ -63,6 +66,9 @@ export type ResolvedMetadataFields = Partial<Record<MetadataField, string | stri
 
 /** `cover` is the ebook slot and `audioCover` the audio slot; each is present when its slot is filled. */
 export interface ExistingMetadataFields extends Partial<Record<MetadataField, unknown>> {
+  isbn10?: string | null;
+  isbn13?: string | null;
+  lockedFields?: readonly string[];
   chapters?: unknown;
   comicMetadata?: Partial<Record<keyof ComicMetadataFields, unknown>> | null;
   hardcoverEditionId?: unknown;
@@ -78,11 +84,24 @@ export interface MetadataFetchRunOptions {
   coverMedia?: CoverMedia;
   /** Cover slots whose lock is set. A locked slot is neither resolved nor searched for. */
   lockedCoverSlots?: readonly CoverMedium[];
-  /**
-   * Series implied by the book's on-disk folder. Used when Field Rules list the Folder local source
-   * ahead of (or instead of) remote providers for seriesName / seriesIndex.
-   */
-  folderSeries?: DerivedSeries | null;
+  /** How providers may use the metadata cache. Defaults to reading fresh answers with fallback. */
+  cacheDirective?: CacheDirective;
+}
+
+/** How a fetch used the metadata cache, for callers that report fallbacks or pace bulk work. */
+export interface MetadataFetchCacheUsage {
+  servedProviders: MetadataCacheServedProvider[];
+  /** Outbound provider requests made by the fetch; 0 when every provider answered from the cache. */
+  outboundRequests: number;
+}
+
+/** Providers in cooldown still contribute what the cache holds for them, but are never called. */
+const CACHE_ONLY_DIRECTIVE: CacheDirective = { policy: 'only-if-cached', allowFallback: false };
+
+interface SearchCollection {
+  candidates: MetadataCandidate[];
+  servedProviders: MetadataCacheServedProvider[];
+  outboundRequests: number;
 }
 
 type ResolvedProviderIds = Partial<Record<MetadataProviderKey, string>>;
@@ -165,6 +184,7 @@ export class MetadataFetchPipeline {
     sources: Record<string, string>;
     providerIds: ResolvedProviderIds;
     diagnostics: MetadataFetchDiagnostics;
+    cache: MetadataFetchCacheUsage;
   }> {
     return this.runInternal(params, existingFields, libraryId, options);
   }
@@ -185,6 +205,7 @@ export class MetadataFetchPipeline {
     sources: Record<string, string>;
     providerIds: ResolvedProviderIds;
     diagnostics: MetadataFetchDiagnostics;
+    cache: MetadataFetchCacheUsage;
   }> {
     const { preferences, registeredKeys, providerConfig } = await this.resolveProviderPreferenceContext(libraryId);
     const scope = this.fetchScope(params, options);
@@ -196,12 +217,20 @@ export class MetadataFetchPipeline {
       scope.media,
       existingProviderIdsOnly ? params.existingProviderIds : undefined,
     );
-    const coverOnlyProviders = this.coverOnlyProviders(preferences, scope.media, providerSelection.activeProviders);
-    const providerSearchParams = existingProviderIdsOnly ? { ...params, existingProviderIdsOnly: true } : params;
-    const searchParams = providerSelection.activeProviders.some((provider) => this.registry.servesOnlyAudiobooks(provider))
+    // Providers in cooldown are asked of the cache only, so they still contribute without a request.
+    const searchProviders = [...providerSelection.activeProviders, ...providerSelection.throttledProviders];
+    const searchOptions = this.searchOptions(options?.cacheDirective, providerSelection.throttledProviders);
+    const coverOnlyProviders = this.coverOnlyProviders(preferences, scope.media, searchProviders);
+    const providerSearchParams = {
+      ...params,
+      ...(searchProviders.includes(MetadataProviderKey.COMICVINE) ? { requireUnambiguousMatch: true } : {}),
+      ...(existingProviderIdsOnly ? { existingProviderIdsOnly: true } : {}),
+    };
+    const searchParams = searchProviders.some((provider) => this.registry.servesOnlyAudiobooks(provider))
       ? { ...providerSearchParams, includeAudiobookProviders: true }
       : providerSearchParams;
-    const candidates = await this.searchCandidates(searchParams, providerSelection.activeProviders);
+    const pass1 = await this.searchCandidates(searchParams, searchProviders, searchOptions);
+    const candidates = pass1.candidates;
 
     // The service already swallows its own failures; this guards the invariant at the boundary so
     // that a future change there can never turn a series total into a failed metadata refresh.
@@ -211,7 +240,7 @@ export class MetadataFetchPipeline {
 
     const { anchor, accepted: agreeing } = this.rejectDisagreeingCandidates(
       preferences,
-      providerSelection.activeProviders,
+      searchProviders,
       this.firstPerProvider(candidates),
       params,
       coverOnlyProviders,
@@ -223,7 +252,6 @@ export class MetadataFetchPipeline {
       params.existingProviderIds,
       options,
       coverOnlyProviders,
-      options?.folderSeries ?? null,
     );
 
     const coverSlots: Partial<Record<CoverMedium, MetadataFetchCoverSlotDiagnostics>> = {};
@@ -233,18 +261,20 @@ export class MetadataFetchPipeline {
     const otherMedium: CoverMedium = scope.primaryMedium === 'ebook' ? 'audio' : 'ebook';
     let pass2Candidates: MetadataCandidate[] = [];
     let pass2Providers: MetadataProviderKey[] = [];
+    let pass2Cache: MetadataFetchCacheUsage = { servedProviders: [], outboundRequests: 0 };
     if (this.hasMedium(scope.media, otherMedium)) {
       const other = await this.resolveOtherMediumSlot(
         preferences,
         scope,
         otherMedium,
-        { params: providerSearchParams, existingProviderIdsOnly, activeProviders: providerSelection.activeProviders },
+        { params: providerSearchParams, existingProviderIdsOnly, activeProviders: searchProviders, searchOptions },
         { anchor, agreeing },
         existingFields,
         options,
       );
       pass2Candidates = other.pass2Candidates;
       pass2Providers = other.pass2Providers;
+      pass2Cache = other.cache;
       if (other.slot) this.applyCoverSlot(resolved, sources, otherMedium, other.slot, coverSlots);
     }
 
@@ -252,21 +282,50 @@ export class MetadataFetchPipeline {
       if (this.coverSlotApplies(preferences, scope, medium) && !coverSlots[medium]) coverSlots[medium] = { provider: null, pass: null };
     }
 
+    const cache: MetadataFetchCacheUsage = {
+      servedProviders: mergeServedProviders([...pass1.servedProviders, ...pass2Cache.servedProviders]),
+      outboundRequests: pass1.outboundRequests + pass2Cache.outboundRequests,
+    };
     const diagnostics = this.buildDiagnostics(
       {
         ...providerSelection,
-        activeProviders: [...new Set([...providerSelection.activeProviders, ...pass2Providers])],
+        activeProviders: [
+          ...new Set([...providerSelection.activeProviders, ...pass2Providers.filter((p) => !providerSelection.throttledProviders.includes(p))]),
+        ],
       },
       [...agreeing.values(), ...pass2Candidates],
       resolved,
       coverSlots,
     );
-    return { resolved, sources, providerIds, diagnostics };
+    if (cache.servedProviders.length > 0) diagnostics.cacheServedProviders = cache.servedProviders;
+    return { resolved, sources, providerIds, diagnostics, cache };
   }
 
-  private async searchCandidates(params: MetadataSearchParams, providers: MetadataProviderKey[]): Promise<MetadataCandidate[]> {
-    if (providers.length === 0) return [];
-    return firstValueFrom(this.fetchService.searchCandidates(params, providers).pipe(toArray()), { defaultValue: [] as MetadataCandidate[] });
+  private searchOptions(directive: CacheDirective | undefined, throttledProviders: readonly MetadataProviderKey[]): MetadataSearchOptions {
+    return {
+      ...(directive ? { directive } : {}),
+      directiveByProvider: Object.fromEntries(throttledProviders.map((provider) => [provider, CACHE_ONLY_DIRECTIVE])),
+    };
+  }
+
+  private async searchCandidates(
+    params: MetadataSearchParams,
+    providers: MetadataProviderKey[],
+    options?: MetadataSearchOptions,
+  ): Promise<SearchCollection> {
+    const collection: SearchCollection = { candidates: [], servedProviders: [], outboundRequests: 0 };
+    if (providers.length === 0) return collection;
+    const events = await firstValueFrom(this.fetchService.search(params, providers, options).pipe(toArray()), {
+      defaultValue: [] as MetadataSearchEvent[],
+    });
+    for (const event of events) {
+      if (event.kind === 'candidate') collection.candidates.push(event.candidate);
+      else if (event.kind === 'run') {
+        collection.outboundRequests += event.run.outboundRequests;
+        if (event.run.served) collection.servedProviders.push(event.run.served);
+      }
+    }
+    return collection;
   }
 
   private firstPerProvider(candidates: readonly MetadataCandidate[]): CandidatesByProvider {
@@ -314,9 +373,7 @@ export class MetadataFetchPipeline {
     const fullRole = new Set<MetadataProviderKey>();
     for (const [field, fieldPreference] of Object.entries(preferences.fields) as [MetadataField, FieldPreference][]) {
       if (!fieldPreference.enabled || field === 'cover' || field === 'audioCover' || !this.fieldApplies(field, media)) continue;
-      for (const provider of fieldPreference.providers) {
-        if (!isMetadataLocalSourceKey(provider)) fullRole.add(provider);
-      }
+      for (const provider of fieldPreference.providers) fullRole.add(provider);
     }
     return new Set(activeProviders.filter((provider) => !fullRole.has(provider)));
   }
@@ -336,12 +393,7 @@ export class MetadataFetchPipeline {
     const mergeStrategy = options?.preserveExisting ? 'fillMissing' : fieldPreference.mergeStrategy;
     const present = !this.isMissing(existingFields[field]);
     if (mergeStrategy === 'fillMissing' && present) return null;
-    const choices = this.orderCoverChoices(
-      medium,
-      fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
-      candidates,
-      present,
-    );
+    const choices = this.orderCoverChoices(medium, fieldPreference.providers, candidates, present);
     return choices.length > 0 ? { choices, pass } : null;
   }
 
@@ -408,12 +460,23 @@ export class MetadataFetchPipeline {
     preferences: MetadataFetchPreferences,
     scope: FetchScope,
     medium: CoverMedium,
-    pass1: { params: MetadataSearchParams; existingProviderIdsOnly: boolean; activeProviders: readonly MetadataProviderKey[] },
+    pass1: {
+      params: MetadataSearchParams;
+      existingProviderIdsOnly: boolean;
+      activeProviders: readonly MetadataProviderKey[];
+      searchOptions: MetadataSearchOptions;
+    },
     agreement: { anchor: MetadataCandidate | undefined; agreeing: CandidatesByProvider },
     existingFields: ExistingMetadataFields,
     options: MetadataFetchRunOptions | undefined,
-  ): Promise<{ slot: CoverSlotResolution | null; pass2Candidates: MetadataCandidate[]; pass2Providers: MetadataProviderKey[] }> {
-    const none = { slot: null, pass2Candidates: [], pass2Providers: [] };
+  ): Promise<{
+    slot: CoverSlotResolution | null;
+    pass2Candidates: MetadataCandidate[];
+    pass2Providers: MetadataProviderKey[];
+    cache: MetadataFetchCacheUsage;
+  }> {
+    const noCache: MetadataFetchCacheUsage = { servedProviders: [], outboundRequests: 0 };
+    const none = { slot: null, pass2Candidates: [], pass2Providers: [], cache: noCache };
     if (!this.coverSlotApplies(preferences, scope, medium)) return none;
     const field = COVER_FIELD_BY_MEDIUM[medium];
     const mergeStrategy = options?.preserveExisting ? 'fillMissing' : preferences.fields[field].mergeStrategy;
@@ -425,14 +488,14 @@ export class MetadataFetchPipeline {
     const pass2Providers = pass1.existingProviderIdsOnly
       ? []
       : preferences.fields[field].providers.filter(
-          (provider): provider is MetadataProviderKey =>
-            !isMetadataLocalSourceKey(provider) && pass1.activeProviders.includes(provider) && this.registry.editionFollowsMedium(provider),
+          (provider) => pass1.activeProviders.includes(provider) && this.registry.editionFollowsMedium(provider),
         );
     if (pass2Providers.length === 0) {
       return {
         slot: this.resolveCoverSlotForMedium(preferences, scope, medium, carried, existingFields, options, 1),
         pass2Candidates: [],
         pass2Providers,
+        cache: noCache,
       };
     }
 
@@ -444,15 +507,18 @@ export class MetadataFetchPipeline {
       hardcoverEditionId: undefined,
       existingProviderIds,
       isAudiobook: medium === 'audio',
+      // The other cover slot's medium: the audiobook, or the reading side of an audiobook.
+      mediaKind: medium === 'audio' ? 'audiobook' : pass1.params.mediaKind === 'audiobook' ? 'ebook' : pass1.params.mediaKind,
       includeAudiobookProviders: false,
     };
-    const found = this.firstPerProvider(await this.searchCandidates(pass2Params, pass2Providers));
+    const pass2 = await this.searchCandidates(pass2Params, pass2Providers, pass1.searchOptions);
+    const found = this.firstPerProvider(pass2.candidates);
     const pass2Candidates = this.acceptPass2Candidates(agreement.anchor, [...found.values()], pass2Params);
     for (const candidate of pass2Candidates) carried.set(candidate.provider, candidate);
 
     const slot = this.resolveCoverSlotForMedium(preferences, scope, medium, carried, existingFields, options, 1);
     if (slot && pass2Candidates.some((candidate) => candidate.provider === slot.choices[0]?.provider)) slot.pass = 2;
-    return { slot, pass2Candidates, pass2Providers };
+    return { slot, pass2Candidates, pass2Providers, cache: { servedProviders: pass2.servedProviders, outboundRequests: pass2.outboundRequests } };
   }
 
   private acceptPass2Candidates(
@@ -561,7 +627,7 @@ export class MetadataFetchPipeline {
       if (!fieldPreference.enabled) continue;
       if (media && !this.fieldApplies(field, media)) continue;
       for (const providerKey of fieldPreference.providers) {
-        if (isMetadataLocalSourceKey(providerKey) || !eligible.has(providerKey)) continue;
+        if (!eligible.has(providerKey)) continue;
         fieldRuleProviders.add(providerKey);
         if (providerConfig[providerKey]?.enabled === false) {
           disabledFieldRuleProviders.add(providerKey);
@@ -603,7 +669,7 @@ export class MetadataFetchPipeline {
       if (this.throttleTracker.isThrottled(key)) {
         throttledProviders.push(key);
         this.logger.warn(
-          `[metadata_fetch.pipeline_provider] [fail] provider=${key} durationMs=0 errorClass=ProviderThrottleError error="provider is in cooldown" - provider skipped`,
+          `[metadata_fetch.pipeline_provider] [fail] provider=${key} durationMs=0 errorClass=ProviderThrottleError error="provider is in cooldown" - provider answered from cache only`,
         );
       } else {
         activeProviders.push(key);
@@ -665,7 +731,6 @@ export class MetadataFetchPipeline {
     existingProviderIds: Partial<Record<MetadataProviderKey, string>> | undefined,
     options: MetadataFetchRunOptions | undefined,
     coverOnlyProviders: ReadonlySet<MetadataProviderKey>,
-    folderSeries: DerivedSeries | null,
   ): { resolved: ResolvedMetadataFields; sources: Record<string, string>; providerIds: ResolvedProviderIds } {
     const result: ResolvedMetadataFields = {};
     const sources: Record<string, string> = {};
@@ -678,21 +743,27 @@ export class MetadataFetchPipeline {
       if (!fieldPreference.enabled) continue;
       // Each cover slot resolves separately, with its own shape preference and fallbacks.
       if (field === 'cover' || field === 'audioCover') continue;
-      // Import fetches keep remote providers fill-only so scan data is not clobbered, but local
-      // sources (Folder) still honor the field's configured merge strategy.
-      const remoteMergeStrategy: MetadataMergeStrategy = options?.preserveExisting ? 'fillMissing' : fieldPreference.mergeStrategy;
-      const fieldMergeStrategy = fieldPreference.mergeStrategy;
+      const mergeStrategy = options?.preserveExisting ? 'fillMissing' : fieldPreference.mergeStrategy;
+
+      if (field === 'isbn') {
+        const isbn = this.resolveIsbns(fieldPreference.providers, identifying, existing, mergeStrategy);
+        if (isbn) {
+          Object.assign(result, isbn.values);
+          for (const key of Object.keys(isbn.values)) sources[key] = isbn.provider;
+        }
+        continue;
+      }
 
       if (field === 'genres' && preferences.options?.genres.mode === 'merge') {
         const { genres, sourceProvider } = this.mergeGenres(
-          fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
+          fieldPreference.providers as MetadataProviderKey[],
           byProvider,
           blockedGenreTokens,
           genreOptions?.maxCount,
         );
         if (!genres.length) continue;
 
-        const resolvedGenres = this.resolveGenreWrite(genres, existing[field], remoteMergeStrategy, genreOptions?.maxCount);
+        const resolvedGenres = this.resolveGenreWrite(genres, existing[field], mergeStrategy, genreOptions?.maxCount);
         if (resolvedGenres) {
           result.genres = resolvedGenres;
           if (sourceProvider) sources.genres = sourceProvider;
@@ -702,12 +773,9 @@ export class MetadataFetchPipeline {
 
       if (field === 'communityRating') {
         const existingValue = existing[field];
-        if (remoteMergeStrategy === 'fillMissing' && !this.isMissing(existingValue)) continue;
+        if (mergeStrategy === 'fillMissing' && !this.isMissing(existingValue)) continue;
 
-        const communityRatings = this.collectCommunityRatings(
-          fieldPreference.providers.filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key)),
-          byProvider,
-        );
+        const communityRatings = this.collectCommunityRatings(fieldPreference.providers as MetadataProviderKey[], byProvider);
         if (communityRatings.length > 0) {
           result.communityRatings = communityRatings;
           sources.communityRating = communityRatings.map((rating) => rating.provider).join('|');
@@ -716,8 +784,10 @@ export class MetadataFetchPipeline {
       }
 
       for (const providerKey of fieldPreference.providers) {
-        const mergeStrategy = isMetadataLocalSourceKey(providerKey) ? fieldMergeStrategy : remoteMergeStrategy;
-        const value = this.resolveFieldValue(providerKey, field, byProvider, folderSeries);
+        const candidate = byProvider.get(providerKey);
+        if (!candidate) continue;
+
+        const value = this.extractField(candidate, field);
         if (value === undefined || value === null) continue;
         if (mergeStrategy !== 'overwrite' && this.isEmptyProviderValue(value)) continue;
 
@@ -734,28 +804,26 @@ export class MetadataFetchPipeline {
         }
 
         const existingValue = existing[field];
-        const candidate = isMetadataLocalSourceKey(providerKey) ? undefined : byProvider.get(providerKey);
         switch (mergeStrategy) {
           case 'fillMissing':
             if (this.isMissing(existingValue)) {
               (result as Record<string, unknown>)[field] = value;
-              if (candidate) this.copyPublishedDateForYear(result, candidate, field);
+              this.copyPublishedDateForYear(result, candidate, field);
               sources[field] = providerKey;
             }
             break;
           case 'overwrite':
           case 'overwriteIfProvided':
+            // Providers name a comic run without its start year, so taking their name would merge
+            // "Batman (2016)" back into every other "Batman" run.
+            if (field === 'seriesName' && typeof value === 'string' && isRunYearQualifiedName(existingValue as string | null | undefined, value))
+              break;
             (result as Record<string, unknown>)[field] = value;
-            if (candidate) this.copyPublishedDateForYear(result, candidate, field);
+            this.copyPublishedDateForYear(result, candidate, field);
             sources[field] = providerKey;
             break;
           case 'mergeExisting':
             break;
-          default: {
-            const _exhaustive: never = mergeStrategy;
-            void _exhaustive;
-            break;
-          }
         }
         break;
       }
@@ -784,14 +852,14 @@ export class MetadataFetchPipeline {
     }
 
     // Pass through chapters from the first candidate that has them, using the
-    // narrators field's provider preference order as the authority for audiobook data.
-    const narratorProviders = (preferences.fields['narrators']?.providers ?? []).filter(
-      (key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key),
-    );
+    // narrators field's provider preference order as the authority for audiobook data. A fetch only
+    // fills a book that has none: a provider's chapters time a release the files may not be, so
+    // replacing a list is the chapter editor's job, where the person reviews it first.
+    const narratorProviders = preferences.fields['narrators']?.providers ?? [];
     const chapterProviders = [...narratorProviders, ...identifying.keys()];
     for (const providerKey of chapterProviders) {
       const candidate = identifying.get(providerKey);
-      if (candidate?.chapters?.length && (!options?.preserveExisting || this.isMissing(existing.chapters))) {
+      if (candidate?.chapters?.length && this.isMissing(existing.chapters)) {
         result.chapters = candidate.chapters;
         break;
       }
@@ -804,21 +872,40 @@ export class MetadataFetchPipeline {
     return { resolved: result, sources, providerIds };
   }
 
-  private resolveFieldValue(
-    providerKey: string,
-    field: MetadataField,
-    byProvider: Map<string, MetadataCandidate>,
-    folderSeries: DerivedSeries | null,
-  ): unknown {
-    if (providerKey === MetadataLocalSourceKey.FOLDER) {
-      if (!folderSeries) return undefined;
-      if (field === 'seriesName') return folderSeries.name;
-      if (field === 'seriesIndex') return folderSeries.index;
-      return undefined;
-    }
+  private resolveIsbns(
+    providers: readonly string[],
+    candidates: CandidatesByProvider,
+    existing: ExistingMetadataFields,
+    strategy: MetadataMergeStrategy,
+  ): { values: Pick<ResolvedMetadataFields, 'isbn10' | 'isbn13'>; provider: string } | undefined {
+    const fillMissing = strategy === 'fillMissing';
+    const locked = new Set(existing.lockedFields);
+    const missing10 = !existing.isbn10?.trim();
+    const missing13 = !existing.isbn13?.trim();
+    if (fillMissing && !missing10 && !missing13) return undefined;
 
-    const candidate = byProvider.get(providerKey);
-    return candidate ? this.extractField(candidate, field) : undefined;
+    for (const provider of providers) {
+      const candidate = candidates.get(provider);
+      if (!candidate) continue;
+      const normalized10 = normalizeMetadataIsbn(candidate.isbn10);
+      const normalized13 = normalizeMetadataIsbn(candidate.isbn13);
+      const isbn10 = isValidIsbn10(normalized10) ? normalized10 : undefined;
+      const isbn13 = isValidIsbn13(normalized13) ? normalized13 : undefined;
+      const canonical = canonicalIsbn13(isbn13 ?? isbn10);
+      if (!canonical || (isbn10 && isbn13 && canonicalIsbn13(isbn10) !== isbn13)) continue;
+
+      // Keep the pair on one edition, including when only one side can be filled.
+      const retained = [
+        ...((fillMissing || !isbn10 || locked.has('isbn10')) && !missing10 ? [existing.isbn10] : []),
+        ...((fillMissing || !isbn13 || locked.has('isbn13')) && !missing13 ? [existing.isbn13] : []),
+      ];
+      if (retained.some((value) => canonicalIsbn13(value) !== canonical)) continue;
+      const values: Pick<ResolvedMetadataFields, 'isbn10' | 'isbn13'> = {};
+      if (isbn10 && (!fillMissing || missing10)) values.isbn10 = isbn10;
+      if (isbn13 && (!fillMissing || missing13)) values.isbn13 = isbn13;
+      if (Object.keys(values).length > 0) return { values, provider };
+    }
+    return undefined;
   }
 
   private extractField(candidate: MetadataCandidate, field: MetadataField): unknown {
@@ -987,7 +1074,7 @@ export class MetadataFetchPipeline {
       ...(preferences.fields.seriesName?.providers ?? []),
       ...(preferences.fields.title?.providers ?? []),
       ...byProvider.keys(),
-    ].filter((key): key is MetadataProviderKey => !isMetadataLocalSourceKey(key));
+    ] as MetadataProviderKey[];
 
     const seen = new Set<MetadataProviderKey>();
     for (const providerKey of preferredProviders) {
@@ -1024,4 +1111,23 @@ export class MetadataFetchPipeline {
     }
     return false;
   }
+}
+
+/** One entry per provider across both passes; a fallback or stale answer outranks a fresh one. */
+function mergeServedProviders(served: readonly MetadataCacheServedProvider[]): MetadataCacheServedProvider[] {
+  const byProvider = new Map<string, MetadataCacheServedProvider>();
+  for (const entry of served) {
+    const existing = byProvider.get(entry.provider);
+    if (!existing) {
+      byProvider.set(entry.provider, entry);
+      continue;
+    }
+    byProvider.set(entry.provider, {
+      provider: entry.provider,
+      source: existing.source === 'fallback' || entry.source === 'fallback' ? 'fallback' : 'cache',
+      stale: existing.stale || entry.stale,
+      cachedAt: existing.cachedAt < entry.cachedAt ? existing.cachedAt : entry.cachedAt,
+    });
+  }
+  return [...byProvider.values()];
 }

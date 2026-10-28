@@ -1,8 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ALL_METADATA_FIELDS } from '@bookorbit/types'
-import type { FieldPreference, FieldPreferenceOverrides, MetadataField, MetadataFetchPreferences, MetadataFieldSourceKey } from '@bookorbit/types'
-import { isMetadataLocalSourceKey, localSourceSupportsField } from '@bookorbit/types'
+import type { FieldPreference, FieldPreferenceOverrides, MetadataField, MetadataFetchPreferences, MetadataProviderKey } from '@bookorbit/types'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import { useMetadataPreferences } from './useMetadataPreferences'
 import { applyProviderAction, BULK_REORDER_EXEMPT_FIELDS, type ProviderBulkAction } from '../lib/field-rules'
@@ -49,7 +48,12 @@ function draftKey(id: FieldRuleScopeId): string {
  */
 export function useFieldRuleScopes() {
   const { t } = useI18n()
-  const { libraries, fetchLibraries } = useLibraries()
+  const { libraries: allLibraries, fetchLibraries } = useLibraries()
+  /**
+   * Field rules belong to book libraries. A podcast library has none, and the server refuses to
+   * answer for one, so listing it gave a tab that spun forever.
+   */
+  const libraries = computed(() => allLibraries.value.filter((library) => library.type === 'books'))
   const prefs = useMetadataPreferences()
 
   const activeScopeId = ref<FieldRuleScopeId>(GLOBAL_SCOPE)
@@ -212,10 +216,9 @@ export function useFieldRuleScopes() {
   }
 
   /** Moves or removes one provider across every field in the active scope. */
-  function applyProviderToAllFields(provider: MetadataFieldSourceKey, action: ProviderBulkAction) {
+  function applyProviderToAllFields(provider: MetadataProviderKey, action: ProviderBulkAction) {
     updateEveryField((pref, field) => {
       if (action !== 'remove' && BULK_REORDER_EXEMPT_FIELDS.has(field)) return pref
-      if (action !== 'remove' && isMetadataLocalSourceKey(provider) && !localSourceSupportsField(provider, field)) return pref
       const providers = applyProviderAction(pref.providers, provider, action)
       return providers.length === pref.providers.length && providers.every((key, index) => key === pref.providers[index])
         ? pref

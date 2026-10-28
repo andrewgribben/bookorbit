@@ -27,10 +27,11 @@ const PEOPLE_SHOWN = 3
 
 const { t } = useI18n()
 
-const organizationLabel = computed(() => {
-  if (props.library.organizationMode !== 'book_per_file') return t('settings.admin.libraries.folderMode')
-  return props.library.deriveSeriesFromFolder ? t('settings.admin.libraries.fileModeSeriesFromFolders') : t('settings.admin.libraries.fileMode')
-})
+const organizationLabel = computed(() =>
+  props.library.organizationMode === 'book_per_file'
+    ? t('library.creator.scanner.scanMode.fileAsBook.title')
+    : t('library.creator.scanner.scanMode.folderAsBook.title'),
+)
 const excludeLabel = computed(() =>
   props.library.excludePatterns.length === 0
     ? t('settings.admin.libraries.detail.none')
@@ -213,9 +214,9 @@ async function copyPath(folderId: number, path: string) {
             </dd>
           </div>
           <div class="flex items-center gap-3 border-t border-border py-1.5">
-            <dt class="shrink-0 text-[12.5px] text-muted-foreground">{{ t('settings.admin.libraries.detail.coverShape') }}</dt>
+            <dt class="shrink-0 text-[12.5px] text-muted-foreground">{{ t('settings.admin.libraries.detail.gridShape') }}</dt>
             <dd class="ms-auto text-[12.5px] font-medium text-foreground">
-              {{ t(`settings.admin.libraries.detail.coverShapeValue.${library.coverAspectRatio === '1/1' ? 'square' : 'portrait'}`) }}
+              {{ t(`settings.admin.libraries.detail.gridShapeValue.${library.coverAspectRatio === '1/1' ? 'square' : 'tall'}`) }}
             </dd>
           </div>
         </dl>

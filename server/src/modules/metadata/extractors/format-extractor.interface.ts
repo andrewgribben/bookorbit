@@ -49,6 +49,11 @@ export interface ParsedBookData {
   hasEmbeddedMetadata?: boolean;
 }
 
+export interface FormatExtractOptions {
+  /** False skips reading the cover; the result's cover is then null. */
+  cover?: boolean;
+}
+
 export interface FormatExtractor {
-  extract(absolutePath: string): Promise<ParsedBookData | null>;
+  extract(absolutePath: string, options?: FormatExtractOptions): Promise<ParsedBookData | null>;
 }

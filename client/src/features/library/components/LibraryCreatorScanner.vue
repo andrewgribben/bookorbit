@@ -2,19 +2,28 @@
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, Lock, Plus, RefreshCw, TriangleAlert, X } from '@lucide/vue'
-import { BOOK_FORMATS, type AddedAtRecomputeJob, type AddedAtSource, type OrganizationMode } from '@bookorbit/types'
+import {
+  BOOK_FORMATS,
+  FOLDER_SERIES_REGEX_METADATA,
+  isFolderSeriesRegexMetadata,
+  type AddedAtRecomputeJob,
+  type AddedAtSource,
+  type OrganizationMode,
+  type RegexMetadataConfig,
+} from '@bookorbit/types'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { formatNumber } from '@/i18n/formatters'
 import { formatColorVar } from '@/features/book/lib/format-colors'
 import { formatFamilyColor } from '@/features/settings/libraries/lib/library-formats'
 import LibraryCreatorCard from './LibraryCreatorCard.vue'
 import LibraryOrganizationPreview from './LibraryOrganizationPreview.vue'
+import LibrarySeriesPreview from './LibrarySeriesPreview.vue'
 
 const { t } = useI18n()
 
 const props = defineProps<{
   organizationMode: OrganizationMode
   organizationModeLocked?: boolean
-  deriveSeriesFromFolder: boolean
   allowedFormats: string[]
   addedAtSource: AddedAtSource
   canRecomputeAddedAt?: boolean
@@ -23,28 +32,38 @@ const props = defineProps<{
   recomputeJob?: AddedAtRecomputeJob | null
   recomputeErrorKey?: string | null
   excludePatterns: string[]
+  regexMetadata?: RegexMetadataConfig | null
+  /** Custom rules that turning folders-as-series on replaced, brought back when it is turned off. */
+  replacedRegexMetadata?: RegexMetadataConfig | null
 }>()
 
 const emit = defineEmits<{
   'update:organizationMode': [value: OrganizationMode]
-  'update:deriveSeriesFromFolder': [value: boolean]
   'update:allowedFormats': [value: string[]]
   'update:addedAtSource': [value: AddedAtSource]
   'update:excludePatterns': [value: string[]]
+  'update:regexMetadata': [value: RegexMetadataConfig | null]
+  'update:replacedRegexMetadata': [value: RegexMetadataConfig | null]
   recompute: []
 }>()
 
-const ORGANIZATION_MODES: OrganizationMode[] = ['book_per_folder', 'book_per_file']
+/**
+ * The layouts offered at creation. "Series folders" is not a third organization mode: it is File as
+ * Book with folders as series, offered as its own choice because that is the layout Komga and Kavita
+ * users arrive with.
+ */
+type LayoutId = OrganizationMode | 'series_folders'
+const LAYOUTS: LayoutId[] = ['book_per_folder', 'book_per_file', 'series_folders']
 const ADDED_AT_SOURCES: AddedAtSource[] = ['imported', 'file_modified', 'file_created']
 const FORMAT_GROUPS: { id: 'ebook' | 'kindle' | 'document' | 'comic' | 'audio'; formats: string[] }[] = [
   { id: 'ebook', formats: ['epub', 'kepub', 'fb2'] },
   { id: 'kindle', formats: ['mobi', 'azw3', 'azw'] },
-  { id: 'document', formats: ['pdf'] },
+  { id: 'document', formats: ['pdf', 'djvu'] },
   { id: 'comic', formats: ['cbz', 'cbr', 'cb7'] },
   { id: 'audio', formats: ['m4b', 'mp3', 'm4a', 'opus', 'ogg', 'flac'] },
 ]
 
-const modeCopy = computed<Record<OrganizationMode, { title: string; hint: string; result: string }>>(() => ({
+const layoutCopy = computed<Record<LayoutId, { title: string; hint: string; result: string }>>(() => ({
   book_per_folder: {
     title: t('library.creator.scanner.scanMode.folderAsBook.title'),
     hint: t('library.creator.scanner.mode.folderHint'),
@@ -55,7 +74,16 @@ const modeCopy = computed<Record<OrganizationMode, { title: string; hint: string
     hint: t('library.creator.scanner.mode.fileHint'),
     result: t('library.creator.scanner.mode.fileResult'),
   },
+  series_folders: {
+    title: t('library.creator.scanner.scanMode.seriesFolders.title'),
+    hint: t('library.creator.scanner.mode.seriesHint'),
+    result: t('library.creator.scanner.mode.seriesResult'),
+  },
 }))
+// Once the library exists only the mode is shown, and File as Book also covers series folders there.
+const lockedHint = computed(() =>
+  props.organizationMode === 'book_per_folder' ? t('library.creator.scanner.mode.folderHint') : t('library.creator.scanner.mode.fileHintSeries'),
+)
 
 // ── Import ────────────────────────────────────────────────────────────────────
 
@@ -118,9 +146,36 @@ function onPatternKeydown(event: KeyboardEvent) {
 
 // ── Organization ────────────────────────────────────────────────────────────────
 
-function selectMode(event: Event) {
+const layout = computed<LayoutId>(() => {
+  if (props.organizationMode === 'book_per_folder') return 'book_per_folder'
+  return folderSeries.value ? 'series_folders' : 'book_per_file'
+})
+
+function selectLayout(event: Event) {
   if (props.organizationModeLocked) return
-  emit('update:organizationMode', (event.target as HTMLInputElement).value as OrganizationMode)
+  const next = (event.target as HTMLInputElement).value as LayoutId
+  const mode: OrganizationMode = next === 'book_per_folder' ? 'book_per_folder' : 'book_per_file'
+  if (mode !== props.organizationMode) emit('update:organizationMode', mode)
+  // In Folder as Book the folder is the book, so the folder rules would name each series after its book.
+  if (next === 'series_folders') {
+    if (!folderSeries.value) setFolderSeries(true)
+  } else if (folderSeries.value) setFolderSeries(false)
+}
+
+// ── Series ────────────────────────────────────────────────────────────────────
+
+const folderSeries = computed(() => isFolderSeriesRegexMetadata(props.regexMetadata))
+const customRules = computed(() => Boolean(props.regexMetadata) && !folderSeries.value)
+
+function setFolderSeries(value: boolean) {
+  if (value) {
+    const replaced = customRules.value && props.regexMetadata ? { rules: props.regexMetadata.rules.map((rule) => ({ ...rule })) } : null
+    emit('update:replacedRegexMetadata', replaced)
+    emit('update:regexMetadata', { preset: 'folder_series', rules: FOLDER_SERIES_REGEX_METADATA.rules.map((rule) => ({ ...rule })) })
+  } else {
+    emit('update:regexMetadata', props.replacedRegexMetadata ?? null)
+    emit('update:replacedRegexMetadata', null)
+  }
 }
 
 // ── Date added ────────────────────────────────────────────────────────────────
@@ -167,10 +222,6 @@ async function confirmRecompute() {
   await nextTick()
   sourceGroup.value?.querySelector<HTMLInputElement>('input:checked')?.focus()
 }
-
-function handleDeriveSeriesChange(event: Event) {
-  emit('update:deriveSeriesFromFolder', (event.target as HTMLInputElement).checked)
-}
 </script>
 
 <template>
@@ -186,8 +237,8 @@ function handleDeriveSeriesChange(event: Event) {
       <div v-if="organizationModeLocked" class="flex flex-col gap-3 @md:flex-row @md:items-center">
         <LibraryOrganizationPreview :mode="organizationMode" class="w-full shrink-0 @md:w-44" />
         <div class="min-w-0">
-          <p class="text-sm font-semibold text-foreground">{{ modeCopy[organizationMode].title }}</p>
-          <p class="mt-0.5 text-xs text-muted-foreground">{{ modeCopy[organizationMode].hint }}</p>
+          <p class="text-sm font-semibold text-foreground">{{ layoutCopy[organizationMode].title }}</p>
+          <p class="mt-0.5 text-xs text-muted-foreground">{{ lockedHint }}</p>
           <p class="mt-1.5 text-xs text-muted-foreground">{{ t('library.creator.scanner.scanMode.lockTooltip') }}</p>
         </div>
       </div>
@@ -195,33 +246,40 @@ function handleDeriveSeriesChange(event: Event) {
       <template v-else>
         <div role="radiogroup" aria-labelledby="organization-mode-title" class="grid gap-2.5">
           <label
-            v-for="mode in ORGANIZATION_MODES"
-            :key="mode"
+            v-for="id in LAYOUTS"
+            :key="id"
             class="flex cursor-pointer flex-col gap-2.5 rounded-xl border p-3 transition-colors focus-within:ring-2 focus-within:ring-ring"
-            :class="organizationMode === mode ? 'border-primary bg-primary/7 ring-1 ring-primary' : 'border-border bg-background hover:bg-muted'"
+            :class="layout === id ? 'border-primary bg-primary/7 ring-1 ring-primary' : 'border-border bg-background hover:bg-muted'"
           >
-            <span class="flex items-center gap-2">
+            <span class="flex flex-wrap items-center gap-2">
               <input
                 type="radio"
                 name="organization-mode"
-                :value="mode"
-                :checked="organizationMode === mode"
+                :value="id"
+                :checked="layout === id"
                 class="size-4 shrink-0 accent-primary"
-                @change="selectMode"
+                @change="selectLayout"
               />
-              <span class="text-sm font-semibold text-foreground">{{ modeCopy[mode].title }}</span>
-              <span v-if="mode === 'book_per_folder'" class="ms-auto rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              <span class="text-sm font-semibold text-foreground">{{ layoutCopy[id].title }}</span>
+              <span v-if="id === 'book_per_folder'" class="ms-auto rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                 {{ t('library.creator.scanner.scanMode.recommended') }}
+              </span>
+              <span
+                v-else-if="id === 'series_folders'"
+                class="ms-auto rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              >
+                {{ t('library.creator.scanner.scanMode.seriesFolders.uses') }}
               </span>
             </span>
             <span class="flex flex-col gap-2.5 @md:flex-row @md:items-center">
-              <LibraryOrganizationPreview :mode="mode" class="shrink-0 @md:w-44" />
+              <LibrarySeriesPreview v-if="id === 'series_folders'" class="shrink-0 @md:w-44" />
+              <LibraryOrganizationPreview v-else :mode="id" class="shrink-0 @md:w-44" />
               <span class="flex min-w-0 flex-col gap-1">
                 <span class="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                   <ArrowRight :size="12" class="shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden="true" />
-                  {{ modeCopy[mode].result }}
+                  {{ layoutCopy[id].result }}
                 </span>
-                <span class="text-xs text-muted-foreground">{{ modeCopy[mode].hint }}</span>
+                <span class="text-xs text-muted-foreground">{{ layoutCopy[id].hint }}</span>
               </span>
             </span>
           </label>
@@ -231,35 +289,28 @@ function handleDeriveSeriesChange(event: Event) {
           {{ t('library.creator.scanner.mode.cannotChange') }}
         </p>
       </template>
+    </LibraryCreatorCard>
 
-      <label
-        v-if="organizationMode === 'book_per_file'"
-        class="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors focus-within:ring-2 focus-within:ring-ring"
-        :class="deriveSeriesFromFolder ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-primary/40'"
-      >
-        <input
-          type="checkbox"
-          class="mt-0.5 accent-primary"
-          :checked="deriveSeriesFromFolder"
-          aria-describedby="series-from-folders-hint"
-          @change="handleDeriveSeriesChange"
-        />
-        <span class="min-w-0">
-          <span class="flex flex-wrap items-center gap-2">
-            <span class="text-sm font-semibold text-foreground">{{ t('library.creator.scanner.seriesFromFolders.title') }}</span>
-            <span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {{ t('library.creator.scanner.seriesFromFolders.badge') }}
-            </span>
-          </span>
-          <span id="series-from-folders-hint" class="mt-1.5 block space-y-1.5 text-xs text-muted-foreground leading-relaxed">
-            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.why') }}</span>
-            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.how') }}</span>
-            <span class="block font-mono text-[11px] text-muted-foreground">{{ t('library.creator.scanner.seriesFromFolders.example') }}</span>
-            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.whenNot') }}</span>
-            <span class="block">{{ t('library.creator.scanner.seriesFromFolders.precedence') }}</span>
-          </span>
-        </span>
-      </label>
+    <LibraryCreatorCard v-if="organizationMode === 'book_per_file'" :label="t('library.creator.scanner.series.title')" label-id="series-card-title">
+      <div class="flex flex-col gap-3 @md:flex-row @md:items-start">
+        <LibrarySeriesPreview v-if="folderSeries && organizationModeLocked" class="w-full shrink-0 @md:w-56" />
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2.5">
+            <ToggleSwitch
+              :model-value="folderSeries"
+              aria-labelledby="folder-series-title"
+              aria-describedby="folder-series-hint"
+              @update:model-value="setFolderSeries"
+            />
+            <span id="folder-series-title" class="text-sm font-semibold text-foreground">{{ t('library.creator.scanner.series.toggle') }}</span>
+          </div>
+          <div id="folder-series-hint" class="mt-1.5 space-y-1 text-xs text-muted-foreground">
+            <p>{{ folderSeries ? t('library.creator.scanner.series.hintOn') : t('library.creator.scanner.series.hintOff') }}</p>
+            <p v-if="customRules">{{ t('library.creator.scanner.series.replacesCustom') }}</p>
+            <p v-else-if="folderSeries && organizationModeLocked">{{ t('library.creator.scanner.series.existingBooks') }}</p>
+          </div>
+        </div>
+      </div>
     </LibraryCreatorCard>
 
     <LibraryCreatorCard :label="t('library.creator.scanner.import.title')" label-id="import-formats-title">
@@ -329,7 +380,7 @@ function handleDeriveSeriesChange(event: Event) {
           {{ pattern }}
           <button
             type="button"
-            class="flex size-4.5 items-center justify-center rounded text-foreground hover:bg-muted hover:text-destructive"
+            class="flex size-4.5 items-center justify-center rounded-xs text-foreground hover:bg-muted hover:text-destructive"
             :aria-label="t('library.creator.scanner.skip.remove', { pattern })"
             @click="removePattern(pattern)"
           >

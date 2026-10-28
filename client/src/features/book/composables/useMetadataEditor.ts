@@ -3,7 +3,7 @@ import { api } from '@/lib/api'
 import { readApiErrorDetail } from '@/lib/api-error'
 import {
   FORMAT_TO_GROUP,
-  type AudiobookChapter,
+  isKnownMetadataProviderKey,
   type BookCommunityRating,
   type BookDetail,
   type BookMetadataLockField,
@@ -11,7 +11,6 @@ import {
   type CustomMetadataBookValue,
   type CustomMetadataBookValueInput,
 } from '@bookorbit/types'
-import { chaptersForPayload, normalizeEditableChapters } from '../lib/audiobook-chapters'
 
 export type EditableSeriesMembership = {
   seriesName: string
@@ -71,10 +70,6 @@ const AUDIO_FIELDS = {
   abridged: 'abridged',
 } as const
 
-function audioChaptersEqual(left: readonly AudiobookChapter[], right: readonly AudiobookChapter[]): boolean {
-  return JSON.stringify(chaptersForPayload(left)) === JSON.stringify(chaptersForPayload(right))
-}
-
 function normalizePageCount(value: number | null): number | null {
   return typeof value === 'number' && value > 0 ? value : null
 }
@@ -129,6 +124,26 @@ export type MetadataSaveFailure = {
   status: number | null
 }
 
+/** The ids of external providers on a book: every key of `providerIds` without an id field of its own. */
+function externalIdsFromBook(book: BookDetail): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(book.providerIds).filter(
+      (entry): entry is [string, string] => !isKnownMetadataProviderKey(entry[0]) && typeof entry[1] === 'string' && entry[1] !== '',
+    ),
+  )
+}
+
+/** Only what changed: a new or edited id as itself, a removed or emptied one as null. */
+function changedExternalProviderIds(current: Record<string, string>, previous: Record<string, string>): Record<string, string | null> | null {
+  const changes: Record<string, string | null> = {}
+  for (const key of new Set([...Object.keys(current), ...Object.keys(previous)])) {
+    const next = current[key]?.trim() ?? ''
+    if (next === (previous[key] ?? '')) continue
+    changes[key] = next || null
+  }
+  return Object.keys(changes).length > 0 ? changes : null
+}
+
 export function useMetadataEditor() {
   const saving = ref(false)
   const error = ref<MetadataSaveFailure | null>(null)
@@ -155,7 +170,6 @@ export function useMetadataEditor() {
     narrators: [] as string[],
     durationSeconds: null as number | null,
     abridged: false as boolean,
-    chapters: [] as AudiobookChapter[],
     googleBooksId: null as string | null,
     goodreadsId: null as string | null,
     amazonId: null as string | null,
@@ -170,6 +184,9 @@ export function useMetadataEditor() {
     ranobedbId: null as string | null,
     lubimyczytacId: null as string | null,
     aladinId: null as string | null,
+    /** External providers' ids, keyed by provider. An empty string clears one on save. */
+    externalProviderIds: {} as Record<string, string>,
+    externalProviderLinks: {} as Record<string, string>,
     comicIssueNumber: null as string | null,
     comicVolumeName: null as string | null,
     comicStoryArcs: [] as string[],
@@ -212,7 +229,6 @@ export function useMetadataEditor() {
     form.narrators = book.audioMetadata?.narrators?.map((n) => n.name) ?? []
     form.durationSeconds = book.audioMetadata?.durationSeconds ?? null
     form.abridged = book.audioMetadata?.abridged ?? false
-    form.chapters = normalizeEditableChapters(book.audioMetadata?.chapters)
     form.googleBooksId = book.providerIds.google ?? null
     form.goodreadsId = book.providerIds.goodreads ?? null
     form.amazonId = book.providerIds.amazon ?? null
@@ -227,6 +243,10 @@ export function useMetadataEditor() {
     form.ranobedbId = book.providerIds.ranobedb ?? null
     form.lubimyczytacId = book.providerIds.lubimyczytac ?? null
     form.aladinId = book.providerIds.aladin ?? null
+    form.externalProviderIds = externalIdsFromBook(book)
+    form.externalProviderLinks = Object.fromEntries(
+      Object.entries(book.providerLinks ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    )
     const cm = book.comicMetadata
     form.comicIssueNumber = cm?.issueNumber ?? null
     form.comicVolumeName = cm?.volumeName ?? null
@@ -298,12 +318,18 @@ export function useMetadataEditor() {
           audioMetadata[payloadKey] = form[formKey]
         }
       }
-      if (!audioChaptersEqual(form.chapters, previous.chapters)) {
-        audioMetadata.chapters = chaptersForPayload(form.chapters)
-      }
       if (Object.keys(audioMetadata).length > 0) {
         payload.audioMetadata = audioMetadata
       }
+    }
+
+    const externalIds = changedExternalProviderIds(form.externalProviderIds, previous.externalProviderIds)
+    if (externalIds) {
+      payload.externalProviderIds = externalIds
+      const links = Object.fromEntries(
+        Object.keys(externalIds).flatMap((key) => (form.externalProviderLinks[key] ? [[key, form.externalProviderLinks[key]]] : [])),
+      )
+      if (Object.keys(links).length > 0) payload.externalProviderLinks = links
     }
 
     const customMetadata = changedCustomMetadataPayload(form.customMetadata, previous.customMetadata)
@@ -347,11 +373,5 @@ export function useMetadataEditor() {
     }
   }
 
-  const chaptersDirty = computed(() => {
-    if (!includeAudioMetadata.value) return false
-    const previous = JSON.parse(snapshot.value) as typeof form
-    return !audioChaptersEqual(form.chapters, previous.chapters)
-  })
-
-  return { form, saving, error, isDirty, chaptersDirty, load, syncFromBook, reset, save }
+  return { form, saving, error, isDirty, load, syncFromBook, reset, save }
 }

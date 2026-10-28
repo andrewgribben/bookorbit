@@ -2,9 +2,9 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronRight, TriangleAlert } from '@lucide/vue'
-import type { FieldPreference, MetadataField, MetadataFieldSourceKey, MetadataMergeStrategy, ProviderStatus } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataMergeStrategy, MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
-import { providerChipStyle, PROVIDER_SHORT_LABELS } from '@/lib/provider-colors'
+import { providerChipStyle, providerShortLabel as shortLabelFor } from '@/lib/provider-colors'
 import { Badge } from '@/components/ui/badge'
 import ProviderChipList from './ProviderChipList.vue'
 import ProviderAddMenu from './ProviderAddMenu.vue'
@@ -33,8 +33,8 @@ const emit = defineEmits<{
 }>()
 
 const label = computed(() => t(fieldRuleLabelKey(props.field)))
-const resolved = computed(() => resolvedProviders(props.preference.providers, props.statuses))
-const skipped = computed(() => skippedProviders(props.preference.providers, props.statuses))
+const resolved = computed(() => resolvedProviders(props.preference.providers, props.statuses, props.field))
+const skipped = computed(() => skippedProviders(props.preference.providers, props.statuses, props.field))
 const hasNoUsableProvider = computed(() => props.preference.enabled && resolved.value.length === 0)
 
 /** Mobile shows a fixed-width preview so every row is the same height. */
@@ -45,15 +45,15 @@ const detailId = computed(() => `field-rule-detail-${props.field}`)
 
 const mergeSummary = computed(() => t(`settings.metadata.mergeStrategy.${props.preference.mergeStrategy}.label`))
 
-function providerShortLabel(key: MetadataFieldSourceKey): string {
-  return PROVIDER_SHORT_LABELS[key] ?? key
+function providerShortLabel(key: MetadataProviderKey): string {
+  return shortLabelFor(key, props.statuses.find((entry) => entry.key === key)?.label)
 }
 
 function update(patch: Partial<FieldPreference>) {
   emit('change', props.field, { ...props.preference, ...patch })
 }
 
-function onProvidersChange(providers: MetadataFieldSourceKey[]) {
+function onProvidersChange(providers: MetadataProviderKey[]) {
   update({ providers })
 }
 
@@ -65,7 +65,7 @@ function onEnabledChange(enabled: boolean) {
   update({ enabled })
 }
 
-function addProvider(provider: MetadataFieldSourceKey) {
+function addProvider(provider: MetadataProviderKey) {
   if (props.preference.providers.includes(provider)) return
   update({ providers: [...props.preference.providers, provider] })
 }
@@ -88,10 +88,10 @@ function collapse() {
 </script>
 
 <template>
-  <div class="border-b border-border/60 last:border-b-0" :class="expanded ? 'bg-muted/15' : ''">
-    <!-- ── Desktop row ─────────────────────────────────────── -->
+  <div class="border-b border-border/60 last:border-b-0 md:col-span-full md:grid md:grid-cols-subgrid" :class="expanded ? 'bg-muted/15' : ''">
+    <!-- ── Desktop row: a subgrid of FieldRulesTable's columns ── -->
     <div
-      class="hidden items-center gap-4 px-4 py-2 transition-colors md:grid md:px-6 md:grid-cols-[minmax(160px,200px)_minmax(0,1fr)_272px_116px]"
+      class="hidden items-center px-4 py-2 transition-colors md:col-span-full md:grid md:grid-cols-subgrid md:px-6"
       :class="expanded ? '' : 'hover:bg-muted/25'"
     >
       <div class="flex min-w-0 items-center gap-3">
@@ -108,16 +108,17 @@ function collapse() {
         <ProviderChipList
           :providers="preference.providers"
           :statuses="statuses"
+          :field="field"
           :disabled="!preference.enabled || saving"
           @update:providers="onProvidersChange"
         />
         <ProviderAddMenu
           v-if="preference.enabled"
-          :field="field"
           :assigned="preference.providers"
           :statuses="statuses"
           :disabled="saving"
           :field-label="label"
+          :field="field"
           @add="addProvider"
         />
         <span v-if="skipped.length" class="inline-flex items-center gap-1 text-xs font-medium text-warning">
@@ -193,7 +194,7 @@ function collapse() {
           <span
             v-for="(key, index) in previewProviders"
             :key="key"
-            class="provider-chip inline-flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] font-medium"
+            class="provider-chip inline-flex h-5 shrink-0 items-center gap-1 rounded-xs px-1.5 text-[11px] font-medium"
             :style="providerChipStyle(key)"
           >
             <span class="tabular-nums opacity-70">{{ index + 1 }}</span>
@@ -217,14 +218,15 @@ function collapse() {
       <component :is="expanded ? ChevronDown : ChevronRight" :size="16" class="mt-1 shrink-0 text-muted-foreground" aria-hidden="true" />
     </div>
 
-    <div v-if="hasNoUsableProvider && !expanded" class="flex items-center gap-2 px-4 pb-2.5 text-xs text-warning md:px-6 md:pb-2">
+    <div v-if="hasNoUsableProvider && !expanded" class="flex items-center gap-2 px-4 pb-2.5 text-xs text-warning md:col-span-full md:px-6 md:pb-2">
       <TriangleAlert :size="13" class="shrink-0" aria-hidden="true" />
-      {{ t('settings.metadata.fieldRules.field.noProviders') }}
+      {{ t('settings.metadata.fieldRules.field.noUsableProvider') }}
     </div>
 
     <FieldRuleDetail
       v-if="expanded"
       :id="detailId"
+      class="md:col-span-full"
       :field="field"
       :field-label="label"
       :preference="preference"

@@ -16,29 +16,23 @@ import {
   validateSync,
 } from 'class-validator';
 import { plainToInstance, Type } from 'class-transformer';
-import {
-  ALL_METADATA_FIELDS,
-  ALL_METADATA_LOCAL_SOURCE_KEYS,
-  GENRE_MERGE_MODES,
-  GENRE_MERGE_STRATEGIES,
-  MAX_METADATA_GENRE_COUNT,
-  MetadataProviderKey,
-  PROVIDER_ID_FETCH_MODES,
-  isMetadataLocalSourceKey,
-  localSourceSupportsField,
-} from '@bookorbit/types';
-import type { GenreMergeMode, MetadataField, MetadataFieldSourceKey, MetadataMergeStrategy, ProviderIdFetchMode } from '@bookorbit/types';
+import { ALL_METADATA_FIELDS, GENRE_MERGE_MODES, GENRE_MERGE_STRATEGIES, MAX_METADATA_GENRE_COUNT, PROVIDER_ID_FETCH_MODES } from '@bookorbit/types';
+import type { GenreMergeMode, MetadataField, MetadataMergeStrategy, MetadataProviderKey, ProviderIdFetchMode } from '@bookorbit/types';
 
-const FIELD_SOURCE_KEYS: MetadataFieldSourceKey[] = [...Object.values(MetadataProviderKey), ...ALL_METADATA_LOCAL_SOURCE_KEYS];
+import { IsMetadataProviderKey } from '../../../common/decorators/is-metadata-provider-key.decorator';
 
 export class FieldPreferenceDto {
   @IsBoolean()
   enabled!: boolean;
 
+  /**
+   * External providers' keys are accepted on syntax alone: one removed since the rule was saved is
+   * dropped when the rule is used, so a client re-saving the rule it was given never gets a 400.
+   */
   @IsArray()
   @IsString({ each: true })
-  @IsIn(FIELD_SOURCE_KEYS, { each: true })
-  providers!: MetadataFieldSourceKey[];
+  @IsMetadataProviderKey({ each: true })
+  providers!: MetadataProviderKey[];
 
   @IsIn(GENRE_MERGE_STRATEGIES)
   mergeStrategy!: MetadataMergeStrategy;
@@ -84,12 +78,6 @@ export class IsFieldPreferencesMapConstraint implements ValidatorConstraintInter
       const instance = plainToInstance(FieldPreferenceDto, v);
       if (validateSync(instance).length > 0) return false;
       if (field !== 'genres' && instance.mergeStrategy === 'mergeExisting') return false;
-      const metadataField = field as MetadataField;
-      for (const source of instance.providers) {
-        if (isMetadataLocalSourceKey(source) && !localSourceSupportsField(source, metadataField)) {
-          return false;
-        }
-      }
     }
     return true;
   }

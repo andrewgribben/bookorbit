@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { expect, vi } from 'vitest';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 import { count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { hash } from 'bcryptjs';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -113,10 +114,12 @@ export interface E2EContext {
 
 /**
  * Scans write and prune covers under APP_DATA_PATH, which `.env` points at the developer's own
- * data folder. Suites that scan and do not set their own path pass `isolateAppData`.
+ * data folder. Suites that scan and do not set their own path pass `isolateAppData`. Suites that
+ * upload files pass `multipart`, which `main.ts` registers for the real server.
  */
 export interface E2EContextOptions {
   isolateAppData?: boolean;
+  multipart?: boolean;
   /** Keep the real MetadataService, for suites that assert what the scanner writes. */
   realMetadata?: boolean;
 }
@@ -143,6 +146,7 @@ export async function createE2EContext(options: E2EContextOptions = {}): Promise
   );
   app.useGlobalFilters(new GlobalExceptionFilter());
   await app.register(fastifyCookie as never);
+  if (options.multipart) await app.register(fastifyMultipart as never);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
 
@@ -167,7 +171,6 @@ export interface SeedLibraryInput {
   excludePatterns?: string[];
   watch?: boolean;
   name?: string;
-  deriveSeriesFromFolder?: boolean;
   metadataPrecedence?: string[];
 }
 
@@ -179,7 +182,6 @@ export async function seedLibrary(db: Db, input: SeedLibraryInput): Promise<{ li
       name: input.name ?? `e2e-${input.mode}-${randomUUID()}`,
       watch: input.watch ?? false,
       organizationMode: input.mode,
-      deriveSeriesFromFolder: input.deriveSeriesFromFolder ?? false,
       ...(input.metadataPrecedence ? { metadataPrecedence: input.metadataPrecedence } : {}),
       allowedFormats: input.allowedFormats ?? [],
       excludePatterns: input.excludePatterns ?? [],

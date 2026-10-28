@@ -1,3 +1,7 @@
+import { isDeepStrictEqual } from 'node:util';
+import { RegexMetadataService } from '../metadata/regex/regex-metadata.service';
+import { RegexMetadataPreviewDto, RegexMetadataValidationDto } from './dto/regex-metadata.dto';
+import { ReadingAttemptEventsService } from '../user-book-status/reading-attempt-events.service';
 import {
   BadRequestException,
   ConflictException,
@@ -11,8 +15,15 @@ import { ConfigService } from '@nestjs/config';
 import { readdir, realpath, rm, stat } from 'fs/promises';
 import { dirname, isAbsolute, join, relative } from 'path';
 
-import { APP_FEATURES, DEFAULT_FORMAT_PRIORITY } from '@bookorbit/types';
-import type { AccessLevel, LibraryFileSyncProgressEvent, LibraryOverviewEntry, OrganizationMode, WriteResult } from '@bookorbit/types';
+import { APP_FEATURES, DEFAULT_FORMAT_PRIORITY, resolveRegexMetadataConfig } from '@bookorbit/types';
+import type {
+  AccessLevel,
+  LibraryFileSyncProgressEvent,
+  LibraryOverviewEntry,
+  OrganizationMode,
+  RegexMetadataConfig,
+  WriteResult,
+} from '@bookorbit/types';
 import { podcastArtworkDirPath } from '../../common/podcast-artwork-storage';
 import { podcastFeedSnapshotPath } from '../../common/podcast-feed-snapshot-storage';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -34,6 +45,7 @@ import {
   DEFAULT_LIBRARY_ADDED_AT_SOURCE,
   DEFAULT_LIBRARY_COVER_ASPECT_RATIO,
   DEFAULT_LIBRARY_ORGANIZATION_MODE,
+  EDITOR_ACCESS_LEVELS,
   LIBRARY_METADATA_PRECEDENCE_DEFAULT,
 } from './library.constants';
 import { resolveLibraryFolderRoles, type LibraryFolderInput } from './library-folder-roles.utils';
@@ -57,10 +69,10 @@ const BOOK_ONLY_LIBRARY_FIELDS = [
   'watch',
   'autoScanCronExpression',
   'metadataPrecedence',
+  'regexMetadata',
   'formatPriority',
   'allowedFormats',
   'organizationMode',
-  'deriveSeriesFromFolder',
   'excludePatterns',
   'readingThreshold',
   'markAsFinishedPercentComplete',
@@ -79,6 +91,9 @@ const BOOK_ONLY_LIBRARY_FIELDS = [
   'fileWriteKindleMaxFileSizeMb',
   'fileWriteAudioEnabled',
   'fileWriteAudioMaxFileSizeMb',
+  'fileWriteAllFiles',
+  'fileWriteReadAlongEnabled',
+  'fileWriteReadAlongMaxFileSizeMb',
   'fileRenameEnabled',
 ] as const;
 
@@ -98,6 +113,8 @@ export class LibraryService {
     private readonly achievementEvents: AchievementEventsService,
     private readonly pathPolicy: PathPolicyService,
     private readonly scanScheduler: LibraryScanSchedulerService,
+    private readonly regexMetadata: RegexMetadataService,
+    private readonly readingAttemptEvents: ReadingAttemptEventsService,
   ) {
     this.appDataPath = this.config.get<string>('storage.appDataPath')!;
   }
@@ -154,11 +171,34 @@ export class LibraryService {
     return ids.map(({ id }) => id);
   }
 
+  async findEditableLibraryIds(user: RequestUser): Promise<number[]> {
+    const ids = user.isSuperuser
+      ? await this.libraryRepo.findAllIds()
+      : await this.libraryRepo.findAccessibleIdsForUser(user.id, EDITOR_ACCESS_LEVELS);
+    return ids.map(({ id }) => id);
+  }
+
   async findOne(id: number) {
     const [library] = await this.libraryRepo.findById(id);
     if (!library) throw new NotFoundException('Library not found');
     const folders = await this.libraryRepo.findFoldersByLibrary(id);
     return { ...normalizeLibraryOrganizationMode(library), folders };
+  }
+
+  private async assertRegexMetadataLibrary(libraryId: number | undefined) {
+    if (libraryId === undefined) return;
+    const library = await this.findOne(libraryId);
+    if (library.type !== 'books') throw new BadRequestException('Regex metadata is only available for book libraries');
+  }
+
+  async validateRegexMetadata(dto: RegexMetadataValidationDto) {
+    await this.assertRegexMetadataLibrary(dto.libraryId);
+    return this.regexMetadata.check(dto.config);
+  }
+
+  async previewRegexMetadata(dto: RegexMetadataPreviewDto) {
+    await this.assertRegexMetadataLibrary(dto.libraryId);
+    return this.regexMetadata.preview(dto.config, dto.relativePath);
   }
 
   async create(dto: CreateLibraryDto) {
@@ -168,6 +208,8 @@ export class LibraryService {
     }
     if (libraryType === 'podcasts') this.assertNoBookOnlyFields(dto);
     else this.assertNoPodcastOnlyFields(dto);
+    const regexMetadata = resolveRegexMetadataConfig(dto.regexMetadata);
+    await this.regexMetadata.validate(regexMetadata);
     await this.assertNameAvailable(dto.name);
     const folderInputs = resolveLibraryFolderRoles(
       libraryType,
@@ -179,10 +221,6 @@ export class LibraryService {
       throw new BadRequestException('Icon is required');
     }
 
-    const organizationMode =
-      libraryType === 'books' ? (dto.organizationMode ?? DEFAULT_LIBRARY_ORGANIZATION_MODE) : DEFAULT_LIBRARY_ORGANIZATION_MODE;
-    assertSeriesFromFolderAllowed(dto.deriveSeriesFromFolder, organizationMode);
-
     const [library] = await this.libraryRepo.insert({
       type: libraryType,
       name: dto.name,
@@ -191,11 +229,11 @@ export class LibraryService {
       watch: libraryType === 'books' ? (dto.watch ?? false) : false,
       watchLocalFolders: libraryType === 'podcasts' ? (dto.watchLocalFolders ?? true) : false,
       autoScanCronExpression: libraryType === 'books' ? (dto.autoScanCronExpression ?? null) : null,
+      regexMetadata,
       metadataPrecedence: libraryType === 'books' ? (dto.metadataPrecedence ?? [...LIBRARY_METADATA_PRECEDENCE_DEFAULT]) : [],
       formatPriority: libraryType === 'books' ? (dto.formatPriority ?? [...DEFAULT_FORMAT_PRIORITY]) : [],
       allowedFormats: libraryType === 'books' ? (dto.allowedFormats ?? []) : [],
-      organizationMode,
-      deriveSeriesFromFolder: dto.deriveSeriesFromFolder ?? false,
+      organizationMode: libraryType === 'books' ? (dto.organizationMode ?? DEFAULT_LIBRARY_ORGANIZATION_MODE) : DEFAULT_LIBRARY_ORGANIZATION_MODE,
       addedAtSource: dto.addedAtSource ?? DEFAULT_LIBRARY_ADDED_AT_SOURCE,
       excludePatterns: libraryType === 'books' ? (dto.excludePatterns ?? []) : [],
       coverAspectRatio: dto.coverAspectRatio ?? (libraryType === 'podcasts' ? '1/1' : DEFAULT_LIBRARY_COVER_ASPECT_RATIO),
@@ -216,6 +254,9 @@ export class LibraryService {
       fileWriteKindleMaxFileSizeMb: libraryType === 'books' ? (dto.fileWriteKindleMaxFileSizeMb ?? 100) : 100,
       fileWriteAudioEnabled: libraryType === 'books' ? (dto.fileWriteAudioEnabled ?? true) : false,
       fileWriteAudioMaxFileSizeMb: libraryType === 'books' ? (dto.fileWriteAudioMaxFileSizeMb ?? 500) : 500,
+      fileWriteAllFiles: libraryType === 'books' ? (dto.fileWriteAllFiles ?? false) : false,
+      fileWriteReadAlongEnabled: libraryType === 'books' ? (dto.fileWriteReadAlongEnabled ?? false) : false,
+      fileWriteReadAlongMaxFileSizeMb: libraryType === 'books' ? (dto.fileWriteReadAlongMaxFileSizeMb ?? 1000) : 1000,
       fileRenameEnabled: libraryType === 'books' ? (dto.fileRenameEnabled ?? false) : false,
     });
 
@@ -242,19 +283,30 @@ export class LibraryService {
     if (existing.type === 'podcasts') this.assertNoBookOnlyFields(dto);
     else this.assertNoPodcastOnlyFields(dto);
 
+    // Compared as the rules that would run: a preset runs its current rules whatever copy is stored,
+    // so re-sending a preset is no change even after the preset itself was updated.
+    const regexRules = (config: RegexMetadataConfig | null | undefined) =>
+      config ? [config.preset ?? null, config.rules.map(({ pattern, flags }) => [pattern, flags])] : null;
+    const incomingRegexMetadata = dto.regexMetadata === undefined ? undefined : resolveRegexMetadataConfig(dto.regexMetadata);
+    const regexMetadataChanged =
+      incomingRegexMetadata !== undefined &&
+      !isDeepStrictEqual(regexRules(incomingRegexMetadata), regexRules(resolveRegexMetadataConfig(existing.regexMetadata)));
+    if (regexMetadataChanged) await this.regexMetadata.validate(incomingRegexMetadata);
+
     const existingOrganizationMode = normalizeOrganizationMode(existing.organizationMode);
     if (dto.organizationMode !== undefined && dto.organizationMode !== existingOrganizationMode) {
       throw new BadRequestException(
         'Library organization mode cannot be changed after creation. Create a new library to use a different organization mode.',
       );
     }
-    assertSeriesFromFolderAllowed(dto.deriveSeriesFromFolder, existingOrganizationMode);
 
     if (dto.name && dto.name !== existing.name) {
       await this.assertNameAvailable(dto.name, id);
     }
 
     const { folders: rawFolderPaths, localFolders: rawLocalFolderPaths, ...fields } = dto;
+    if (!regexMetadataChanged) delete fields.regexMetadata;
+    else fields.regexMetadata = incomingRegexMetadata;
     let existingFolders: Awaited<ReturnType<LibraryRepository['findFoldersByLibrary']>> | undefined;
     let folderInputs: LibraryFolderInput[] | undefined;
     if (rawFolderPaths !== undefined || rawLocalFolderPaths !== undefined) {
@@ -332,14 +384,8 @@ export class LibraryService {
       );
     }
 
-    const seriesFromFolderChanged =
-      dto.deriveSeriesFromFolder !== undefined && dto.deriveSeriesFromFolder !== (existing.deriveSeriesFromFolder ?? false);
     const shouldRescan =
-      dto.formatPriority !== undefined ||
-      dto.allowedFormats !== undefined ||
-      dto.excludePatterns !== undefined ||
-      folderInputs !== undefined ||
-      seriesFromFolderChanged;
+      dto.formatPriority !== undefined || dto.allowedFormats !== undefined || dto.excludePatterns !== undefined || folderInputs !== undefined;
     if (shouldRescan && existing.type === 'books') this.scannerService.startScanAsync(id);
 
     return { ...normalizeLibraryOrganizationMode(updated), folders };
@@ -361,6 +407,7 @@ export class LibraryService {
       const removedPodcastFiles = existing.type === 'podcasts' ? await this.removePodcastFiles(id) : 0;
       if (existing.type === 'podcasts') await this.removePodcastAppDataFiles(id);
       await this.libraryRepo.delete(id);
+      this.readingAttemptEvents.notifyChanged(null);
       this.scanScheduler.removeSchedule(id);
       await this.cleanupCoverDirectories(bookRows.map(({ id: bookId }) => bookId));
       this.logger.log(
@@ -746,12 +793,6 @@ async function resolveExistingRoot(path: string): Promise<string | null> {
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
-}
-
-function assertSeriesFromFolderAllowed(deriveSeriesFromFolder: boolean | undefined, organizationMode: OrganizationMode): void {
-  if (deriveSeriesFromFolder === true && organizationMode !== 'book_per_file') {
-    throw new BadRequestException('Series from folders is only available when each file is its own book (book_per_file).');
-  }
 }
 
 function normalizeOrganizationMode(mode: string | null | undefined): OrganizationMode {

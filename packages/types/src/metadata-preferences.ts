@@ -1,4 +1,4 @@
-import { MetadataProviderKey } from "./metadata-fetch";
+import { isBuiltInMetadataProviderKey, MetadataProviderKey, type BuiltInMetadataProviderKey, type MetadataProviderSource } from "./metadata-fetch";
 
 export type MetadataField =
   | "title"
@@ -8,6 +8,7 @@ export type MetadataField =
   | "audioCover"
   | "authors"
   | "publisher"
+  | "isbn"
   | "publishedYear"
   | "language"
   | "pageCount"
@@ -27,6 +28,7 @@ export const ALL_METADATA_FIELDS: MetadataField[] = [
   "audioCover",
   "authors",
   "publisher",
+  "isbn",
   "publishedYear",
   "language",
   "pageCount",
@@ -38,32 +40,6 @@ export const ALL_METADATA_FIELDS: MetadataField[] = [
   "duration",
   "abridged",
 ];
-
-/**
- * Local Field Rules sources read from the library on disk rather than a remote catalog.
- * They share the provider priority list with remote providers but are not MetadataProviderKey values.
- */
-export const MetadataLocalSourceKey = {
-  FOLDER: "folder",
-} as const;
-
-export type MetadataLocalSourceKey = (typeof MetadataLocalSourceKey)[keyof typeof MetadataLocalSourceKey];
-
-export const ALL_METADATA_LOCAL_SOURCE_KEYS: MetadataLocalSourceKey[] = [MetadataLocalSourceKey.FOLDER];
-
-export type MetadataFieldSourceKey = MetadataProviderKey | MetadataLocalSourceKey;
-
-export const LOCAL_SOURCE_SUPPORTED_FIELDS: Record<MetadataLocalSourceKey, readonly MetadataField[]> = {
-  [MetadataLocalSourceKey.FOLDER]: ["seriesName", "seriesIndex"],
-};
-
-export function isMetadataLocalSourceKey(value: string): value is MetadataLocalSourceKey {
-  return (ALL_METADATA_LOCAL_SOURCE_KEYS as readonly string[]).includes(value);
-}
-
-export function localSourceSupportsField(source: MetadataLocalSourceKey, field: MetadataField): boolean {
-  return LOCAL_SOURCE_SUPPORTED_FIELDS[source]?.includes(field) ?? false;
-}
 
 export type MergeStrategy = "fillMissing" | "overwrite" | "overwriteIfProvided";
 export type MetadataMergeStrategy = MergeStrategy | "mergeExisting";
@@ -77,7 +53,7 @@ export const MAX_METADATA_GENRE_COUNT = 50;
 
 export interface FieldPreference {
   enabled: boolean;
-  providers: MetadataFieldSourceKey[];
+  providers: MetadataProviderKey[];
   mergeStrategy: MetadataMergeStrategy;
 }
 
@@ -152,11 +128,6 @@ export interface KoboProviderConfig {
   language: string;
 }
 
-export interface AladinProviderConfig {
-  enabled: boolean;
-  ttbKey: string;
-}
-
 export interface ProviderConfigurations {
   google: GoogleProviderConfig;
   amazon: AmazonProviderConfig;
@@ -170,18 +141,26 @@ export interface ProviderConfigurations {
   comicvine: ComicVineProviderConfig;
   ranobedb: SimpleProviderConfig;
   kobo: KoboProviderConfig;
-  lubimyczytac: SimpleProviderConfig;
-  aladin: AladinProviderConfig;
 }
 
 export interface ProviderStatus {
-  key: MetadataFieldSourceKey;
+  key: MetadataProviderKey;
   label: string;
   configured: boolean;
   enabled: boolean;
   hint?: string;
-  /** True for local disk sources such as Folder; omitted for remote catalog providers. */
-  local?: boolean;
+  /** Absent on servers older than external providers, which only had built-ins. */
+  source?: MetadataProviderSource;
+  /** An external provider's declared fields; built-ins use `METADATA_PROVIDER_SUPPORTED_FIELDS`. */
+  supportedFields?: MetadataField[] | null;
+  /** An external provider's icon and colour, as on `MetadataProviderInfo`. */
+  iconUrl?: string;
+  color?: string;
+  /**
+   * Set for a provider that used to be built in and is not registered: the image to run, or null when
+   * the source closed and there is none, and whether field rules or stored ids still use it.
+   */
+  movedOut?: { image: string | null; inUse: boolean };
 }
 
 export type ProviderConnectionTestStatus = "success" | "warning" | "fail";
@@ -191,4 +170,205 @@ export interface ProviderConnectionTestResult {
   ok: boolean;
   status: ProviderConnectionTestStatus;
   message: string;
+}
+
+/**
+ * The field-rule fields each provider can ever fill, read from its mapper on 2026-10-08. The rule
+ * editor uses it to say a provider will never answer a field; nothing fetches by it, so an entry
+ * that drifts costs a wrong hint, never a value. A field filled only on some paths (Goodreads'
+ * publisher, which its fallback search lacks) counts as filled.
+ *
+ * The two cover rules list a provider only where its art can be that slot's shape. Audible's art is
+ * always square, so it is not under `cover`; it still fills an empty ebook slot as a last resort.
+ */
+export const METADATA_PROVIDER_SUPPORTED_FIELDS: Record<BuiltInMetadataProviderKey, readonly MetadataField[]> = {
+  [MetadataProviderKey.GOOGLE]: [
+    "title",
+    "subtitle",
+    "description",
+    "cover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "communityRating",
+    "genres",
+  ],
+  [MetadataProviderKey.GOODREADS]: [
+    "title",
+    "subtitle",
+    "description",
+    "cover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "communityRating",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+  ],
+  [MetadataProviderKey.AMAZON]: [
+    "title",
+    "subtitle",
+    "description",
+    "cover",
+    "audioCover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "communityRating",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+  ],
+  [MetadataProviderKey.HARDCOVER]: [
+    "title",
+    "subtitle",
+    "description",
+    "cover",
+    "audioCover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "communityRating",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+  ],
+  [MetadataProviderKey.OPEN_LIBRARY]: [
+    "title",
+    "description",
+    "cover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "communityRating",
+    "genres",
+  ],
+  [MetadataProviderKey.ITUNES]: [
+    "title",
+    "description",
+    "cover",
+    "audioCover",
+    "authors",
+    "publisher",
+    "publishedYear",
+    "language",
+    "communityRating",
+    "genres",
+  ],
+  [MetadataProviderKey.AUDIBLE]: [
+    "title",
+    "subtitle",
+    "description",
+    "audioCover",
+    "authors",
+    "publisher",
+    "publishedYear",
+    "language",
+    "communityRating",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+    "narrators",
+    "duration",
+    "abridged",
+  ],
+  [MetadataProviderKey.AUDNEXUS]: [
+    "title",
+    "subtitle",
+    "description",
+    "audioCover",
+    "authors",
+    "publisher",
+    "publishedYear",
+    "language",
+    "seriesName",
+    "seriesIndex",
+    "narrators",
+    "duration",
+    "abridged",
+  ],
+  [MetadataProviderKey.LIBROFM]: [
+    "title",
+    "subtitle",
+    "description",
+    "audioCover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+    "narrators",
+    "duration",
+    "abridged",
+  ],
+  [MetadataProviderKey.COMICVINE]: ["title", "description", "cover", "authors", "publisher", "publishedYear", "seriesName", "seriesIndex"],
+  [MetadataProviderKey.RANOBEDB]: [
+    "title",
+    "subtitle",
+    "description",
+    "cover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "communityRating",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+  ],
+  [MetadataProviderKey.KOBO]: [
+    "title",
+    "subtitle",
+    "description",
+    "cover",
+    "authors",
+    "publisher",
+    "isbn",
+    "publishedYear",
+    "language",
+    "pageCount",
+    "seriesName",
+    "seriesIndex",
+    "genres",
+  ],
+};
+
+/** How a provider stands against one field: it can fill it, its cover art is the other shape, or never. */
+export type ProviderFieldSupport = "supplies" | "otherShape" | "never";
+
+/**
+ * `declaredFields` is what an external provider says it fills; built-ins are answered from
+ * `METADATA_PROVIDER_SUPPORTED_FIELDS`.
+ */
+export function providerFieldSupport(
+  provider: MetadataProviderKey,
+  field: MetadataField,
+  declaredFields?: readonly MetadataField[] | null,
+): ProviderFieldSupport {
+  const fields = declaredFields ?? (isBuiltInMetadataProviderKey(provider) ? METADATA_PROVIDER_SUPPORTED_FIELDS[provider] : undefined);
+  // An unknown key, or a provider that did not say, would only get a guess.
+  if (!fields || fields.includes(field)) return "supplies";
+  if (field === "cover" || field === "audioCover") return "otherShape";
+  return "never";
 }

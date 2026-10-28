@@ -1,6 +1,6 @@
 {
-  "id": "b976daba-5838-4eef-bd5c-539591370281",
-  "prevId": "8c5b516b-678b-4581-9393-d4aba402f360",
+  "id": "3cd7b325-5dd3-4c54-9823-22901bdf7201",
+  "prevId": "83654d7f-8cfb-42e4-8a28-774fa4f7a102",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2862,13 +2862,6 @@
           "notNull": true,
           "default": "'book_per_folder'"
         },
-        "derive_series_from_folder": {
-          "name": "derive_series_from_folder",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "added_at_source": {
           "name": "added_at_source",
           "type": "varchar(20)",
@@ -3046,6 +3039,13 @@
           "notNull": false,
           "default": 300
         },
+        "koreader_hash_revision": {
+          "name": "koreader_hash_revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3094,10 +3094,6 @@
         "libraries_organization_mode_chk": {
           "name": "libraries_organization_mode_chk",
           "value": "\"libraries\".\"organization_mode\" in ('book_per_folder', 'book_per_file')"
-        },
-        "libraries_derive_series_from_folder_mode_chk": {
-          "name": "libraries_derive_series_from_folder_mode_chk",
-          "value": "\"libraries\".\"derive_series_from_folder\" = false or \"libraries\".\"organization_mode\" = 'book_per_file'"
         },
         "libraries_added_at_source_chk": {
           "name": "libraries_added_at_source_chk",
@@ -3424,6 +3420,21 @@
               "expression": "book_id",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "book_files_change_timestamp_idx": {
+          "name": "book_files_change_timestamp_idx",
+          "columns": [
+            {
+              "expression": "greatest(\"created_at\", \"updated_at\") desc",
+              "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
@@ -8428,6 +8439,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "starred_at": {
+          "name": "starred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -8802,6 +8819,200 @@
         "audiobook_progress_revision_positive_chk": {
           "name": "audiobook_progress_revision_positive_chk",
           "value": "\"audiobook_progress\".\"revision\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.book_journal_entries": {
+      "name": "book_journal_entries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book_id": {
+          "name": "book_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quote": {
+          "name": "quote",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chapter_title": {
+          "name": "chapter_title",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position_percent": {
+          "name": "position_percent",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cfi": {
+          "name": "cfi",
+          "type": "varchar(2000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position_seconds": {
+          "name": "position_seconds",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "book_journal_entries_user_client_id_uidx": {
+          "name": "book_journal_entries_user_client_id_uidx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "client_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "book_journal_entries_user_book_created_active_idx": {
+          "name": "book_journal_entries_user_book_created_active_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "book_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"book_journal_entries\".\"deleted_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "book_journal_entries_book_id_idx": {
+          "name": "book_journal_entries_book_id_idx",
+          "columns": [
+            {
+              "expression": "book_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "book_journal_entries_user_id_users_id_fk": {
+          "name": "book_journal_entries_user_id_users_id_fk",
+          "tableFrom": "book_journal_entries",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "book_journal_entries_book_id_books_id_fk": {
+          "name": "book_journal_entries_book_id_books_id_fk",
+          "tableFrom": "book_journal_entries",
+          "tableTo": "books",
+          "columnsFrom": ["book_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "book_journal_entries_body_length_chk": {
+          "name": "book_journal_entries_body_length_chk",
+          "value": "char_length(\"book_journal_entries\".\"body\") between 1 and 10000"
+        },
+        "book_journal_entries_quote_length_chk": {
+          "name": "book_journal_entries_quote_length_chk",
+          "value": "\"book_journal_entries\".\"quote\" is null or char_length(\"book_journal_entries\".\"quote\") <= 5000"
+        },
+        "book_journal_entries_position_percent_range_chk": {
+          "name": "book_journal_entries_position_percent_range_chk",
+          "value": "\"book_journal_entries\".\"position_percent\" is null or (\"book_journal_entries\".\"position_percent\" >= 0 and \"book_journal_entries\".\"position_percent\" <= 100)"
+        },
+        "book_journal_entries_position_seconds_nonnegative_chk": {
+          "name": "book_journal_entries_position_seconds_nonnegative_chk",
+          "value": "\"book_journal_entries\".\"position_seconds\" is null or \"book_journal_entries\".\"position_seconds\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -17041,7 +17252,7 @@
       "checkConstraints": {
         "book_file_hash_history_reason_chk": {
           "name": "book_file_hash_history_reason_chk",
-          "value": "\"book_file_hash_history\".\"reason\" in ('file_write', 'external_change', 'rescan')"
+          "value": "\"book_file_hash_history\".\"reason\" in ('file_write', 'external_change', 'rescan', 'kobo_download')"
         }
       },
       "isRLSEnabled": false
@@ -18275,6 +18486,13 @@
         },
         "metadata_ambiguous": {
           "name": "metadata_ambiguous",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "manual_link_requested": {
+          "name": "manual_link_requested",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -22451,238 +22669,6 @@
           "value": "\"user_podcast_queue\".\"position\" >= 0"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.user_api_keys": {
-      "name": "user_api_keys",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key_hash": {
-          "name": "key_hash",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key_prefix": {
-          "name": "key_prefix",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "user_api_keys_key_hash_uidx": {
-          "name": "user_api_keys_key_hash_uidx",
-          "columns": [
-            {
-              "expression": "key_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "user_api_keys_user_id_idx": {
-          "name": "user_api_keys_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "user_api_keys_user_id_users_id_fk": {
-          "name": "user_api_keys_user_id_users_id_fk",
-          "tableFrom": "user_api_keys",
-          "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "user_api_keys_label_not_blank_chk": {
-          "name": "user_api_keys_label_not_blank_chk",
-          "value": "length(btrim(\"user_api_keys\".\"label\")) > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.audiobook_podcast_feeds": {
-      "name": "audiobook_podcast_feeds",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "public_id": {
-          "name": "public_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "book_id": {
-          "name": "book_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "audiobook_podcast_feeds_public_id_uidx": {
-          "name": "audiobook_podcast_feeds_public_id_uidx",
-          "columns": [
-            {
-              "expression": "public_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "audiobook_podcast_feeds_book_id_uidx": {
-          "name": "audiobook_podcast_feeds_book_id_uidx",
-          "columns": [
-            {
-              "expression": "book_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "audiobook_podcast_feeds_enabled_idx": {
-          "name": "audiobook_podcast_feeds_enabled_idx",
-          "columns": [
-            {
-              "expression": "enabled",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "audiobook_podcast_feeds_book_id_books_id_fk": {
-          "name": "audiobook_podcast_feeds_book_id_books_id_fk",
-          "tableFrom": "audiobook_podcast_feeds",
-          "tableTo": "books",
-          "columnsFrom": ["book_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "audiobook_podcast_feeds_created_by_user_id_users_id_fk": {
-          "name": "audiobook_podcast_feeds_created_by_user_id_users_id_fk",
-          "tableFrom": "audiobook_podcast_feeds",
-          "tableTo": "users",
-          "columnsFrom": ["created_by_user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

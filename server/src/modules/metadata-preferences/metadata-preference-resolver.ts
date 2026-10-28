@@ -6,14 +6,10 @@ import {
   FieldPreferenceOverrides,
   GENRE_MERGE_STRATEGIES,
   GENRE_MERGE_MODES,
-  isMetadataLocalSourceKey,
-  localSourceSupportsField,
   MAX_METADATA_GENRE_COUNT,
   MetadataFetchPreferences,
   MetadataFetchOptions,
   MetadataField,
-  MetadataFieldSourceKey,
-  MetadataLocalSourceKey,
   MetadataMergeStrategy,
   MetadataProviderKey,
   MERGE_STRATEGIES,
@@ -31,8 +27,6 @@ const DEFAULT_PROVIDER_ORDER: MetadataProviderKey[] = [
   MetadataProviderKey.KOBO,
   MetadataProviderKey.OPEN_LIBRARY,
 ];
-
-const SERIES_DEFAULT_SOURCES: MetadataFieldSourceKey[] = [MetadataLocalSourceKey.FOLDER, ...DEFAULT_PROVIDER_ORDER];
 
 const DEFAULT_MERGE_STRATEGY: MergeStrategy = 'overwriteIfProvided';
 const MERGE_STRATEGY_SET = new Set<MetadataMergeStrategy>(MERGE_STRATEGIES);
@@ -54,9 +48,13 @@ const PROVIDERS_WITH_ITUNES: MetadataProviderKey[] = [
   MetadataProviderKey.OPEN_LIBRARY,
 ];
 
+const AUDIOBOOK_FIELD_PROVIDERS: MetadataProviderKey[] = [MetadataProviderKey.AUDIBLE, MetadataProviderKey.LIBROFM];
+
 const FIELD_DEFAULTS: Partial<Record<MetadataField, Partial<FieldPreference>>> = {
+  isbn: { mergeStrategy: 'fillMissing' },
   title: { mergeStrategy: 'overwriteIfProvided', providers: PROVIDERS_WITH_ITUNES },
-  subtitle: { providers: PROVIDERS_WITH_ITUNES },
+  // iTunes and Open Library carry no subtitle, so listing them here would only flag the rule.
+  subtitle: { providers: [MetadataProviderKey.GOODREADS, MetadataProviderKey.GOOGLE, MetadataProviderKey.AMAZON, MetadataProviderKey.KOBO] },
   description: { providers: PROVIDERS_WITH_ITUNES },
   cover: {
     providers: [
@@ -88,9 +86,16 @@ const FIELD_DEFAULTS: Partial<Record<MetadataField, Partial<FieldPreference>>> =
     providers: [MetadataProviderKey.GOODREADS, MetadataProviderKey.GOOGLE, MetadataProviderKey.ITUNES, MetadataProviderKey.KOBO],
   },
   communityRating: { providers: [...COMMUNITY_RATING_PROVIDER_KEYS] },
-  // Folder first so year-suffixed on-disk series names win over bare remote titles.
-  seriesName: { providers: SERIES_DEFAULT_SOURCES },
-  seriesIndex: { providers: SERIES_DEFAULT_SOURCES },
+  // Google and Open Library carry no series.
+  seriesName: { providers: [MetadataProviderKey.GOODREADS, MetadataProviderKey.AMAZON, MetadataProviderKey.KOBO] },
+  seriesIndex: { providers: [MetadataProviderKey.GOODREADS, MetadataProviderKey.AMAZON, MetadataProviderKey.KOBO] },
+  // Only audiobook sources carry these, so the base order could never fill them. Audnexus stays out
+  // for the reason it stays out of the audio cover: chapters follow the narrators order, and it would
+  // bring Audible's timings in over the book's own. Duration only fills a gap, because the one
+  // measured from the files is exact and a provider's is rounded to the minute.
+  narrators: { providers: AUDIOBOOK_FIELD_PROVIDERS },
+  duration: { providers: AUDIOBOOK_FIELD_PROVIDERS, mergeStrategy: 'fillMissing' },
+  abridged: { providers: AUDIOBOOK_FIELD_PROVIDERS },
 };
 
 @Injectable()
@@ -133,7 +138,7 @@ export class MetadataPreferenceResolver {
   withForwardCompatibility(preferences: MetadataFetchPreferences, registeredKeys: MetadataProviderKey[]): MetadataFetchPreferences {
     const defaults = this.getDefaultPreferences();
     const fields = {} as Record<MetadataField, FieldPreference>;
-    const registered = new Set<string>(registeredKeys);
+    const registered = new Set(registeredKeys);
     for (const field of ALL_METADATA_FIELDS) {
       const fallback = defaults.fields[field];
       const fp = this.normalizeFieldPreference(field, preferences?.fields?.[field], fallback);
@@ -142,10 +147,8 @@ export class MetadataPreferenceResolver {
         continue;
       }
 
-      const keepSource = (key: MetadataFieldSourceKey) =>
-        isMetadataLocalSourceKey(key) ? localSourceSupportsField(key, field) : registered.has(key);
-      const filtered = fp.providers.filter(keepSource);
-      const fallbackFiltered = fallback.providers.filter(keepSource);
+      const filtered = fp.providers.filter((k) => registered.has(k));
+      const fallbackFiltered = fallback.providers.filter((k) => registered.has(k));
 
       // Preserve explicit provider selections; only drop unavailable providers.
       // If filtering removes all listed providers, fall back to the field default set.
@@ -164,7 +167,7 @@ export class MetadataPreferenceResolver {
   seedAudioCoverRule(cover: unknown): FieldPreference {
     const fallback = this.getDefaultPreferences().fields.audioCover;
     const normalized = this.normalizeFieldPreference('cover', cover, this.getDefaultPreferences().fields.cover);
-    const tunedForAudio = normalized.providers.some((provider) => !isMetadataLocalSourceKey(provider) && AUDIOBOOK_ONLY_PROVIDERS.has(provider));
+    const tunedForAudio = normalized.providers.some((provider) => AUDIOBOOK_ONLY_PROVIDERS.has(provider));
     return {
       enabled: normalized.enabled,
       mergeStrategy: normalized.mergeStrategy,
@@ -188,12 +191,10 @@ export class MetadataPreferenceResolver {
 
     const candidate = value as Partial<FieldPreference>;
     const enabled = typeof candidate.enabled === 'boolean' ? candidate.enabled : fallback.enabled;
-    const rawProviders =
+    const providers =
       Array.isArray(candidate.providers) && candidate.providers.every((p) => typeof p === 'string')
-        ? [...(candidate.providers as MetadataFieldSourceKey[])]
+        ? [...candidate.providers]
         : [...fallback.providers];
-    // Drop local sources from fields they cannot supply (e.g. Folder on title).
-    const providers = rawProviders.filter((key) => !isMetadataLocalSourceKey(key) || localSourceSupportsField(key, field));
     const mergeStrategySet = field === 'genres' ? GENRE_MERGE_STRATEGY_SET : MERGE_STRATEGY_SET;
     const mergeStrategy = mergeStrategySet.has(candidate.mergeStrategy as MetadataMergeStrategy)
       ? (candidate.mergeStrategy as MetadataMergeStrategy)
