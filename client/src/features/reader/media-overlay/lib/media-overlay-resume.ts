@@ -58,6 +58,22 @@ function resolveBySeconds(playlist: EpubMediaOverlayPlaylist, positionSeconds: n
   return lastKnown
 }
 
+/**
+ * Where playback starts. A saved sentence is only kept when it is still the page on screen.
+ * Moving to another chapter, or scrolling past that sentence, starts at the page now showing.
+ * `savedOnPage` is null when the visible page could not be measured.
+ */
+export function chooseNarrationStart(options: { saved: MediaOverlayResumePosition | null; sectionIndex: number; savedOnPage: boolean | null }): {
+  section: number
+  fragment: string | null
+} {
+  const { saved, sectionIndex, savedOnPage } = options
+  if (saved && saved.section === sectionIndex && savedOnPage !== false) {
+    return { section: saved.section, fragment: saved.fragment }
+  }
+  return { section: sectionIndex, fragment: null }
+}
+
 export function resolveMediaOverlayResume(playlist: EpubMediaOverlayPlaylist, state: MediaOverlayResumeState): MediaOverlayResumePosition | null {
   if (state.fragment && state.sectionIndex != null) {
     return { section: state.sectionIndex, fragment: state.fragment }
