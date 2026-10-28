@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { RotateCcw, Search, Trash2, X } from '@lucide/vue'
-import type { FieldPreference, MetadataField, MetadataFieldSourceKey, ProviderStatus } from '@bookorbit/types'
+import type { FieldPreference, MetadataField, MetadataProviderKey, ProviderStatus } from '@bookorbit/types'
 import { Button } from '@/components/ui/button'
 import ProviderBulkMenu from './ProviderBulkMenu.vue'
 import type { ProviderBulkAction } from '../lib/field-rules'
@@ -12,7 +12,7 @@ defineProps<{
   fields: Record<MetadataField, FieldPreference>
   statuses: ProviderStatus[]
   query: string
-  providerFilter: MetadataFieldSourceKey | null
+  providerFilter: MetadataProviderKey | null
   overriddenOnly: boolean
   isGlobalScope: boolean
   disabled?: boolean
@@ -20,9 +20,9 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:query': [value: string]
-  'update:providerFilter': [value: MetadataFieldSourceKey | null]
+  'update:providerFilter': [value: MetadataProviderKey | null]
   'update:overriddenOnly': [value: boolean]
-  bulk: [provider: MetadataFieldSourceKey, action: ProviderBulkAction]
+  bulk: [provider: MetadataProviderKey, action: ProviderBulkAction]
   clearProviders: []
   resetScope: []
 }>()
@@ -35,11 +35,11 @@ function clearQuery() {
   emit('update:query', '')
 }
 
-function onProviderFilter(provider: MetadataFieldSourceKey | null) {
+function onProviderFilter(provider: MetadataProviderKey | null) {
   emit('update:providerFilter', provider)
 }
 
-function onBulk(provider: MetadataFieldSourceKey, action: ProviderBulkAction) {
+function onBulk(provider: MetadataProviderKey, action: ProviderBulkAction) {
   emit('bulk', provider, action)
 }
 
