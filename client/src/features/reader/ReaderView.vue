@@ -30,7 +30,7 @@ import { useTtsPosition } from '@/features/tts/composables/useTtsPosition'
 import { useTtsKeyboard } from '@/features/tts/composables/useTtsKeyboard'
 import { getProviders, getVoices } from '@/features/tts/api/tts.api'
 import { useMediaOverlay } from './media-overlay/composables/useMediaOverlay'
-import { resolveMediaOverlayResume, type MediaOverlayResumePosition } from './media-overlay/lib/media-overlay-resume'
+import { chooseNarrationStart, resolveMediaOverlayResume, type MediaOverlayResumePosition } from './media-overlay/lib/media-overlay-resume'
 import { injectMediaOverlayHighlightCss, MEDIA_OVERLAY_DEFAULT_ACTIVE_CLASS } from './media-overlay/lib/media-overlay-highlight'
 import { startMediaOverlayWithFallback } from './media-overlay/lib/media-overlay-start'
 import { mediaOverlayEntriesOverlapping } from './media-overlay/lib/media-overlay-range'
@@ -630,14 +630,15 @@ async function handleStartMediaOverlay() {
   }
 
   const saved = await resolveSavedNarrationPos()
-  if (saved) {
-    await beginNarration(saved.section, (item) => item.text === saved.fragment)
+  const visible = getVisibleRange()
+  const savedOnPage = saved && visible ? mediaOverlayEntriesOverlapping(visible)({ text: saved.fragment }) : null
+  const start = chooseNarrationStart({ saved, sectionIndex: sectionIndex.value, savedOnPage })
+  // A saved sentence is the pause point. A different chapter, or a page that no longer shows it, plays what is on screen.
+  if (start.fragment) {
+    await beginNarration(start.section, (item) => item.text === start.fragment)
     return
   }
-
-  // No saved sentence: start from the first narrated sentence on the current page.
-  const visible = getVisibleRange()
-  await beginNarration(sectionIndex.value, visible ? mediaOverlayEntriesOverlapping(visible) : null)
+  await beginNarration(start.section, visible ? mediaOverlayEntriesOverlapping(visible) : null)
 }
 
 async function handleReadFromHere() {

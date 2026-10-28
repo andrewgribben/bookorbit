@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EpubMediaOverlayPlaylist } from '@bookorbit/types'
-import { mediaOverlayItemFragment, resolveMediaOverlayResume } from './media-overlay-resume'
+import { chooseNarrationStart, mediaOverlayItemFragment, resolveMediaOverlayResume } from './media-overlay-resume'
 
 function makePlaylist(): EpubMediaOverlayPlaylist {
   return {
@@ -97,5 +97,35 @@ describe('media-overlay resume', () => {
         positionSeconds: 15,
       }),
     ).toEqual({ section: 1, fragment: 'OPS/ch2.xhtml#s1' })
+  })
+})
+
+describe('chooseNarrationStart', () => {
+  const saved = { section: 0, fragment: 'OPS/ch1.xhtml#s1' }
+
+  it('keeps the saved sentence when it is still on the page', () => {
+    expect(chooseNarrationStart({ saved, sectionIndex: 0, savedOnPage: true })).toEqual({
+      section: 0,
+      fragment: 'OPS/ch1.xhtml#s1',
+    })
+  })
+
+  it('keeps the saved sentence on the same chapter when the page could not be measured', () => {
+    expect(chooseNarrationStart({ saved, sectionIndex: 0, savedOnPage: null })).toEqual({
+      section: 0,
+      fragment: 'OPS/ch1.xhtml#s1',
+    })
+  })
+
+  it('starts at the chapter on screen when the saved sentence is an earlier chapter', () => {
+    expect(chooseNarrationStart({ saved, sectionIndex: 32, savedOnPage: false })).toEqual({ section: 32, fragment: null })
+  })
+
+  it('starts at the page on screen when the saved sentence has scrolled away', () => {
+    expect(chooseNarrationStart({ saved, sectionIndex: 0, savedOnPage: false })).toEqual({ section: 0, fragment: null })
+  })
+
+  it('starts at the page on screen when nothing has been narrated yet', () => {
+    expect(chooseNarrationStart({ saved: null, sectionIndex: 32, savedOnPage: null })).toEqual({ section: 32, fragment: null })
   })
 })
