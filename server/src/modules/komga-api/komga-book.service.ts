@@ -217,11 +217,17 @@ export class KomgaBookService {
     if (!Number.isInteger(pageNumber) || pageNumber < 1) throw new NotFoundException(`Unknown page: ${pageNumber}`);
 
     const fileId = await this.resolveComicFile(user, bookId);
-    const { stream, mimeType } = await this.cbzService.streamPage(fileId, pageNumber - 1, user);
+    const page = await this.cbzService.streamPage(fileId, pageNumber - 1, user);
+    if (page.notModified) {
+      reply.header('ETag', page.etag);
+      reply.code(304);
+      return;
+    }
 
     reply.header('Cache-Control', 'public, max-age=31536000, immutable');
-    reply.type(mimeType);
-    reply.send(stream);
+    reply.header('ETag', page.etag);
+    reply.type(page.mimeType);
+    reply.send(page.stream);
   }
 
   async downloadFile(user: RequestUser, rawBookId: string, rangeHeader: string | undefined, reply: FastifyReply): Promise<void> {
