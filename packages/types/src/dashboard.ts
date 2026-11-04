@@ -75,6 +75,8 @@ export interface DashboardScrollerBatchItem {
   type: BookScrollerType;
   limit: number;
   smartScopeId?: number;
+  /** Up Next in Series only: hide series with no activity for this many months. Omit for no cut-off. */
+  maxAgeMonths?: number;
 }
 
 export interface DashboardScrollerBatchRequest {
@@ -85,6 +87,8 @@ export interface DashboardScrollerBatchResult {
   id: string;
   books: BookCard[];
   failed: boolean;
+  /** Up Next in Series only: ISO time of the latest reading activity in each book's series, keyed by book id. */
+  lastActivityAt?: Record<number, string>;
 }
 
 export interface DashboardScrollerBatchResponse {
@@ -101,6 +105,7 @@ export interface ScrollerConfig {
   limit: number;
   rows: number;
   smartScopeId?: number;
+  maxAgeMonths?: number;
 }
 
 export type DashboardShelfLayout = "wide" | "two-columns";
