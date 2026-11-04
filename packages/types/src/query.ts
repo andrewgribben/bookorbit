@@ -137,7 +137,7 @@ export const FIELD_OPERATORS: Record<StaticRuleField, RuleOperator[]> = {
   cover: ["isMissing", "isPresent"],
   audioCover: ["isMissing", "isPresent"],
   lockStatus: ["isLocked", "isUnlocked"],
-  seriesStatus: ["isUpNext"],
+  seriesStatus: ["isUpNext", "includesAny", "excludesAll"],
 };
 
 export const RULE_FIELDS = Object.keys(FIELD_OPERATORS) as StaticRuleField[];

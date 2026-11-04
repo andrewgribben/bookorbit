@@ -79,6 +79,8 @@ export type SeriesDetail = {
   possibleGaps: number[];
   /** Total books a metadata provider reports for the series, or null when no provider has told us. */
   expectedBookCount: number | null;
+  /** The requesting user's status for this series, or null when they have not set one. */
+  followStatus: SeriesFollowStatus | null;
 };
 
 export type SeriesBooksPage = BooksPage & {
@@ -96,4 +98,26 @@ export type SeriesNextBook = {
 
 export type SeriesNextBookResponse = {
   next: SeriesNextBook | null;
+};
+
+export const SERIES_FOLLOW_STATUSES = ["reading", "caught_up", "completed", "on_hold", "dropped"] as const;
+export type SeriesFollowStatus = (typeof SERIES_FOLLOW_STATUSES)[number];
+
+export type SetSeriesFollowStatusRequest = {
+  status: SeriesFollowStatus;
+};
+
+export type SeriesFollowStatusResponse = {
+  seriesId: number;
+  status: SeriesFollowStatus;
+  updatedAt: string;
+};
+
+/** Omit upToBookId to mark every book in the series read. */
+export type MarkSeriesReadRequest = {
+  upToBookId?: number;
+};
+
+export type MarkSeriesReadResponse = {
+  updated: number;
 };
