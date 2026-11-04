@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { check, index, integer, pgTable, primaryKey, serial, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
+import type { SeriesFollowStatus } from '@bookorbit/types';
+
+import { users } from './auth';
 import { books } from './books';
 
 export const bookSeries = pgTable(
@@ -69,3 +72,28 @@ export const bookSeriesMemberships = pgTable(
 
 export type BookSeriesMembership = typeof bookSeriesMemberships.$inferSelect;
 export type NewBookSeriesMembership = typeof bookSeriesMemberships.$inferInsert;
+
+export const userSeriesStatus = pgTable(
+  'user_series_status',
+  {
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    seriesId: integer('series_id')
+      .notNull()
+      .references(() => bookSeries.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 20 }).$type<SeriesFollowStatus>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdateFn(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.seriesId] }),
+    index('user_series_status_user_status_idx').on(t.userId, t.status),
+    check('user_series_status_status_chk', sql`${t.status} in ('reading', 'caught_up', 'completed', 'on_hold', 'dropped')`),
+  ],
+);
+
+export type UserSeriesStatusRow = typeof userSeriesStatus.$inferSelect;
