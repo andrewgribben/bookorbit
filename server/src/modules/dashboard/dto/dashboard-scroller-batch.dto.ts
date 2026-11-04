@@ -36,6 +36,12 @@ export class DashboardScrollerBatchItemDto {
   @IsInt()
   @Min(1)
   smartScopeId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  maxAgeMonths?: number;
 }
 
 export class DashboardScrollerBatchDto {

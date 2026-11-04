@@ -193,7 +193,7 @@ function buildValueFor(operator: RuleOperator, field: RuleField): { value?: unkn
     case 'includesAny':
     case 'includesAll':
     case 'excludesAll':
-      return { value: ['test'] };
+      return { value: field === 'seriesStatus' ? ['reading'] : ['test'] };
     default: {
       const _exhaustive: never = operator;
       return _exhaustive;

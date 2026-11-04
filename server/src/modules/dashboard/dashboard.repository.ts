@@ -5,13 +5,13 @@ import { BOOK_FORMATS, isAudioFormat, type ContentFilterRules, type ReadStatus }
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import { audiobookProgress, bookFiles, bookMetadata, books, readingProgress, userBookStatus } from '../../db/schema';
+import { audiobookProgress, bookFiles, bookMetadata, books, readingProgress, userBookStatus, userSeriesStatus } from '../../db/schema';
 import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
 import { excludeAudioOnlyBooks } from '../../common/utils/audio-only-book-sql.utils';
 import { seriesIndexSortKey } from '../../common/utils/series-index-sql.utils';
 
 type Db = NodePgDatabase<typeof schema>;
-type UpNextInSeriesRow = { id: number };
+type UpNextInSeriesRow = { id: number; series_activity_at: Date | string | null };
 /** Narrows a shelf's selection for a reader whose device cannot play audio. Absent keeps every book. */
 export interface ScrollerSelectionOptions {
   excludeAudioOnly?: boolean;
@@ -262,13 +262,14 @@ export class DashboardRepository {
     return rows.map((row) => row.id);
   }
 
-  async findUpNextInSeriesBookIds(
+  async findUpNextInSeries(
     accessibleLibraryIds: number[],
     userId: number,
     limit: number,
     contentFilters?: ContentFilterRules,
     options: ScrollerSelectionOptions = {},
-  ): Promise<number[]> {
+    maxAgeMonths?: number,
+  ): Promise<{ id: number; lastActivityAt: string | null }[]> {
     if (accessibleLibraryIds.length === 0) return [];
     if (limit <= 0) return [];
 
@@ -303,6 +304,7 @@ export class DashboardRepository {
     // Like the read-status gate, this narrows candidates only: an audiobook-only volume still holds
     // its place, so the series waits on it rather than offering the volume after it.
     const candidateSql = options.excludeAudioOnly ? sql`and ${excludeAudioOnlyBooks(sql.raw('os.id'))}` : sql``;
+    const cutoffSql = maxAgeMonths ? sql`and os.series_activity_at >= now() - make_interval(months => ${maxAgeMonths})` : sql``;
 
     // The read-status gate applies to candidates only. An abandoned volume stays in the window so
     // the series stops there instead of skipping ahead to the volume after it.
@@ -314,8 +316,11 @@ export class DashboardRepository {
 	          ${bookMetadata.seriesId} as series_id,
           ${bookMetadata.seriesIndex} as series_index,
           ${books.addedAt} as added_at,
+          greatest(${readingProgress.lastReadAt}, ${audiobookProgress.updatedAt}, ${userBookStatus.startedAt}, ${userBookStatus.finishedAt}, ${userSeriesStatus.updatedAt}) as activity_at,
           ${mergedProgress} as current_progress,
           ${userBookStatus.status} as read_status,
+          ${userSeriesStatus.status} as series_follow_status,
+          ${userSeriesStatus.updatedAt} as series_status_updated_at,
           case
             when ${completionPredicate} then true
             else false
@@ -333,6 +338,7 @@ export class DashboardRepository {
         left join ${bookFiles} on ${bookFiles.id} = ${books.primaryFileId}
         left join ${readingProgress} on ${readingProgress.bookFileId} = ${bookFiles.id} and ${readingProgress.userId} = ${userId}
         left join ${audiobookProgress} on ${audiobookProgress.bookId} = ${books.id} and ${audiobookProgress.userId} = ${userId}
+        left join ${userSeriesStatus} on ${userSeriesStatus.seriesId} = ${bookMetadata.seriesId} and ${userSeriesStatus.userId} = ${userId}
         left join ${userBookStatus} on ${userBookStatus.bookId} = ${books.id} and ${userBookStatus.userId} = ${userId}
         where ${books.libraryId} in (${libraryIdList})
           and ${books.status} = 'present'
@@ -349,6 +355,9 @@ export class DashboardRepository {
           ssb.added_at,
           ssb.current_progress,
           ssb.read_status,
+          ssb.activity_at,
+          ssb.series_follow_status,
+          ssb.series_status_updated_at,
           ssb.is_completed,
           ssb.completion_updated_at,
           lag(ssb.is_completed) over (
@@ -356,6 +365,7 @@ export class DashboardRepository {
             order by ${seriesIndexSortKey(sql.raw('ssb.series_index'))} asc,
               ssb.series_index collate "C" asc, ssb.added_at asc, ssb.id asc
           ) as previous_is_completed,
+          max(ssb.activity_at) over (partition by ssb.library_id, ssb.series_id) as series_activity_at,
           lag(ssb.completion_updated_at) over (
 	            partition by ssb.library_id, ssb.series_id
             order by ${seriesIndexSortKey(sql.raw('ssb.series_index'))} asc,
@@ -366,23 +376,30 @@ export class DashboardRepository {
       next_candidates as (
 	        select distinct on (os.library_id, os.series_id)
           os.id,
-          os.previous_completion_updated_at
+          os.previous_completion_updated_at,
+          os.series_activity_at
         from ordered_series os
         where os.previous_is_completed = true
           and os.is_completed = false
           and os.current_progress = 0
+          and (os.series_follow_status is null or os.series_follow_status = 'reading'
+            or (os.series_follow_status = 'caught_up' and os.added_at > os.series_status_updated_at))
+          ${cutoffSql}
           and (os.read_status is null or os.read_status in ('unread', 'want_to_read'))
           ${candidateSql}
 	        order by os.library_id, os.series_id, ${seriesIndexSortKey(sql.raw('os.series_index'))} asc,
             os.series_index collate "C" asc, os.added_at asc, os.id asc
       )
-      select nc.id
+      select nc.id, nc.series_activity_at
       from next_candidates nc
       order by nc.previous_completion_updated_at desc nulls last, nc.id desc
       limit ${limit}
     `);
 
-    return rows.rows.map((row) => row.id);
+    return rows.rows.map((row) => ({
+      id: row.id,
+      lastActivityAt: row.series_activity_at ? new Date(row.series_activity_at).toISOString() : null,
+    }));
   }
 
   async findRandomBookIds(

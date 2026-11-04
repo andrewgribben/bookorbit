@@ -2,14 +2,25 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SQL, and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
-import type { ContentFilterRules } from '@bookorbit/types';
+import type { ContentFilterRules, SeriesFollowStatus } from '@bookorbit/types';
 import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
 import { accentInsensitiveIlike, buildSearchPattern } from '../../common/utils/accent-insensitive-search.utils';
 import { MAX_SERIES_TOTAL_BOOKS } from '../../common/utils/series-total-books.utils';
 import { compareSeriesIndexSql, seriesIndexOrderBy } from '../../common/utils/series-index-sql.utils';
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import { authors, bookAuthors, bookFiles, bookMetadata, books, bookSeries, bookSeriesMemberships, libraries, userBookStatus } from '../../db/schema';
+import {
+  authors,
+  bookAuthors,
+  bookFiles,
+  bookMetadata,
+  books,
+  bookSeries,
+  bookSeriesMemberships,
+  libraries,
+  userBookStatus,
+  userSeriesStatus,
+} from '../../db/schema';
 import type { SeriesListSort, SortDirection } from './dto/list-series.dto';
 import type { SeriesBookSort } from './dto/list-series-books.dto';
 
@@ -73,6 +84,7 @@ type SeriesDetailRow = {
   authors: string[];
   indices: string[];
   members: SeriesVolumeMember[];
+  followStatus: SeriesFollowStatus | null;
 };
 
 @Injectable()
@@ -270,6 +282,7 @@ export class SeriesRepository {
         id: bookSeries.id,
         name: bookSeries.name,
         expectedBookCount: bookSeries.expectedBookCount,
+        followStatus: userSeriesStatus.status,
         bookCount: sql<number>`count(distinct ${books.id})::int`,
         readCount: sql<number>`count(distinct CASE WHEN ${userBookStatus.status} = 'read' THEN ${books.id} END)::int`,
       })
@@ -278,8 +291,9 @@ export class SeriesRepository {
       .innerJoin(bookSeriesMemberships, eq(bookSeriesMemberships.bookId, books.id))
       .innerJoin(bookSeries, eq(bookSeries.id, bookSeriesMemberships.seriesId))
       .leftJoin(userBookStatus, and(eq(userBookStatus.bookId, books.id), eq(userBookStatus.userId, params.userId)))
+      .leftJoin(userSeriesStatus, and(eq(userSeriesStatus.seriesId, bookSeries.id), eq(userSeriesStatus.userId, params.userId)))
       .where(and(eq(bookSeries.id, params.seriesId), libraryFilter, ...filterClauses))
-      .groupBy(bookSeries.id, bookSeries.name, bookSeries.expectedBookCount);
+      .groupBy(bookSeries.id, bookSeries.name, bookSeries.expectedBookCount, userSeriesStatus.status);
 
     if (rows.length === 0) return null;
 
@@ -306,10 +320,76 @@ export class SeriesRepository {
       bookCount: row.bookCount,
       readCount: row.readCount,
       expectedBookCount: row.expectedBookCount ?? null,
+      followStatus: row.followStatus,
       authors: authorsMap.get(params.seriesId) ?? [],
       indices,
       members: memberRows,
     };
+  }
+
+  async hasAccessibleBooks(seriesId: number, libraryIds: number[]): Promise<boolean> {
+    if (libraryIds.length === 0) return false;
+    const [row] = await this.db
+      .select({ id: books.id })
+      .from(bookSeriesMemberships)
+      .innerJoin(books, eq(books.id, bookSeriesMemberships.bookId))
+      .where(and(eq(bookSeriesMemberships.seriesId, seriesId), eq(books.status, 'present'), this.buildLibraryFilter(libraryIds)))
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /** Books to mark read: the whole series, or `upTo` and everything positioned at or before it in its library. */
+  async findUnreadBookIdsForMarkRead(params: {
+    seriesId: number;
+    userId: number;
+    libraryIds: number[];
+    contentFilters?: ContentFilterRules;
+    upTo?: { libraryId: number; seriesIndex: string };
+  }): Promise<number[]> {
+    if (params.libraryIds.length === 0) return [];
+    const filterClauses = params.contentFilters ? buildContentFilterClauses(params.contentFilters, this.db) : [];
+    const rows = await this.db
+      .select({ id: books.id })
+      .from(bookSeriesMemberships)
+      .innerJoin(books, eq(books.id, bookSeriesMemberships.bookId))
+      .leftJoin(userBookStatus, and(eq(userBookStatus.bookId, books.id), eq(userBookStatus.userId, params.userId)))
+      .where(
+        and(
+          eq(bookSeriesMemberships.seriesId, params.seriesId),
+          eq(books.status, 'present'),
+          this.buildLibraryFilter(params.libraryIds),
+          or(isNull(userBookStatus.status), sql`${userBookStatus.status} not in ('read', 'skimmed')`),
+          ...(params.upTo
+            ? [eq(books.libraryId, params.upTo.libraryId), compareSeriesIndexSql(bookSeriesMemberships.seriesIndex, '<=', params.upTo.seriesIndex)]
+            : []),
+          ...filterClauses,
+        ),
+      );
+    return rows.map((row) => row.id);
+  }
+
+  async findMembership(seriesId: number, bookId: number, libraryIds: number[]): Promise<{ libraryId: number; seriesIndex: string | null } | null> {
+    if (libraryIds.length === 0) return null;
+    const [row] = await this.db
+      .select({ libraryId: books.libraryId, seriesIndex: bookSeriesMemberships.seriesIndex })
+      .from(bookSeriesMemberships)
+      .innerJoin(books, eq(books.id, bookSeriesMemberships.bookId))
+      .where(and(eq(bookSeriesMemberships.seriesId, seriesId), eq(bookSeriesMemberships.bookId, bookId), this.buildLibraryFilter(libraryIds)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async upsertFollowStatus(userId: number, seriesId: number, status: SeriesFollowStatus): Promise<{ status: SeriesFollowStatus; updatedAt: Date }> {
+    const [row] = await this.db
+      .insert(userSeriesStatus)
+      .values({ userId, seriesId, status })
+      .onConflictDoUpdate({ target: [userSeriesStatus.userId, userSeriesStatus.seriesId], set: { status, updatedAt: new Date() } })
+      .returning({ status: userSeriesStatus.status, updatedAt: userSeriesStatus.updatedAt });
+    return row!;
+  }
+
+  async deleteFollowStatus(userId: number, seriesId: number): Promise<void> {
+    await this.db.delete(userSeriesStatus).where(and(eq(userSeriesStatus.userId, userId), eq(userSeriesStatus.seriesId, seriesId)));
   }
 
   async findBookIds(params: {

@@ -69,7 +69,7 @@ describe('DashboardRepository', () => {
     await expect(repo.findContinueReadingBookIds([], 1, 20)).resolves.toEqual([]);
     await expect(repo.findContinueListeningBookIds([], 1, 20)).resolves.toEqual([]);
     await expect(repo.findWantToReadBookIds([], 1, 20)).resolves.toEqual([]);
-    await expect(repo.findUpNextInSeriesBookIds([], 1, 20)).resolves.toEqual([]);
+    await expect(repo.findUpNextInSeries([], 1, 20)).resolves.toEqual([]);
     await expect(repo.findRandomBookIds([], 1, 20)).resolves.toEqual([]);
     expect(db.select).not.toHaveBeenCalled();
     expect(db.execute).not.toHaveBeenCalled();
@@ -292,16 +292,24 @@ describe('DashboardRepository', () => {
     expect(db.select).not.toHaveBeenCalled();
   });
 
-  it('maps up-next-in-series rows to id list', async () => {
+  it('maps up-next-in-series rows to ids with series activity', async () => {
     const db = {
       select: vi.fn(),
-      execute: vi.fn().mockResolvedValue({ rows: [{ id: 17 }, { id: 4 }] }),
+      execute: vi.fn().mockResolvedValue({
+        rows: [
+          { id: 17, series_activity_at: new Date('2026-01-02T03:04:05.000Z') },
+          { id: 4, series_activity_at: null },
+        ],
+      }),
     };
     const repo = new DashboardRepository(db as never);
 
-    const result = await repo.findUpNextInSeriesBookIds([9], 55, 10);
+    const result = await repo.findUpNextInSeries([9], 55, 10);
 
-    expect(result).toEqual([17, 4]);
+    expect(result).toEqual([
+      { id: 17, lastActivityAt: '2026-01-02T03:04:05.000Z' },
+      { id: 4, lastActivityAt: null },
+    ]);
     expect(db.execute).toHaveBeenCalledTimes(1);
   });
 
@@ -312,12 +320,14 @@ describe('DashboardRepository', () => {
     };
     const repo = new DashboardRepository(db as never);
 
-    await repo.findUpNextInSeriesBookIds([9], 55, 10);
+    await repo.findUpNextInSeries([9], 55, 10);
     const query = compileSql(db.execute.mock.calls[0]?.[0]);
     const gate = "and (os.read_status is null or os.read_status in ('unread', 'want_to_read'))";
 
     expect(query).toContain('"user_book_status"."status" as read_status');
     expect(query).toContain('ssb.read_status');
+    expect(query).toContain("os.series_follow_status is null or os.series_follow_status = 'reading'");
+    expect(query).toContain("os.series_follow_status = 'caught_up' and os.added_at > os.series_status_updated_at");
     expect(query.indexOf(gate)).toBeGreaterThan(query.indexOf('from ordered_series os'));
     expect(query.split(gate)).toHaveLength(2);
   });
@@ -329,7 +339,7 @@ describe('DashboardRepository', () => {
     };
     const repo = new DashboardRepository(db as never);
 
-    const result = await repo.findUpNextInSeriesBookIds([9], 55, 0);
+    const result = await repo.findUpNextInSeries([9], 55, 0);
 
     expect(result).toEqual([]);
     expect(db.execute).not.toHaveBeenCalled();
@@ -342,9 +352,21 @@ describe('DashboardRepository', () => {
     };
     const repo = new DashboardRepository(db as never);
 
-    const result = await repo.findUpNextInSeriesBookIds([2], 101, 20);
+    const result = await repo.findUpNextInSeries([2], 101, 20);
 
     expect(result).toEqual([]);
     expect(db.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the activity cut-off only when months are given', async () => {
+    const db = { select: vi.fn(), execute: vi.fn().mockResolvedValue({ rows: [] }) };
+    const repo = new DashboardRepository(db as never);
+    const cutoff = 'and os.series_activity_at >= now() - make_interval(months =>';
+
+    await repo.findUpNextInSeries([9], 55, 10, undefined, {}, 12);
+    await repo.findUpNextInSeries([9], 55, 10);
+
+    expect(compileSql(db.execute.mock.calls[0]?.[0])).toContain(cutoff);
+    expect(compileSql(db.execute.mock.calls[1]?.[0])).not.toContain(cutoff);
   });
 });

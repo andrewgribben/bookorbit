@@ -960,6 +960,13 @@
       "when": 1793182816801,
       "tag": "0136_fork_api_keys_and_feeds",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1793834759692,
+      "tag": "0137_series_follow_status",
+      "breakpoints": true
     }
   ]
 }

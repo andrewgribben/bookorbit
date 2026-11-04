@@ -31,7 +31,7 @@ function makeService() {
     findContinueReadingBookIds: vi.fn(),
     findContinueListeningBookIds: vi.fn(),
     findWantToReadBookIds: vi.fn(),
-    findUpNextInSeriesBookIds: vi.fn(),
+    findUpNextInSeries: vi.fn(),
     findRandomBookIds: vi.fn(),
     countBooksAddedThisMonth: vi.fn().mockResolvedValue(0),
     countContinueReadingBooks: vi.fn().mockResolvedValue(0),
@@ -97,13 +97,16 @@ describe('DashboardService', () => {
     const { service, dashboardRepo, libraryService } = makeService();
     const user = makeUser({ id: 8 });
     libraryService.findAccessibleLibraryIds.mockResolvedValue([10]);
-    dashboardRepo.findUpNextInSeriesBookIds.mockResolvedValue([4, 2]);
+    dashboardRepo.findUpNextInSeries.mockResolvedValue([
+      { id: 4, lastActivityAt: null },
+      { id: 2, lastActivityAt: null },
+    ]);
     dashboardRepo.findRecentlyAddedBookIds.mockResolvedValue([5]);
 
     await expect(service.getScrollerBookIds(ScrollerType.UP_NEXT_IN_SERIES, user, 500, { excludeAudioOnly: true })).resolves.toEqual([4, 2]);
     await expect(service.getScrollerBookIds(ScrollerType.RECENTLY_ADDED, user, 12)).resolves.toEqual([5]);
 
-    expect(dashboardRepo.findUpNextInSeriesBookIds).toHaveBeenCalledWith([10], 8, 50, EMPTY_CONTENT_FILTER_RULES, { excludeAudioOnly: true });
+    expect(dashboardRepo.findUpNextInSeries).toHaveBeenCalledWith([10], 8, 50, EMPTY_CONTENT_FILTER_RULES, { excludeAudioOnly: true }, undefined);
     expect(dashboardRepo.findRecentlyAddedBookIds).toHaveBeenCalledWith([10], 12, EMPTY_CONTENT_FILTER_RULES, {});
   });
 
@@ -252,12 +255,15 @@ describe('DashboardService', () => {
     const { service, dashboardRepo, bookReadService, libraryService } = makeService();
     const user = makeUser({ id: 11 });
     libraryService.findAccessibleLibraryIds.mockResolvedValue([707]);
-    dashboardRepo.findUpNextInSeriesBookIds.mockResolvedValue([19, 8]);
+    dashboardRepo.findUpNextInSeries.mockResolvedValue([
+      { id: 19, lastActivityAt: null },
+      { id: 8, lastActivityAt: null },
+    ]);
     bookReadService.findCardsByBookIds.mockResolvedValue(makeFindCardsResult([8, 19]));
 
     const result = await service.getScroller(ScrollerType.UP_NEXT_IN_SERIES, user, 25);
 
-    expect(dashboardRepo.findUpNextInSeriesBookIds).toHaveBeenCalledWith([707], 11, 25, EMPTY_CONTENT_FILTER_RULES, {});
+    expect(dashboardRepo.findUpNextInSeries).toHaveBeenCalledWith([707], 11, 25, EMPTY_CONTENT_FILTER_RULES, {}, undefined);
     expect(result.books.map((card) => card.id)).toEqual([19, 8]);
     // The recursive CTE is not worth materialising twice, so this shelf never reports a total.
     expect(result.total).toBeNull();
@@ -267,24 +273,24 @@ describe('DashboardService', () => {
     const { service, dashboardRepo, bookReadService, libraryService } = makeService();
     const superuser = makeUser({ id: 17, isSuperuser: true, contentFilters: EMPTY_CONTENT_FILTER_RULES });
     libraryService.findAccessibleLibraryIds.mockResolvedValue([1]);
-    dashboardRepo.findUpNextInSeriesBookIds.mockResolvedValue([55]);
+    dashboardRepo.findUpNextInSeries.mockResolvedValue([{ id: 55, lastActivityAt: null }]);
     bookReadService.findCardsByBookIds.mockResolvedValue(makeFindCardsResult([55]));
 
     await service.getScroller(ScrollerType.UP_NEXT_IN_SERIES, superuser, 20);
 
-    expect(dashboardRepo.findUpNextInSeriesBookIds).toHaveBeenCalledWith([1], 17, 20, undefined, {});
+    expect(dashboardRepo.findUpNextInSeries).toHaveBeenCalledWith([1], 17, 20, undefined, {}, undefined);
   });
 
   it('clamps up-next-in-series limit to minimum of 1', async () => {
     const { service, dashboardRepo, bookReadService, libraryService } = makeService();
     const user = makeUser({ id: 18 });
     libraryService.findAccessibleLibraryIds.mockResolvedValue([91]);
-    dashboardRepo.findUpNextInSeriesBookIds.mockResolvedValue([3]);
+    dashboardRepo.findUpNextInSeries.mockResolvedValue([{ id: 3, lastActivityAt: null }]);
     bookReadService.findCardsByBookIds.mockResolvedValue(makeFindCardsResult([3]));
 
     await service.getScroller(ScrollerType.UP_NEXT_IN_SERIES, user, 0);
 
-    expect(dashboardRepo.findUpNextInSeriesBookIds).toHaveBeenCalledWith([91], 18, 1, EMPTY_CONTENT_FILTER_RULES, {});
+    expect(dashboardRepo.findUpNextInSeries).toHaveBeenCalledWith([91], 18, 1, EMPTY_CONTENT_FILTER_RULES, {}, undefined);
   });
 
   it('routes random requests to repository and skips card fetch when no ids are returned', async () => {

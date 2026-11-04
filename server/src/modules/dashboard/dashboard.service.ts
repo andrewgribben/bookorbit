@@ -53,8 +53,8 @@ export class DashboardService {
     const selections = await mapWithConcurrency(dto.items, SCROLLER_QUERY_CONCURRENCY, async (item) => {
       const selectionStartedAt = Date.now();
       try {
-        const bookIds = await this.findBatchScrollerBookIds(item, user, accessibleLibraryIds);
-        return { item, bookIds, failed: false };
+        const { bookIds, lastActivityAt } = await this.findBatchScrollerBookIds(item, user, accessibleLibraryIds);
+        return { item, bookIds, lastActivityAt, failed: false };
       } catch (error) {
         const errorClass = error instanceof Error ? error.constructor.name : typeof error;
         const message = sanitizeLogValue(error instanceof Error ? error.message : error);
@@ -83,10 +83,11 @@ export class DashboardService {
       throw error;
     }
     const cardsById = new Map(cards.map((card) => [card.id, card]));
-    const items = selections.map(({ item, bookIds, failed }) => ({
+    const items = selections.map(({ item, bookIds, lastActivityAt, failed }) => ({
       id: item.id,
       books: bookIds.map((id) => cardsById.get(id)).filter((card): card is BookCard => card != null),
       failed,
+      ...(lastActivityAt && { lastActivityAt }),
     }));
 
     this.logger.debug(
@@ -95,16 +96,25 @@ export class DashboardService {
     return { items };
   }
 
-  private async findBatchScrollerBookIds(item: DashboardScrollerBatchItemDto, user: RequestUser, accessibleLibraryIds: number[]): Promise<number[]> {
+  private async findBatchScrollerBookIds(
+    item: DashboardScrollerBatchItemDto,
+    user: RequestUser,
+    accessibleLibraryIds: number[],
+  ): Promise<{ bookIds: number[]; lastActivityAt?: Record<number, string> }> {
     const startedAt = Date.now();
     this.logger.debug(
       `[dashboard.scroller_query] [start] userId=${user.id} type=${item.type} smartScopeId=${item.smartScopeId ?? 0} limit=${item.limit} - scroller selection started`,
     );
 
     let bookIds: number[];
+    let lastActivityAt: Record<number, string> | undefined;
     if (item.type === ScrollerType.SMART_SCOPE) {
       const smartScopeId = this.assertSmartScopeId(item.smartScopeId);
       bookIds = await this.smartScopeService.executeSmartScopeBookIds(smartScopeId, user, item.limit, accessibleLibraryIds);
+    } else if (item.type === ScrollerType.UP_NEXT_IN_SERIES) {
+      const rows = await this.findUpNextInSeries(user, item.limit, accessibleLibraryIds, {}, item.maxAgeMonths);
+      bookIds = rows.map((row) => row.id);
+      lastActivityAt = Object.fromEntries(rows.filter((row) => row.lastActivityAt).map((row) => [row.id, row.lastActivityAt!]));
     } else {
       bookIds = await this.findScrollerBookIdsForLibraries(item.type, user, item.limit, accessibleLibraryIds);
     }
@@ -112,7 +122,7 @@ export class DashboardService {
     this.logger.debug(
       `[dashboard.scroller_query] [end] userId=${user.id} type=${item.type} smartScopeId=${item.smartScopeId ?? 0} resultCount=${bookIds.length} durationMs=${Date.now() - startedAt} - scroller selection completed`,
     );
-    return bookIds;
+    return { bookIds, lastActivityAt };
   }
 
   async getScroller(type: ScrollerType, user: RequestUser, limit: number, smartScopeId?: number): Promise<DashboardScrollerResponse> {
@@ -227,9 +237,21 @@ export class DashboardService {
       case ScrollerType.WANT_TO_READ:
         return this.dashboardRepo.findWantToReadBookIds(accessibleLibraryIds, user.id, clampedLimit, contentFilters, options);
       case ScrollerType.UP_NEXT_IN_SERIES:
-        return this.dashboardRepo.findUpNextInSeriesBookIds(accessibleLibraryIds, user.id, clampedLimit, contentFilters, options);
+        return (await this.findUpNextInSeries(user, clampedLimit, accessibleLibraryIds, options)).map((row) => row.id);
       case ScrollerType.RANDOM:
         return this.dashboardRepo.findRandomBookIds(accessibleLibraryIds, user.id, clampedLimit, contentFilters, options);
     }
+  }
+
+  private findUpNextInSeries(
+    user: RequestUser,
+    clampedLimit: number,
+    accessibleLibraryIds: number[],
+    options: ScrollerSelectionOptions = {},
+    maxAgeMonths?: number,
+  ): Promise<{ id: number; lastActivityAt: string | null }[]> {
+    if (accessibleLibraryIds.length === 0) return Promise.resolve([]);
+    const contentFilters = user.isSuperuser ? undefined : user.contentFilters;
+    return this.dashboardRepo.findUpNextInSeries(accessibleLibraryIds, user.id, clampedLimit, contentFilters, options, maxAgeMonths);
   }
 }
