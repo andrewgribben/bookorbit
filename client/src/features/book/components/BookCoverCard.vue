@@ -43,6 +43,7 @@ import { useCoverVersions } from '../composables/useCoverVersions'
 import { useRefreshMetadata } from '../composables/useRefreshMetadata'
 import { useRefreshingBooks } from '../composables/useRefreshingBooks'
 import { mergeBookCardWithDetail } from '../lib/book-card-mapper'
+import SeriesBookMarkItems from '@/features/series/components/SeriesBookMarkItems.vue'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraryPermissions } from '@/features/library/composables/useLibraryPermissions'
 import { useDisplaySettings, type GridCardLabelField } from '@/composables/useDisplaySettings'
@@ -386,6 +387,8 @@ watch(
 const showReadBadge = computed(
   () => cardOverlays.value.includes('read-status') && localReadStatus.value != null && localReadStatus.value !== 'unread' && !props.selectionMode,
 )
+
+const seriesMarkTarget = computed(() => (props.book.seriesId && props.book.seriesIndex != null ? props.book.seriesId : null))
 
 async function handleSetStatus(status: ReadStatus) {
   const prev = localReadStatus.value
@@ -735,6 +738,7 @@ const secondaryLabelText = computed(() => resolveBookLabel(gridCardSecondaryLabe
                         {{ opt.label }}
                         <Check v-if="localReadStatus === opt.value" class="size-3 ml-auto text-primary" />
                       </DropdownMenuItem>
+                      <SeriesBookMarkItems v-if="seriesMarkTarget" :series-id="seriesMarkTarget" :book-id="book.id" />
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                   <DropdownMenuItem v-if="hasPermission('email_send')" @click="showSendDialog = true">
@@ -869,6 +873,7 @@ const secondaryLabelText = computed(() => resolveBookLabel(gridCardSecondaryLabe
                   {{ opt.label }}
                   <Check v-if="localReadStatus === opt.value" class="size-3 ml-auto text-primary" />
                 </DropdownMenuItem>
+                <SeriesBookMarkItems v-if="seriesMarkTarget" :series-id="seriesMarkTarget" :book-id="book.id" />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem v-if="hasPermission('email_send')" @click="showSendDialog = true">

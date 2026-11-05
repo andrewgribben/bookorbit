@@ -11,6 +11,7 @@ import AddToCollectionSheet from '@/features/collection/components/AddToCollecti
 import DeleteBookDialog from '@/features/book/components/DeleteBookDialog.vue'
 import { useDashboardScroller } from '../composables/useDashboardScroller'
 import SeriesFollowMenu from '@/features/series/components/SeriesFollowMenu.vue'
+import { onSeriesFollowChanged } from '@/features/series/composables/useSeriesFollowActions'
 import { relativeTimestamp } from '@/lib/relative-time'
 import { useDeleteBook } from '@/features/book/composables/useDeleteBook'
 import { MIN_SHELF_ROWS, chunkIntoBands, effectiveShelfRows, shelfBookLimit } from '../lib/shelf-rows'
@@ -46,14 +47,19 @@ const { books, lastActivityAt, loading, error, refresh } = useDashboardScroller(
 )
 const isUpNext = computed(() => props.type === 'up-next-in-series')
 
-function lastReadLabel(book: BookCard): string | null {
+function lastActivityText(book: BookCard): string | null {
   const at = lastActivityAt.value[book.id]
-  return at ? t('series.follow.lastRead', { time: relativeTimestamp(at) }) : null
+  return at ? relativeTimestamp(at) : null
 }
 
-function handleSeriesChanged() {
-  void refresh()
+function lastActivityTitle(book: BookCard): string | undefined {
+  const text = lastActivityText(book)
+  return text ? t('series.follow.lastRead', { time: text }) : undefined
 }
+
+onSeriesFollowChanged(() => {
+  void refresh()
+})
 
 const bands = computed(() => chunkIntoBands(books.value, shelfRows.value))
 
@@ -203,8 +209,8 @@ function coverAnimationDelay(index: number): string {
           >
             <BookCoverCard :book="book" :cover-aspect-ratio="book.coverAspectRatio" @action="handleBookAction(book, $event)" />
             <div v-if="isUpNext && book.seriesId" class="mt-1 flex items-center justify-between gap-1">
-              <span class="truncate text-[11px] text-muted-foreground">{{ lastReadLabel(book) }}</span>
-              <SeriesFollowMenu :series-id="book.seriesId" :up-to-book-id="book.id" compact @changed="handleSeriesChanged" />
+              <span class="truncate text-[11px] text-muted-foreground" :title="lastActivityTitle(book)">{{ lastActivityText(book) }}</span>
+              <SeriesFollowMenu :series-id="book.seriesId" :up-to-book-id="book.id" compact />
             </div>
           </div>
         </div>

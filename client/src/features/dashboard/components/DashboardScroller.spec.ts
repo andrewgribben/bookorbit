@@ -89,7 +89,15 @@ vi.mock('@/features/series/components/SeriesFollowMenu.vue', () => ({
     name: 'SeriesFollowMenu',
     props: ['seriesId', 'upToBookId', 'compact'],
     emits: ['changed'],
-    template: '<button class="series-follow" :data-series="seriesId" :data-up-to="upToBookId" @click="$emit(\'changed\')" />',
+    template: '<button class="series-follow" :data-series="seriesId" :data-up-to="upToBookId" />',
+  },
+}))
+
+const seriesFollow = vi.hoisted(() => ({ listener: null as null | (() => void) }))
+vi.mock('@/features/series/composables/useSeriesFollowActions', () => ({
+  onSeriesFollowChanged: (listener: () => void) => {
+    seriesFollow.listener = listener
+    return () => undefined
   },
 }))
 
@@ -196,9 +204,11 @@ describe('DashboardScroller', () => {
     const menus = wrapper.findAll('.series-follow')
     expect(menus).toHaveLength(1)
     expect(menus[0]!.attributes()).toMatchObject({ 'data-series': '40', 'data-up-to': '5' })
-    expect(wrapper.text()).toContain('Last read')
+    const label = wrapper.find('[title^="Last read"]')
+    expect(label.exists()).toBe(true)
+    expect(label.text()).not.toContain('Last read')
 
-    await menus[0]!.trigger('click')
+    seriesFollow.listener?.()
     expect(refresh).toHaveBeenCalled()
   })
 

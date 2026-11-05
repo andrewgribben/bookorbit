@@ -12,6 +12,8 @@ import {
   Library,
   Headphones,
   Lock,
+  ListChecks,
+  ListRestart,
   MoreVertical,
   Pencil,
   RotateCcw,
@@ -44,6 +46,7 @@ import type {
   UserBookStatus,
 } from '@bookorbit/types'
 import { STATUS_OPTIONS, STATUS_ICONS, STATUS_COLORS, useBookStatus } from '@/features/book/composables/useBookStatus'
+import { useSeriesFollowActions } from '@/features/series/composables/useSeriesFollowActions'
 import BookDownloadButton from '@/features/book/components/BookDownloadButton.vue'
 import DiscoverRow from '@/features/book/components/detail/DiscoverRow.vue'
 import BookCoverArtwork from '@/features/book/components/BookCoverArtwork.vue'
@@ -771,6 +774,22 @@ watch(
   },
   { immediate: true },
 )
+
+const seriesMarkTarget = computed(() => (props.book.seriesId && props.book.seriesIndex != null ? props.book.seriesId : null))
+const { markRead: markSeriesReadUpTo, markUnreadFrom: markSeriesUnreadFrom } = useSeriesFollowActions()
+
+// Mirrors the server's skip rules so this book's badge matches without refetching it.
+async function handleMarkSeriesReadUpTo() {
+  moreMenuOpen.value = false
+  if (!seriesMarkTarget.value || !(await markSeriesReadUpTo(seriesMarkTarget.value, props.book.id))) return
+  if (localReadStatus.value !== 'read' && localReadStatus.value !== 'skimmed') localReadStatus.value = 'read'
+}
+
+async function handleMarkSeriesUnreadFrom() {
+  moreMenuOpen.value = false
+  if (!seriesMarkTarget.value || !(await markSeriesUnreadFrom(seriesMarkTarget.value, props.book.id))) return
+  if (localReadStatus.value && localReadStatus.value !== 'want_to_read') localReadStatus.value = 'unread'
+}
 
 async function handleSetReadStatus(status: ReadStatus) {
   const prev = localReadStatus.value
@@ -1520,6 +1539,24 @@ watch(
                   <RotateCcw class="size-3.5" />
                   Reset reading state
                 </button>
+                <template v-if="canManageReadingState && seriesMarkTarget">
+                  <button
+                    class="flex w-full items-center gap-2 px-2 py-1.5 rounded-xs text-sm text-foreground hover:bg-muted transition-colors"
+                    data-testid="details-mark-read-up-to"
+                    @click="handleMarkSeriesReadUpTo"
+                  >
+                    <ListChecks class="size-3.5" />
+                    {{ t('series.follow.markReadUpTo') }}
+                  </button>
+                  <button
+                    class="flex w-full items-center gap-2 px-2 py-1.5 rounded-xs text-sm text-foreground hover:bg-muted transition-colors"
+                    data-testid="details-mark-unread-from"
+                    @click="handleMarkSeriesUnreadFrom"
+                  >
+                    <ListRestart class="size-3.5" />
+                    {{ t('series.follow.markUnreadFrom') }}
+                  </button>
+                </template>
                 <button
                   v-if="canEditMetadata"
                   class="flex w-full items-center gap-2 px-2 py-1.5 rounded-xs text-sm hover:bg-muted transition-colors"

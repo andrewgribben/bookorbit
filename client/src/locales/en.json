@@ -13569,10 +13569,12 @@
         "dropped": "Dropped"
       },
       "markReadUpTo": "Mark read up to here",
+      "markUnreadFrom": "Mark unread from here",
       "markAllRead": "Mark all read",
       "markAllReadTitle": "Mark the whole series read?",
       "markAllReadDescription": "Every book in this series that is not already read will be marked read.",
       "markedRead": "{count, plural, =0 {Nothing to mark: all books are already read} one {# book marked read} other {# books marked read}}",
+      "markedUnread": "{count, plural, =0 {Nothing to mark: no later books are read} one {# book marked unread} other {# books marked unread}}",
       "failed": "Could not update the series. Try again.",
       "lastRead": "Last read {time}"
     }

@@ -65,3 +65,13 @@ export async function markSeriesRead(seriesId: number, upToBookId?: number): Pro
   if (!res.ok) throw new Error(`Failed to mark series read: ${res.status}`)
   return res.json()
 }
+
+export async function markSeriesUnread(seriesId: number, fromBookId: number): Promise<MarkSeriesReadResponse> {
+  const res = await api(`/api/v1/series/${seriesId}/mark-unread`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fromBookId }),
+  })
+  if (!res.ok) throw new Error(`Failed to mark series unread: ${res.status}`)
+  return res.json()
+}
