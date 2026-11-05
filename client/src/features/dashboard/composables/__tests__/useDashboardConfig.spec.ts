@@ -186,6 +186,26 @@ describe('useDashboardConfig', () => {
     expect(shelfLayout.value).toBe('wide')
   })
 
+  it('keeps a valid Up Next cut-off and leaves legacy shelves without one', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        scrollers: [
+          { id: '4', type: 'up-next-in-series', label: 'Up Next', enabled: true, limit: 20, maxAgeMonths: 6 },
+          { id: '5', type: 'up-next-in-series', label: 'Legacy', enabled: true, limit: 20 },
+          { id: '6', type: 'up-next-in-series', label: 'Odd', enabled: true, limit: 20, maxAgeMonths: 5 },
+          { id: '7', type: 'recently-added', label: 'Recent', enabled: true, limit: 20, maxAgeMonths: 6 },
+        ],
+      }),
+    )
+
+    const { DEFAULT_SCROLLERS, useDashboardConfig } = await import('../useDashboardConfig')
+    const { scrollers } = useDashboardConfig()
+
+    expect(scrollers.value.map((scroller) => scroller.maxAgeMonths)).toEqual([6, undefined, undefined, undefined])
+    expect(DEFAULT_SCROLLERS.find((scroller) => scroller.type === 'up-next-in-series')?.maxAgeMonths).toBe(12)
+  })
+
   it('clones the default config before applying mutations', async () => {
     const { DEFAULT_SCROLLERS, useDashboardConfig } = await import('../useDashboardConfig')
     const { scrollers, addScroller } = useDashboardConfig()

@@ -44,12 +44,12 @@ function batchBody(): { items: Array<{ id: string; type: string; limit: number; 
   return JSON.parse(String(init?.body))
 }
 
-function mountComposable(type: BookScrollerType, limit = 20, smartScopeId?: number) {
+function mountComposable(type: BookScrollerType, limit = 20, smartScopeId?: number, maxAgeMonths?: number) {
   let result!: ReturnType<typeof useDashboardScroller>
   mount(
     defineComponent({
       setup() {
-        result = useDashboardScroller(type, limit, smartScopeId)
+        result = useDashboardScroller(type, limit, smartScopeId, maxAgeMonths)
         return () => null
       },
     }),
@@ -92,6 +92,29 @@ describe('useDashboardScroller', () => {
     await flushPromises()
 
     expect(batchBody().items).toEqual([{ id: expect.any(String), type: 'smart-scope', limit: 30, smartScopeId: 99 }])
+  })
+
+  it('sends the Up Next cut-off and exposes last activity per book', async () => {
+    mockApi.mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { items: Array<{ id: string }> }
+      return mockResponse({
+        items: body.items.map((item) => ({ id: item.id, books: [{ id: 7 }], failed: false, lastActivityAt: { 7: '2026-10-01T00:00:00.000Z' } })),
+      })
+    })
+    const state = mountComposable('up-next-in-series', 10, undefined, 12)
+    await flushPromises()
+
+    expect(batchBody().items).toEqual([{ id: expect.any(String), type: 'up-next-in-series', limit: 10, maxAgeMonths: 12 }])
+    expect(state.lastActivityAt.value).toEqual({ 7: '2026-10-01T00:00:00.000Z' })
+  })
+
+  it('never sends a cut-off for other shelf types', async () => {
+    mockSuccessfulBatch([])
+    const state = mountComposable('continue-reading', 10, undefined, 12)
+    await flushPromises()
+
+    expect(batchBody().items).toEqual([{ id: expect.any(String), type: 'continue-reading', limit: 10 }])
+    expect(state.lastActivityAt.value).toEqual({})
   })
 
   it.each([

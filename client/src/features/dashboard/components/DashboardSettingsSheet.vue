@@ -9,7 +9,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useSmartScopes } from '@/features/smart-scope/composables/useSmartScopes'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
-import { DEFAULT_SCROLLERS, SCROLLER_LABELS, SHELF_LAYOUT, useDashboardConfig, type DashboardShelfLayout } from '../composables/useDashboardConfig'
+import {
+  DEFAULT_SCROLLERS,
+  SCROLLER_LABELS,
+  SHELF_LAYOUT,
+  UP_NEXT_CUTOFF_MONTHS,
+  useDashboardConfig,
+  type DashboardShelfLayout,
+} from '../composables/useDashboardConfig'
 import { SHELF_ROW_OPTIONS } from '../lib/shelf-rows'
 import { useDashboardLabels } from '../composables/useDashboardLabels'
 import { useDashboardWidgets } from '../composables/useDashboardWidgets'
@@ -127,6 +134,7 @@ function removeScroller(index: number) {
 }
 
 function onTypeChange(scroller: ScrollerConfig) {
+  scroller.maxAgeMonths = scroller.type === 'up-next-in-series' ? 12 : undefined
   if (scroller.type === 'smart-scope') {
     const firstSmartScope = smartScopes.value[0]
     scroller.smartScopeId = firstSmartScope?.id
@@ -482,6 +490,23 @@ function handleCancel() {
                   <option v-for="smartScope in smartScopes" :key="smartScope.id" :value="smartScope.id">{{ smartScope.name }}</option>
                 </select>
                 <p v-else class="text-xs text-muted-foreground">{{ t('dashboard.settings.noSmartScopes') }}</p>
+              </div>
+
+              <div v-if="scroller.type === 'up-next-in-series'" class="border-t border-border/50 px-3 pb-2.5 pt-2">
+                <label :for="`up-next-cutoff-${scroller.id}`" class="mb-1.5 block text-[11px] font-medium text-muted-foreground">
+                  {{ t('dashboard.settings.upNextCutoff.label') }}
+                </label>
+                <select
+                  :id="`up-next-cutoff-${scroller.id}`"
+                  v-model="scroller.maxAgeMonths"
+                  data-testid="up-next-cutoff"
+                  class="h-8 w-full appearance-none rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option :value="undefined">{{ t('dashboard.settings.upNextCutoff.off') }}</option>
+                  <option v-for="months in UP_NEXT_CUTOFF_MONTHS" :key="months" :value="months">
+                    {{ t('dashboard.settings.upNextCutoff.months', { count: months }) }}
+                  </option>
+                </select>
               </div>
             </div>
           </div>

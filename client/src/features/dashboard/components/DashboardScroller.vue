@@ -10,6 +10,8 @@ import BookQuickView from '@/features/book/components/BookQuickView.vue'
 import AddToCollectionSheet from '@/features/collection/components/AddToCollectionSheet.vue'
 import DeleteBookDialog from '@/features/book/components/DeleteBookDialog.vue'
 import { useDashboardScroller } from '../composables/useDashboardScroller'
+import SeriesFollowMenu from '@/features/series/components/SeriesFollowMenu.vue'
+import { relativeTimestamp } from '@/lib/relative-time'
 import { useDeleteBook } from '@/features/book/composables/useDeleteBook'
 import { MIN_SHELF_ROWS, chunkIntoBands, effectiveShelfRows, shelfBookLimit } from '../lib/shelf-rows'
 
@@ -23,6 +25,7 @@ const props = defineProps<{
   limit?: number
   rows?: number
   smartScopeId?: number
+  maxAgeMonths?: number
 }>()
 
 const attrs = useAttrs()
@@ -35,11 +38,22 @@ const shelfRows = computed(() => effectiveShelfRows(props.rows ?? MIN_SHELF_ROWS
 
 // Snapshotted at setup so resizing across the breakpoint re-flows the books
 // already fetched instead of firing another batch request.
-const { books, loading, error, refresh } = useDashboardScroller(
+const { books, lastActivityAt, loading, error, refresh } = useDashboardScroller(
   props.type,
   shelfBookLimit(props.limit ?? DEFAULT_BOOKS_PER_ROW, shelfRows.value),
   props.smartScopeId,
+  props.maxAgeMonths,
 )
+const isUpNext = computed(() => props.type === 'up-next-in-series')
+
+function lastReadLabel(book: BookCard): string | null {
+  const at = lastActivityAt.value[book.id]
+  return at ? t('series.follow.lastRead', { time: relativeTimestamp(at) }) : null
+}
+
+function handleSeriesChanged() {
+  void refresh()
+}
 
 const bands = computed(() => chunkIntoBands(books.value, shelfRows.value))
 
@@ -188,6 +202,10 @@ function coverAnimationDelay(index: number): string {
             :style="{ animationDelay: coverAnimationDelay(index) }"
           >
             <BookCoverCard :book="book" :cover-aspect-ratio="book.coverAspectRatio" @action="handleBookAction(book, $event)" />
+            <div v-if="isUpNext && book.seriesId" class="mt-1 flex items-center justify-between gap-1">
+              <span class="truncate text-[11px] text-muted-foreground">{{ lastReadLabel(book) }}</span>
+              <SeriesFollowMenu :series-id="book.seriesId" :up-to-book-id="book.id" compact @changed="handleSeriesChanged" />
+            </div>
           </div>
         </div>
       </div>

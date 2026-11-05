@@ -21,7 +21,8 @@ import {
   type RuleOperator,
   type StaticRuleField,
 } from '@bookorbit/types'
-import { READ_STATUSES } from '@bookorbit/types'
+import { READ_STATUSES, SERIES_FOLLOW_STATUSES } from '@bookorbit/types'
+import { seriesFollowStatusLabelKey } from '@/features/series/lib/series-follow-status'
 import { useActiveCustomFields } from '@/features/book/composables/useActiveCustomFields'
 import { fieldLabel, operatorLabel } from '@/features/book/lib/filter-labels'
 import { providerIconPathSafe } from '@/features/book/lib/provider-icons'
@@ -98,6 +99,16 @@ const READ_STATUS_LABELS = computed<Record<string, string>>(() => ({
   skimmed: t('book.readStatus.skimmed'),
   abandoned: t('book.readStatus.abandoned'),
 }))
+
+// Fields whose collection operators pick from a fixed status list.
+const STATUS_CHIP_OPTIONS = computed<Partial<Record<RuleField, { value: string; label: string }[]>>>(() => ({
+  readStatus: READ_STATUSES.map((status) => ({ value: status, label: READ_STATUS_LABELS.value[status] ?? status })),
+  seriesStatus: SERIES_FOLLOW_STATUSES.map((status) => ({ value: status, label: t(seriesFollowStatusLabelKey(status)) })),
+}))
+
+function statusChipLabel(field: RuleField, value: string): string {
+  return STATUS_CHIP_OPTIONS.value[field]?.find((option) => option.value === value)?.label ?? value
+}
 
 const { labels: providerLabels } = useMetadataProviderLabels()
 // External providers' ratings can be filtered on too; they join the built-in list once known.
@@ -567,23 +578,28 @@ function showValueToInput(operator: RuleOperator): boolean {
             </select>
           </div>
         </template>
-        <!-- Read status dropdown -->
-        <template v-else-if="node.rule.field === 'readStatus' && COLLECTION_OPERATORS.includes(node.rule.operator)">
+        <!-- Status dropdown (read status, series status) -->
+        <template v-else-if="STATUS_CHIP_OPTIONS[node.rule.field] && COLLECTION_OPERATORS.includes(node.rule.operator)">
           <div class="flex flex-wrap items-center gap-1 min-w-48 flex-1 rounded-md border border-input bg-background px-2 py-1.5">
             <span
               v-for="status in node.rule.valueChips"
               :key="status"
               class="flex items-center gap-1 h-5 px-1.5 rounded-xs bg-primary/15 text-primary text-xs font-medium shrink-0"
             >
-              {{ READ_STATUS_LABELS[status] ?? status }}
+              {{ statusChipLabel(node.rule.field, status) }}
               <button type="button" class="text-primary hover:text-primary leading-none" @click="removeStatusChip(index, status)">
                 <X :size="10" />
               </button>
             </span>
             <select :value="''" class="h-7 flex-1 min-w-32 bg-background text-foreground text-sm outline-none" @change="addStatusChip(index, $event)">
               <option value="" disabled>{{ t('book.filter.selectStatus') }}</option>
-              <option v-for="status in READ_STATUSES" :key="status" :value="status" :disabled="node.rule.valueChips.includes(status)">
-                {{ READ_STATUS_LABELS[status] ?? status }}
+              <option
+                v-for="option in STATUS_CHIP_OPTIONS[node.rule.field]"
+                :key="option.value"
+                :value="option.value"
+                :disabled="node.rule.valueChips.includes(option.value)"
+              >
+                {{ option.label }}
               </option>
             </select>
           </div>

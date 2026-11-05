@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ChevronLeft, Pencil } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 
-import type { BookCard, BookDetail } from '@bookorbit/types'
+import type { BookCard, BookDetail, SeriesFollowStatus } from '@bookorbit/types'
 import VirtualBookGrid from '@/features/book/components/VirtualBookGrid.vue'
 import BookCoverArtwork from '@/features/book/components/BookCoverArtwork.vue'
 import { bookCoverStyle } from '@/features/book/lib/book-cover'
@@ -31,6 +31,7 @@ import SeriesGapBanner from '../components/SeriesGapBanner.vue'
 import { fetchSeriesBooks } from '../api/series'
 import { groupSeriesBooksByMedia } from '../composables/useSeriesBookMediaGroups'
 import { useSeriesDetail } from '../composables/useSeriesDetail'
+import SeriesFollowMenu from '../components/SeriesFollowMenu.vue'
 import { useCoverStack, MAX_VISIBLE as MAX_STACK_VISIBLE } from '../composables/useCoverStack'
 import {
   PORTRAIT_STACK_FRAME_ASPECT_RATIO,
@@ -108,6 +109,11 @@ function canEditBookMetadata(book: BookCard): boolean {
 }
 const canEditMetadata = computed(() => hasPermissionInAnyLibrary('library_edit_metadata', 'editor'))
 const safeLeadDescription = useSafeHtml(() => leadBook.value?.description)
+function handleFollowChanged(status: SeriesFollowStatus | null | undefined) {
+  if (seriesInfo.value && status !== undefined) seriesInfo.value = { ...seriesInfo.value, followStatus: status }
+  void loadBooks({ reset: true, keepPreviousData: true })
+}
+
 const visibleSeriesAuthors = computed(() => (seriesInfo.value?.authors ?? []).slice(0, 5))
 const hiddenSeriesAuthorsCount = computed(() => Math.max(0, (seriesInfo.value?.authors.length ?? 0) - visibleSeriesAuthors.value.length))
 const ownedVolumeCount = computed(() => seriesInfo.value?.ownedVolumeCount ?? seriesInfo.value?.bookCount ?? 0)
@@ -548,15 +554,18 @@ defineOptions({ name: 'SeriesDetailView' })
                   </div>
                 </div>
 
-                <button
-                  v-if="canEditMetadata && books.length > 0"
-                  class="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-sm transition-colors hover:bg-muted disabled:opacity-40 sm:px-3 md:w-auto"
-                  :disabled="openingSeriesEditor || loadingBooks"
-                  @click="editSeriesMetadata"
-                >
-                  <Pencil :size="14" />
-                  {{ openingSeriesEditor ? t('series.detail.preparingEditor') : t('series.detail.editMetadata') }}
-                </button>
+                <div class="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+                  <SeriesFollowMenu v-if="seriesId !== null" :series-id="seriesId" :status="seriesInfo.followStatus" @changed="handleFollowChanged" />
+                  <button
+                    v-if="canEditMetadata && books.length > 0"
+                    class="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-sm transition-colors hover:bg-muted disabled:opacity-40 sm:px-3 md:w-auto"
+                    :disabled="openingSeriesEditor || loadingBooks"
+                    @click="editSeriesMetadata"
+                  >
+                    <Pencil :size="14" />
+                    {{ openingSeriesEditor ? t('series.detail.preparingEditor') : t('series.detail.editMetadata') }}
+                  </button>
+                </div>
               </div>
 
               <div class="mt-3 grid max-w-md gap-3 sm:grid-cols-2">

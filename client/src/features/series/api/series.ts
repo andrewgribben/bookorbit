@@ -1,5 +1,5 @@
 import { api } from '@/lib/api'
-import type { SeriesBooksPage, SeriesPage } from '@bookorbit/types'
+import type { MarkSeriesReadResponse, SeriesBooksPage, SeriesFollowStatus, SeriesFollowStatusResponse, SeriesPage } from '@bookorbit/types'
 import type { CompletionStatus, SeriesBookSort, SeriesListSort, SortDirection } from '../types/series'
 
 type ListSeriesParams = {
@@ -37,5 +37,31 @@ export async function fetchSeriesBooks(seriesId: number, params: ListSeriesBooks
   const qs = toQuery(params)
   const res = await api(`/api/v1/series/${seriesId}/books?${qs}`)
   if (!res.ok) throw new Error(`Failed to fetch series books: ${res.status}`)
+  return res.json()
+}
+
+export async function setSeriesFollowStatus(seriesId: number, status: SeriesFollowStatus): Promise<SeriesFollowStatusResponse> {
+  const res = await api(`/api/v1/series/${seriesId}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  if (!res.ok) throw new Error(`Failed to set series status: ${res.status}`)
+  return res.json()
+}
+
+export async function clearSeriesFollowStatus(seriesId: number): Promise<void> {
+  const res = await api(`/api/v1/series/${seriesId}/status`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to clear series status: ${res.status}`)
+}
+
+/** Omit upToBookId to mark the whole series read. */
+export async function markSeriesRead(seriesId: number, upToBookId?: number): Promise<MarkSeriesReadResponse> {
+  const res = await api(`/api/v1/series/${seriesId}/mark-read`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(upToBookId === undefined ? {} : { upToBookId }),
+  })
+  if (!res.ok) throw new Error(`Failed to mark series read: ${res.status}`)
   return res.json()
 }

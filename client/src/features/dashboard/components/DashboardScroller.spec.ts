@@ -5,12 +5,13 @@ import type { BookCard, BookScrollerType } from '@bookorbit/types'
 
 type DashboardScrollerState = {
   books: Ref<BookCard[]>
+  lastActivityAt: Ref<Record<number, string>>
   loading: Ref<boolean>
   error: Ref<boolean>
   refresh: () => Promise<void>
 }
 
-type UseDashboardScrollerMock = (type: BookScrollerType, limit?: number, smartScopeId?: number) => DashboardScrollerState
+type UseDashboardScrollerMock = (type: BookScrollerType, limit?: number, smartScopeId?: number, maxAgeMonths?: number) => DashboardScrollerState
 
 // `sm` is true at or above the Tailwind sm breakpoint, so a false value is the
 // compact viewport where the row count gets capped. A real ref keeps the mock
@@ -83,6 +84,15 @@ vi.mock('@/features/book/composables/useDeleteBook', () => ({
   })),
 }))
 
+vi.mock('@/features/series/components/SeriesFollowMenu.vue', () => ({
+  default: {
+    name: 'SeriesFollowMenu',
+    props: ['seriesId', 'upToBookId', 'compact'],
+    emits: ['changed'],
+    template: '<button class="series-follow" :data-series="seriesId" :data-up-to="upToBookId" @click="$emit(\'changed\')" />',
+  },
+}))
+
 vi.mock('../composables/useDashboardScroller', () => ({
   useDashboardScroller: vi.fn<UseDashboardScrollerMock>(),
 }))
@@ -133,6 +143,7 @@ function mountScroller({
   error = false,
   rows,
   limit,
+  lastActivityAt = {},
   refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }: {
   type: BookScrollerType
@@ -141,10 +152,12 @@ function mountScroller({
   error?: boolean
   rows?: number
   limit?: number
+  lastActivityAt?: Record<number, string>
   refresh?: () => Promise<void>
 }) {
   mockUseDashboardScroller.mockReturnValue({
     books: ref(books),
+    lastActivityAt: ref(lastActivityAt),
     loading: ref(loading),
     error: ref(error),
     refresh,
@@ -170,6 +183,30 @@ describe('DashboardScroller', () => {
     setCompactViewport(false)
   })
 
+  it('adds series actions and last activity to Up Next cards and refreshes after a change', async () => {
+    const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const book = { ...makeBook(5, 'cbz'), seriesId: 40 }
+    const wrapper = mountScroller({
+      type: 'up-next-in-series',
+      books: [book, makeBook(6, 'cbz')],
+      lastActivityAt: { 5: new Date().toISOString() },
+      refresh,
+    })
+
+    const menus = wrapper.findAll('.series-follow')
+    expect(menus).toHaveLength(1)
+    expect(menus[0]!.attributes()).toMatchObject({ 'data-series': '40', 'data-up-to': '5' })
+    expect(wrapper.text()).toContain('Last read')
+
+    await menus[0]!.trigger('click')
+    expect(refresh).toHaveBeenCalled()
+  })
+
+  it('leaves other shelves without series actions', () => {
+    const wrapper = mountScroller({ type: 'recently-added', books: [{ ...makeBook(5, 'cbz'), seriesId: 40 }] })
+    expect(wrapper.find('.series-follow').exists()).toBe(false)
+  })
+
   it.each([
     ['continue-listening', 'No audiobooks in progress yet. Start listening to one to see it here.'],
     ['want-to-read', 'No books marked want to read yet.'],
@@ -177,7 +214,7 @@ describe('DashboardScroller', () => {
     const wrapper = mountScroller({ type })
 
     expect(wrapper.text()).toContain(copy)
-    expect(mockUseDashboardScroller).toHaveBeenCalledWith(type, 20, undefined)
+    expect(mockUseDashboardScroller).toHaveBeenCalledWith(type, 20, undefined, undefined)
   })
 
   it.each([
@@ -277,13 +314,13 @@ describe('DashboardScroller', () => {
   it('requests more books as rows are added', () => {
     mountScroller({ type: 'recently-added', rows: 2, limit: 20 })
 
-    expect(mockUseDashboardScroller).toHaveBeenCalledWith('recently-added', 40, undefined)
+    expect(mockUseDashboardScroller).toHaveBeenCalledWith('recently-added', 40, undefined, undefined)
   })
 
   it('never requests more books than the server accepts', () => {
     mountScroller({ type: 'recently-added', rows: 3, limit: 20 })
 
-    expect(mockUseDashboardScroller).toHaveBeenCalledWith('recently-added', 50, undefined)
+    expect(mockUseDashboardScroller).toHaveBeenCalledWith('recently-added', 50, undefined, undefined)
   })
 
   it('requests only what a capped mobile shelf can render', () => {
@@ -291,7 +328,7 @@ describe('DashboardScroller', () => {
 
     mountScroller({ type: 'recently-added', rows: 3, limit: 20 })
 
-    expect(mockUseDashboardScroller).toHaveBeenCalledWith('recently-added', 40, undefined)
+    expect(mockUseDashboardScroller).toHaveBeenCalledWith('recently-added', 40, undefined, undefined)
   })
 
   it('scales loading skeletons with the row count', () => {

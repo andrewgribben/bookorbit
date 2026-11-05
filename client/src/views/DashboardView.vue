@@ -41,14 +41,23 @@ const enabledScrollers = computed(() =>
 // endpoints, so the split resolves here rather than as a type check in the template.
 type DashboardShelf =
   | { kind: 'podcast'; key: string; title: string; limit: number }
-  | { kind: 'book'; key: string; title: string; limit: number; rows: number; type: BookScrollerType; smartScopeId?: number }
+  | { kind: 'book'; key: string; title: string; limit: number; rows: number; type: BookScrollerType; smartScopeId?: number; maxAgeMonths?: number }
 
 const shelves = computed<DashboardShelf[]>(() =>
   enabledScrollers.value.map((scroller) => {
-    const key = `${scroller.id}-${scroller.type}-${scroller.smartScopeId ?? 0}-${scroller.rows}`
+    const key = `${scroller.id}-${scroller.type}-${scroller.smartScopeId ?? 0}-${scroller.rows}-${scroller.maxAgeMonths ?? 0}`
     const title = shelfTitle(scroller)
     if (isPodcastScrollerType(scroller.type)) return { kind: 'podcast', key, title, limit: scroller.limit }
-    return { kind: 'book', key, title, limit: scroller.limit, rows: scroller.rows, type: scroller.type, smartScopeId: scroller.smartScopeId }
+    return {
+      kind: 'book',
+      key,
+      title,
+      limit: scroller.limit,
+      rows: scroller.rows,
+      type: scroller.type,
+      smartScopeId: scroller.smartScopeId,
+      maxAgeMonths: scroller.maxAgeMonths,
+    }
   }),
 )
 
@@ -174,6 +183,7 @@ onUnmounted(() => {
                 :limit="shelf.limit"
                 :rows="shelf.rows"
                 :smartScope-id="shelf.smartScopeId"
+                :max-age-months="shelf.maxAgeMonths"
                 class="min-w-0 animate-fade-up"
                 :style="{ animationDelay: `${index * 100}ms` }"
               />
