@@ -10478,7 +10478,12 @@
       "smartScope": "Smart Scope",
       "noSmartScopes": "No Smart Scopes yet. Create one from the sidebar.",
       "addShelf": "Add shelf",
-      "resetToDefaults": "Reset to defaults"
+      "resetToDefaults": "Reset to defaults",
+      "upNextCutoff": {
+        "label": "Hide series not read in",
+        "off": "Never hide",
+        "months": "{count, plural, one {# month} other {# months}}"
+      }
     },
     "welcome": {
       "emptyTitle": "Your library is empty",
@@ -13552,6 +13557,24 @@
       "complete": "Complete",
       "moreVolumes": "{count, plural, one {# more volume} other {# more volumes}}",
       "label": "{name}, {read} of {total} volumes read"
+    },
+    "follow": {
+      "label": "Series status",
+      "none": "No status",
+      "status": {
+        "reading": "Reading",
+        "caughtUp": "Caught up",
+        "completed": "Completed",
+        "onHold": "On hold",
+        "dropped": "Dropped"
+      },
+      "markReadUpTo": "Mark read up to here",
+      "markAllRead": "Mark all read",
+      "markAllReadTitle": "Mark the whole series read?",
+      "markAllReadDescription": "Every book in this series that is not already read will be marked read.",
+      "markedRead": "{count, plural, =0 {Nothing to mark: all books are already read} one {# book marked read} other {# books marked read}}",
+      "failed": "Could not update the series. Try again.",
+      "lastRead": "Last read {time}"
     }
   },
   "smartScope": {

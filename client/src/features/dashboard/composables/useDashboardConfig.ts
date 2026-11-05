@@ -35,7 +35,7 @@ const ALL_DEFAULT_SCROLLERS: ScrollerConfig[] = [
   { id: '5', type: 'continue-listening', label: 'Continue Listening', enabled: true, order: 4, limit: 20, rows: 1 },
   { id: '7', type: 'continue-podcasts', label: 'Continue Podcasts', enabled: false, order: 5, limit: 20, rows: 1 },
   { id: '6', type: 'want-to-read', label: 'Want to Read', enabled: false, order: 6, limit: 20, rows: 1 },
-  { id: '4', type: 'up-next-in-series', label: 'Up Next in Series', enabled: false, order: 7, limit: 20, rows: 1 },
+  { id: '4', type: 'up-next-in-series', label: 'Up Next in Series', enabled: false, order: 7, limit: 20, rows: 1, maxAgeMonths: 12 },
 ]
 
 export const DEFAULT_SCROLLERS = ALL_DEFAULT_SCROLLERS.filter((scroller) => APP_FEATURES.podcasts || scroller.type !== 'continue-podcasts')
@@ -52,6 +52,9 @@ export const SCROLLER_LABELS: Record<ScrollerType, string> = {
   random: 'Discover Something New',
   'smart-scope': 'Smart Scope',
 }
+
+/** Absent maxAgeMonths means no cut-off, which is how configs saved before the option load. */
+export const UP_NEXT_CUTOFF_MONTHS = [3, 6, 12, 24] as const
 
 const VALID_SCROLLER_TYPES = new Set<ScrollerType>(SCROLLER_TYPES.filter((type) => APP_FEATURES.podcasts || type !== 'continue-podcasts'))
 
@@ -96,6 +99,10 @@ function normalizeSmartScopeId(value: unknown): number | undefined {
   return undefined
 }
 
+function normalizeMaxAgeMonths(value: unknown): number | undefined {
+  return (UP_NEXT_CUTOFF_MONTHS as readonly unknown[]).includes(value) ? (value as number) : undefined
+}
+
 function normalizeId(value: unknown, fallback: string): string {
   if (typeof value === 'string' && value.trim().length > 0) return value
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -111,6 +118,7 @@ function normalizeScroller(value: unknown, index: number): ScrollerConfig | null
   const type = raw.type as ScrollerType
   const label = typeof raw.label === 'string' && raw.label.trim().length > 0 ? raw.label.trim() : SCROLLER_LABELS[type]
   const smartScopeId = type === 'smart-scope' ? normalizeSmartScopeId(raw.smartScopeId) : undefined
+  const maxAgeMonths = type === 'up-next-in-series' ? normalizeMaxAgeMonths(raw.maxAgeMonths) : undefined
 
   return {
     id: normalizeId(raw.id, String(index + 1)),
@@ -121,6 +129,7 @@ function normalizeScroller(value: unknown, index: number): ScrollerConfig | null
     limit: normalizePositiveNumber(raw.limit, 20),
     rows: normalizeShelfRows(raw.rows),
     ...(smartScopeId === undefined ? {} : { smartScopeId }),
+    ...(maxAgeMonths === undefined ? {} : { maxAgeMonths }),
   }
 }
 

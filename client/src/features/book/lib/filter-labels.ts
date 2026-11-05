@@ -1,10 +1,11 @@
-import type { Rule, RuleField, RuleOperator, SortField } from '@bookorbit/types'
-import { isReadAlongFormatKey, parseCustomRuleFieldId, parseCustomSortFieldId } from '@bookorbit/types'
+import type { Rule, RuleField, RuleOperator, SeriesFollowStatus, SortField } from '@bookorbit/types'
+import { SERIES_FOLLOW_STATUSES, isReadAlongFormatKey, parseCustomRuleFieldId, parseCustomSortFieldId } from '@bookorbit/types'
 import { i18n } from '@/i18n'
 import { activeCustomFieldLabel } from '@/features/book/composables/useActiveCustomFields'
 import { providerShortLabel } from '@/lib/provider-colors'
 import { formatBytes } from '@/lib/formatting'
 import { formatKeyName } from './book-formats'
+import { seriesFollowStatusLabelKey } from '@/features/series/lib/series-follow-status'
 
 // Resolved through the global composer rather than useI18n() because these helpers also run
 // outside a component setup (useViewSort, plain computeds). Composer.t tracks the active locale,
@@ -76,6 +77,9 @@ function tokenValueLabel(field: Rule['field'], value: string): string {
     return label === key ? value : label
   }
   if (field === 'format') return formatFilterValueLabel(value)
+  if (field === 'seriesStatus' && (SERIES_FOLLOW_STATUSES as readonly string[]).includes(value)) {
+    return t(seriesFollowStatusLabelKey(value as SeriesFollowStatus))
+  }
   return value
 }
 
@@ -90,7 +94,7 @@ export function formatFilterValueLabel(value: string): string {
  */
 export function ruleToTokenParts(rule: Rule): { field: string; operator: string; value: string | null } {
   const parts = ruleToParts(rule)
-  if (!Array.isArray(rule.value) || (rule.field !== 'readStatus' && rule.field !== 'format')) {
+  if (!Array.isArray(rule.value) || (rule.field !== 'readStatus' && rule.field !== 'format' && rule.field !== 'seriesStatus')) {
     if (rule.operator === 'includesAny' && Array.isArray(rule.value) && rule.value.length === 1) {
       return { ...parts, operator: operatorLabel('eq') }
     }
