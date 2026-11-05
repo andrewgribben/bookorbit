@@ -294,7 +294,7 @@ export class DashboardRepository {
         else ${audiobookProgress.updatedAt}
       end
     `;
-    const completionPredicate = sql<boolean>`(${userBookStatus.status} in ('read', 'skimmed') or (${userBookStatus.status} not in ('unread', 'want_to_read') and ${mergedProgress} >= 100))`;
+    const completionPredicate = sql<boolean>`(${userBookStatus.status} in ('read', 'skimmed') or ((${userBookStatus.status} is null or ${userBookStatus.status} not in ('unread', 'want_to_read')) and ${mergedProgress} >= 100))`;
     const cfClauses = contentFilters ? buildContentFilterClauses(contentFilters, this.db) : [];
     const libraryIdList = sql.join(
       accessibleLibraryIds.map((libraryId) => sql`${libraryId}`),
