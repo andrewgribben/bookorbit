@@ -34,9 +34,9 @@ Hard requirements:
 
 Read this section first; the older sections below describe the v3.6.0 merge.
 
-Live site runs image `andrewgribben/bookorbit:development-f58fde5b`, built from branch `feat-reader-backup-import` (not `development`). Rollback images: `andrewgribben/bookorbit:rollback-pre-reader-backup-hint`, `...:rollback-pre-reader-import`, `...:rollback-pre-book-actions`.
+Live site runs image `andrewgribben/bookorbit:development-190b664f`, built from branch `feat-reader-backup-import` (not `development`). Rollback images: `andrewgribben/bookorbit:rollback-pre-progress-rules`, `...:rollback-pre-reader-backup-source`, `...:rollback-pre-reader-backup-hint`, `...:rollback-pre-reader-import`, `...:rollback-pre-book-actions`.
 
-The library import (Settings -> Maintenance) Source Connection step links Mihon and Komikku users to the backup import. Tachimanga `.tmb` backups (SQLite) are not supported yet; the user may send a sample. Pre-deploy DB dumps are in `/mnt/user/appdata/bookorbit-backups/`.
+Mihon and Komikku backups are a Source Type in the library import (Settings -> Maintenance); picking it shows upload, preview and apply in place of the server wizard. It is no longer on the Komga API page. Smart scope Reading progress rules now respect explicit Read/Unread statuses and count audiobook progress. Tachimanga `.tmb` backups (SQLite) are not supported yet; the user may send a sample. Pre-deploy DB dumps are in `/mnt/user/appdata/bookorbit-backups/`.
 
 Branches on the fork, stacked, none merged into `development` yet (merging needs the user's go-ahead):
 
