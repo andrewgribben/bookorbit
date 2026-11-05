@@ -1724,23 +1724,22 @@ describe('statusRuleToSql (fileAvailability)', () => {
 });
 
 describe('readProgressRuleToSql', () => {
-  it('isUnread produces not(EXISTS subquery)', () => {
+  it('isUnread lets an explicit unread status win, otherwise needs no progress and no read status', () => {
     const { builder } = makeBuilder();
     const where = builder.buildWhere(wrapRule({ type: 'rule', field: 'readProgress', operator: 'isUnread' }) as never, USER_CTX) as any;
-    const clause = getRuleSql(where);
-    expect(clause).toMatchObject({ type: 'not', value: { type: 'sql' } });
+    expect(getRuleSql(where)).toMatchObject({ type: 'or', clauses: [{ type: 'sql' }, { type: 'and' }] });
   });
 
-  it('isInProgress produces EXISTS subquery with percentage between 0 and 100', () => {
+  it('isInProgress needs partial progress and no explicit read or unread status', () => {
     const { builder } = makeBuilder();
     const where = builder.buildWhere(wrapRule({ type: 'rule', field: 'readProgress', operator: 'isInProgress' }) as never, USER_CTX) as any;
-    expect(getRuleSql(where)).toMatchObject({ type: 'sql' });
+    expect(getRuleSql(where)).toMatchObject({ type: 'and', clauses: [{ type: 'sql' }, { type: 'not' }, { type: 'not' }] });
   });
 
-  it('isFinished produces EXISTS subquery with percentage >= 100', () => {
+  it('isFinished accepts a read status or full progress not overridden by unread', () => {
     const { builder } = makeBuilder();
     const where = builder.buildWhere(wrapRule({ type: 'rule', field: 'readProgress', operator: 'isFinished' }) as never, USER_CTX) as any;
-    expect(getRuleSql(where)).toMatchObject({ type: 'sql' });
+    expect(getRuleSql(where)).toMatchObject({ type: 'or', clauses: [{ type: 'sql' }, { type: 'and' }] });
   });
 });
 
