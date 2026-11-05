@@ -30,7 +30,36 @@ Hard requirements:
 
 ---
 
-## Current state (as of this document)
+## Latest state (2026-11-05)
+
+Read this section first; the older sections below describe the v3.6.0 merge.
+
+Live site runs image `andrewgribben/bookorbit:development-7547da5b`, built from branch `feat-reader-backup-import` (not `development`). Rollback images: `andrewgribben/bookorbit:rollback-pre-reader-import`, `...:rollback-pre-book-actions`. Pre-deploy DB dumps are in `/mnt/user/appdata/bookorbit-backups/`.
+
+Branches on the fork, stacked, none merged into `development` yet (merging needs the user's go-ahead):
+
+1. `feat-series-book-actions`: per-user series status (Reading, Caught up, Completed, On hold, Dropped), Up Next cutoff and status filters, mark read up to here / mark unread from here, explicit unread overrides stale progress. Migration `0137_series_follow_status` is applied on live.
+2. `feat-reader-backup-import` (on top of 1): Settings -> Komga API -> "Import from Mihon or Komikku". `POST /api/v1/reader-import/mihon` previews, `?apply=true` applies. Matches by BookOrbit ID, then by file path from the Komga migration snapshot, then by issue number. Never marks books unread, keeps existing series statuses, and skips books the user marked Unread or Want to read. No DB migration.
+
+Worktrees: `/mnt/user/data/Development/bookorbit-worktrees/<branch>` on Unraid, same layout on the Mac under `Personal/bookorbit-worktrees/`.
+
+Comics library (id 5): "Where book details come from" is now path rules (`folder_series` preset) first, then tags, then OPF. Rules were re-applied twice; every year-named folder now has exactly one series. Before/after records: `comics-series-before-reapply*.psv` in the backups folder.
+
+Open items:
+
+- User has not yet run the Komikku import on live (preview first, then Apply).
+- Mylar created folders with a placeholder `(2099)` year (e.g. `Midnight Spider-Man (2099)`); the user is renaming them in Mylar. After the files move, run "Apply rules to existing books" on Comics again.
+- `Marvel Age 1000 (2023)` got issue 1000 from its filename; `Legion of Super-Heroes 5 (2005)` got issue 5 from its folder name. Ask the user whether to lock them.
+- No admin CLI exists; refreshes need a logged-in session (user's browser is not Chromium, so no shared session for the agent).
+
+Verify tips for this work:
+
+- e2e tests need a disposable Postgres, never `bookorbit-db`: run `pgvector/pgvector:pg18` on `127.0.0.1:55436`, `DATABASE_URL=<it> pnpm db:migrate`, then `E2E_DATABASE_URL=<it> npx vitest run --config vitest.config.e2e.ts <files>`.
+- Deploy: dump DB, tag current image as rollback, `docker build -t andrewgribben/bookorbit:development-<sha> .`, retag as `:development`, then `/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/rebuild_container bookorbit` (full path; not on PATH in non-login shells).
+
+---
+
+## Current state (as of the v3.6.0 merge)
 
 `development` on the fork should contain:
 
