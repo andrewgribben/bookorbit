@@ -379,7 +379,8 @@ export class DashboardRepository {
           os.previous_completion_updated_at,
           os.series_activity_at
         from ordered_series os
-        where os.previous_is_completed = true
+        -- A series the user follows as Reading offers its first volume before anything is read.
+        where (os.previous_is_completed = true or (os.previous_is_completed is null and os.series_follow_status = 'reading'))
           and os.is_completed = false
           and os.current_progress = 0
           and (os.series_follow_status is null or os.series_follow_status = 'reading'

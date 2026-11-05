@@ -985,7 +985,9 @@ export class BookQueryBuilder {
       )
       select distinct on (o.library_id, o.series_id) o.id
       from ordered o
-      where o.previous_is_completed = true and o.is_completed = false and o.current_progress = 0
+      -- A series the user follows as Reading offers its first volume before anything is read.
+      where (o.previous_is_completed = true or (o.previous_is_completed is null and o.series_follow_status = 'reading'))
+        and o.is_completed = false and o.current_progress = 0
         and (o.read_status is null or o.read_status in ('unread', 'want_to_read'))
         and (o.series_follow_status is null or o.series_follow_status = 'reading'
           or (o.series_follow_status = 'caught_up' and o.added_at > o.series_status_updated_at))
