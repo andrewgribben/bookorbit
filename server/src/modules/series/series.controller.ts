@@ -6,6 +6,7 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ForbidPermission } from '../../common/decorators/forbid-permission.decorator';
 import type { RequestUser } from '../../common/types/request-user';
+import { BulkSetSeriesFollowStatusDto } from './dto/bulk-set-series-follow-status.dto';
 import { FindNextSeriesBookDto } from './dto/find-next-series-book.dto';
 import { ListSeriesBooksDto } from './dto/list-series-books.dto';
 import { ListSeriesDto } from './dto/list-series.dto';
@@ -21,6 +22,11 @@ export class SeriesController {
   @Get()
   findAll(@CurrentUser() user: RequestUser, @Query() dto: ListSeriesDto) {
     return this.seriesService.findAll(user, dto);
+  }
+
+  @Post('bulk-status')
+  bulkSetFollowStatus(@CurrentUser() user: RequestUser, @Body() dto: BulkSetSeriesFollowStatusDto) {
+    return this.seriesService.bulkSetFollowStatus(user, dto);
   }
 
   @Put(':seriesId/status')

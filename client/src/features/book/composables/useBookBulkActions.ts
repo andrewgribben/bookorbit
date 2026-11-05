@@ -7,7 +7,9 @@ import {
   type BookCard,
   type BookDetail,
   type BookMetadataLockField,
+  type MarkSeriesReadResponse,
   type ReadStatus,
+  type SeriesFollowStatus,
   type UserBookStatus,
 } from '@bookorbit/types'
 import { i18n } from '@/i18n'
@@ -288,6 +290,21 @@ export function useBookBulkActions(
     toast.success(`Updated status for ${count} book${count === 1 ? '' : 's'}`)
   }
 
+  async function handleBulkSetSeriesStatus(status: SeriesFollowStatus | null) {
+    if (!hasSelection()) return
+    const res = await api('/api/v1/series/bulk-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...getSelectionPayload(), status }),
+    })
+    if (!res.ok) {
+      toast.error(i18n.global.t('series.follow.failed'))
+      return
+    }
+    const { updated } = (await res.json()) as MarkSeriesReadResponse
+    toast.success(i18n.global.t('series.follow.updated', { count: updated }))
+  }
+
   async function handleBulkSetRating(rating: number | null) {
     if (!hasSelection()) return
     const ids = querySelection?.value ? [] : [...selectedIds.value]
@@ -420,6 +437,7 @@ export function useBookBulkActions(
     handleBulkReExtractCover,
     handleDownloadFiles,
     handleBulkSetStatus,
+    handleBulkSetSeriesStatus,
     handleBulkSetRating,
     handleBulkSetField,
     handleBulkSetMetadataLock,

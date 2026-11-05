@@ -40,7 +40,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { STATUS_ICONS, STATUS_OPTIONS } from '@/features/book/composables/useBookStatus'
-import type { ReadStatus } from '@bookorbit/types'
+import type { ReadStatus, SeriesFollowStatus } from '@bookorbit/types'
+import SeriesStatusSubmenu from '@/features/series/components/SeriesStatusSubmenu.vue'
 import {
   BULK_EDITABLE_ARRAY_FIELDS,
   BULK_EDITABLE_FIELD_OPTIONS,
@@ -89,6 +90,7 @@ const emit = defineEmits<{
   'refresh-metadata': [options: IgnoreCacheOptions]
   're-extract-cover': []
   'set-status': [status: ReadStatus]
+  'set-series-status': [status: SeriesFollowStatus | null]
   'set-rating': [rating: number | null]
   'set-field': [field: BulkEditableField, value: BulkEditableValue]
   'lock-metadata': [locked: boolean]
@@ -156,6 +158,10 @@ function onConfirmDelete() {
 
 function onSetStatus(status: ReadStatus) {
   emit('set-status', status)
+}
+
+function onSetSeriesStatus(status: SeriesFollowStatus | null) {
+  emit('set-series-status', status)
 }
 
 function onSetRating(rating: number | null) {
@@ -316,6 +322,7 @@ watch(
                         <component :is="STATUS_ICONS[opt.value]" :size="14" />
                         <span>{{ opt.label }}</span>
                       </DropdownMenuItem>
+                      <SeriesStatusSubmenu @select="onSetSeriesStatus" />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </span>

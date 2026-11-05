@@ -13592,6 +13592,7 @@
       "markedRead": "{count, plural, =0 {Nothing to mark: all books are already read} one {# book marked read} other {# books marked read}}",
       "markedUnread": "{count, plural, =0 {Nothing to mark: no later books are read} one {# book marked unread} other {# books marked unread}}",
       "failed": "Could not update the series. Try again.",
+      "updated": "{count, plural, =0 {None of these books are in a series} one {Series status updated} other {Status updated for # series}}",
       "lastRead": "Last read {time}"
     }
   },

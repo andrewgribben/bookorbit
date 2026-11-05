@@ -26,6 +26,9 @@ import type { SeriesBookSort } from './dto/list-series-books.dto';
 
 type Db = NodePgDatabase<typeof schema>;
 
+// Keeps each statement well under the Postgres bind-parameter limit.
+const BULK_CHUNK = 5000;
+
 type SeriesSummaryRow = {
   id: number;
   name: string;
@@ -397,6 +400,35 @@ export class SeriesRepository {
       .onConflictDoUpdate({ target: [userSeriesStatus.userId, userSeriesStatus.seriesId], set: { status, updatedAt: new Date() } })
       .returning({ status: userSeriesStatus.status, updatedAt: userSeriesStatus.updatedAt });
     return row!;
+  }
+
+  async findSeriesIdsForBooks(bookIds: number[]): Promise<number[]> {
+    const seriesIds = new Set<number>();
+    for (let i = 0; i < bookIds.length; i += BULK_CHUNK) {
+      const rows = await this.db
+        .selectDistinct({ seriesId: bookMetadata.seriesId })
+        .from(bookMetadata)
+        .where(and(inArray(bookMetadata.bookId, bookIds.slice(i, i + BULK_CHUNK)), isNotNull(bookMetadata.seriesId)));
+      for (const row of rows) seriesIds.add(row.seriesId!);
+    }
+    return [...seriesIds];
+  }
+
+  async upsertFollowStatuses(userId: number, seriesIds: number[], status: SeriesFollowStatus): Promise<void> {
+    for (let i = 0; i < seriesIds.length; i += BULK_CHUNK) {
+      await this.db
+        .insert(userSeriesStatus)
+        .values(seriesIds.slice(i, i + BULK_CHUNK).map((seriesId) => ({ userId, seriesId, status })))
+        .onConflictDoUpdate({ target: [userSeriesStatus.userId, userSeriesStatus.seriesId], set: { status, updatedAt: new Date() } });
+    }
+  }
+
+  async deleteFollowStatuses(userId: number, seriesIds: number[]): Promise<void> {
+    for (let i = 0; i < seriesIds.length; i += BULK_CHUNK) {
+      await this.db
+        .delete(userSeriesStatus)
+        .where(and(eq(userSeriesStatus.userId, userId), inArray(userSeriesStatus.seriesId, seriesIds.slice(i, i + BULK_CHUNK))));
+    }
   }
 
   async deleteFollowStatus(userId: number, seriesId: number): Promise<void> {

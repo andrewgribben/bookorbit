@@ -184,6 +184,17 @@ describe('useBookBulkActions', () => {
     expect(books.value[2]?.readStatus).toBeNull()
   })
 
+  it('sets the series status of the selected books and reports how many series changed', async () => {
+    mocks.api.mockResolvedValue({ ok: true, json: () => Promise.resolve({ updated: 2 }) } as { ok: boolean })
+    const { handleBulkSetSeriesStatus } = useBookBulkActions(ref(new Set([1, 3])), vi.fn(), ref([]))
+
+    await handleBulkSetSeriesStatus('caught_up')
+
+    expect(mocks.api).toHaveBeenCalledWith('/api/v1/series/bulk-status', expect.objectContaining({ method: 'POST' }))
+    expect(JSON.parse(mocks.api.mock.calls[0]![1]!.body as string)).toEqual({ bookIds: [1, 3], status: 'caught_up' })
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Status updated for 2 series')
+  })
+
   it('patches selected books with the new rating after a successful bulk update', async () => {
     mocks.api.mockResolvedValue({ ok: true })
     const selectedIds = ref(new Set([1, 3]))
