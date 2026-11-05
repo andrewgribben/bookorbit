@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   setSeriesFollowStatus: vi.fn(),
   clearSeriesFollowStatus: vi.fn(),
   markSeriesRead: vi.fn(),
+  markSeriesUnread: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }))
@@ -12,11 +13,12 @@ vi.mock('../../api/series', () => ({
   setSeriesFollowStatus: mocks.setSeriesFollowStatus,
   clearSeriesFollowStatus: mocks.clearSeriesFollowStatus,
   markSeriesRead: mocks.markSeriesRead,
+  markSeriesUnread: mocks.markSeriesUnread,
 }))
 vi.mock('vue-sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
-import { useSeriesFollowActions } from '../useSeriesFollowActions'
+import { onSeriesFollowChanged, useSeriesFollowActions } from '../useSeriesFollowActions'
 
 describe('useSeriesFollowActions', () => {
   beforeEach(() => {
@@ -51,5 +53,30 @@ describe('useSeriesFollowActions', () => {
 
     expect(mocks.toastError).toHaveBeenCalledWith('series.follow.failed')
     expect(pending.value).toBe(false)
+  })
+
+  it('marks unread from a book and tells listeners the series changed', async () => {
+    mocks.markSeriesUnread.mockResolvedValue({ updated: 2 })
+    const listener = vi.fn()
+    const stop = onSeriesFollowChanged(listener)
+    const { markUnreadFrom } = useSeriesFollowActions()
+
+    await expect(markUnreadFrom(4, 91)).resolves.toBe(true)
+    stop()
+
+    expect(mocks.markSeriesUnread).toHaveBeenCalledWith(4, 91)
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('series.follow.markedUnread')
+    expect(listener).toHaveBeenCalledWith(4)
+  })
+
+  it('does not notify listeners when the request fails', async () => {
+    mocks.markSeriesUnread.mockRejectedValue(new Error('boom'))
+    const listener = vi.fn()
+    const stop = onSeriesFollowChanged(listener)
+
+    await useSeriesFollowActions().markUnreadFrom(4, 91)
+    stop()
+
+    expect(listener).not.toHaveBeenCalled()
   })
 })

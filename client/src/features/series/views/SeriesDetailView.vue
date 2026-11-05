@@ -32,6 +32,7 @@ import { fetchSeriesBooks } from '../api/series'
 import { groupSeriesBooksByMedia } from '../composables/useSeriesBookMediaGroups'
 import { useSeriesDetail } from '../composables/useSeriesDetail'
 import SeriesFollowMenu from '../components/SeriesFollowMenu.vue'
+import { onSeriesFollowChanged } from '../composables/useSeriesFollowActions'
 import { useCoverStack, MAX_VISIBLE as MAX_STACK_VISIBLE } from '../composables/useCoverStack'
 import {
   PORTRAIT_STACK_FRAME_ASPECT_RATIO,
@@ -111,8 +112,11 @@ const canEditMetadata = computed(() => hasPermissionInAnyLibrary('library_edit_m
 const safeLeadDescription = useSafeHtml(() => leadBook.value?.description)
 function handleFollowChanged(status: SeriesFollowStatus | null | undefined) {
   if (seriesInfo.value && status !== undefined) seriesInfo.value = { ...seriesInfo.value, followStatus: status }
-  void loadBooks({ reset: true, keepPreviousData: true })
 }
+
+onSeriesFollowChanged((changedSeriesId) => {
+  if (changedSeriesId === seriesId.value) void loadBooks({ reset: true, keepPreviousData: true })
+})
 
 const visibleSeriesAuthors = computed(() => (seriesInfo.value?.authors ?? []).slice(0, 5))
 const hiddenSeriesAuthorsCount = computed(() => Math.max(0, (seriesInfo.value?.authors.length ?? 0) - visibleSeriesAuthors.value.length))

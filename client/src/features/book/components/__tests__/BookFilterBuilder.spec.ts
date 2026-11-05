@@ -202,7 +202,7 @@ describe('BookFilterBuilder', () => {
     expect(optionText).toContain('Series Status')
   })
 
-  it('offers only is up next and no value input for Series Status', async () => {
+  it('offers is up next without a value and series statuses for the list operators', async () => {
     const wrapper = mount(BookFilterBuilder, {
       props: {
         modelValue: { type: 'group', join: 'AND', rules: [{ type: 'rule', field: 'title', operator: 'contains', value: 'Dune' }] },
@@ -212,11 +212,17 @@ describe('BookFilterBuilder', () => {
     const [fieldSelect] = wrapper.findAll('select')
     await fieldSelect!.setValue('seriesStatus')
 
-    const operatorSelect = wrapper.findAll('select')[1]
-    const operatorOptions = operatorSelect!.findAll('option').map((opt) => opt.text())
-    expect(operatorOptions).toEqual(['is up next'])
-
+    const operatorSelect = wrapper.findAll('select')[1]!
+    const operatorValues = operatorSelect.findAll('option').map((opt) => opt.attributes('value'))
+    expect(operatorValues).toEqual(['isUpNext', 'includesAny', 'excludesAll'])
     expect(wrapper.find('input').exists()).toBe(false)
+
+    await operatorSelect.setValue('includesAny')
+    const statusOptions = wrapper
+      .findAll('select')[2]!
+      .findAll('option')
+      .map((opt) => opt.text())
+    expect(statusOptions).toEqual(expect.arrayContaining(['Reading', 'Caught up', 'Completed', 'On hold', 'Dropped']))
   })
 
   it('emits community rating rules with provider context', async () => {
