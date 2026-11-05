@@ -78,6 +78,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { MigrationModule } from './modules/migration/migration.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { SeriesModule } from './modules/series/series.module';
+import { ReaderImportModule } from './modules/reader-import/reader-import.module';
 import { EntityManagerModule } from './modules/entity-manager/entity-manager.module';
 import { FontModule } from './modules/font/font.module';
 import { ServerFontModule } from './modules/server-font/server-font.module';
@@ -198,6 +199,7 @@ import { ReadAloudModule } from './modules/read-aloud/read-aloud.module';
     MigrationModule,
     NotificationModule,
     SeriesModule,
+    ReaderImportModule,
     EntityManagerModule,
     FontModule,
     ServerFontModule,
