@@ -34,7 +34,9 @@ Hard requirements:
 
 Read this section first; the older sections below describe the v3.6.0 merge.
 
-Live site runs image `andrewgribben/bookorbit:development-7547da5b`, built from branch `feat-reader-backup-import` (not `development`). Rollback images: `andrewgribben/bookorbit:rollback-pre-reader-import`, `...:rollback-pre-book-actions`. Pre-deploy DB dumps are in `/mnt/user/appdata/bookorbit-backups/`.
+Live site runs image `andrewgribben/bookorbit:development-f58fde5b`, built from branch `feat-reader-backup-import` (not `development`). Rollback images: `andrewgribben/bookorbit:rollback-pre-reader-backup-hint`, `...:rollback-pre-reader-import`, `...:rollback-pre-book-actions`.
+
+The library import (Settings -> Maintenance) Source Connection step links Mihon and Komikku users to the backup import. Tachimanga `.tmb` backups (SQLite) are not supported yet; the user may send a sample. Pre-deploy DB dumps are in `/mnt/user/appdata/bookorbit-backups/`.
 
 Branches on the fork, stacked, none merged into `development` yet (merging needs the user's go-ahead):
 
@@ -56,6 +58,7 @@ Open items:
 Verify tips for this work:
 
 - e2e tests need a disposable Postgres, never `bookorbit-db`: run `pgvector/pgvector:pg18` on `127.0.0.1:55436`, `DATABASE_URL=<it> pnpm db:migrate`, then `E2E_DATABASE_URL=<it> npx vitest run --config vitest.config.e2e.ts <files>`.
+- Push from Unraid with `NODE_OPTIONS=--max-old-space-size=8192 git push ...`; without it the pre-push typecheck can abort with exit 134.
 - Deploy: dump DB, tag current image as rollback, `docker build -t andrewgribben/bookorbit:development-<sha> .`, retag as `:development`, then `/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/rebuild_container bookorbit` (full path; not on PATH in non-login shells).
 
 ---
