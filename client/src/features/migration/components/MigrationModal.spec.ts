@@ -140,6 +140,19 @@ describe('MigrationModal reset setup', () => {
     expect(wrapper.text()).not.toContain('v2.2.2')
   })
 
+  it('applies a reader app backup in place of the server wizard', async () => {
+    migrationApiMocks.getWorkflowState.mockResolvedValueOnce({ active: null, hasActiveRun: false })
+
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.get('select').setValue('mihon_backup')
+
+    expect(wrapper.find('[data-testid="reader-import-file"]').exists()).toBe(true)
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Save & Validate'))).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text().includes('Continue'))).toBe(false)
+    expect(wrapper.find('nav').exists()).toBe(false)
+  })
+
   it('resets saved source setup and clears the form', async () => {
     migrationApiMocks.getWorkflowState.mockResolvedValueOnce(sourceState()).mockResolvedValueOnce({ active: null, hasActiveRun: false })
 

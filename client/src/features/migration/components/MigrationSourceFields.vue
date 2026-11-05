@@ -3,7 +3,8 @@ import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff, Loader2 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { defaultMigrationSourceName, type MigrationSourceDraft } from '@/features/migration/lib/migration-source-config'
+import { defaultMigrationSourceName, READER_BACKUP_SOURCE_TYPE, type MigrationSourceDraft } from '@/features/migration/lib/migration-source-config'
+import ReaderBackupImport from '@/features/reader-import/components/ReaderBackupImport.vue'
 import { SECRET_INPUT_ATTRS } from '@/lib/secret-input'
 
 const props = defineProps<{
@@ -30,6 +31,7 @@ const isAudiobookshelf = computed(() => draft.value.type === 'audiobookshelf')
 const isKomga = computed(() => draft.value.type === 'komga')
 const isApiTokenSource = computed(() => isAudiobookshelf.value || isKomga.value)
 const isCalibreWebAutomated = computed(() => draft.value.type === 'calibre_web_automated')
+const isReaderBackup = computed(() => draft.value.type === READER_BACKUP_SOURCE_TYPE)
 const gridClass = computed(() => (props.wide ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-2'))
 const secretToggleLabel = computed(() => (props.showSecret ? t('migration.source.fields.hideSecret') : t('migration.source.fields.showSecret')))
 const sourceTypeKeys: Record<string, string> = {
@@ -38,6 +40,7 @@ const sourceTypeKeys: Record<string, string> = {
   audiobookshelf: 'migration.source.types.audiobookshelf',
   calibre_web_automated: 'migration.source.types.calibreWebAutomated',
   komga: 'migration.source.types.komga',
+  [READER_BACKUP_SOURCE_TYPE]: 'migration.source.types.mihonBackup',
 }
 const apiBaseUrlLabel = computed(() => (isKomga.value ? t('migration.source.fields.komgaBaseUrl') : t('migration.source.fields.baseUrl')))
 const apiTokenPlaceholder = computed(() =>
@@ -73,13 +76,6 @@ function sourceTypeLabel(type: string): string {
 
 <template>
   <div class="grid gap-2" :class="gridClass" data-testid="migration-source-fields">
-    <p class="text-sm text-muted-foreground" :class="wide ? 'md:col-span-2 xl:col-span-4' : 'md:col-span-2'" data-testid="reader-backup-hint">
-      {{ t('migration.source.readerBackupHint') }}
-      <RouterLink :to="{ name: 'settings-komga' }" class="font-medium text-primary hover:underline">{{
-        t('migration.source.readerBackupLink')
-      }}</RouterLink>
-    </p>
-
     <label class="block">
       <span class="settings-hint">{{ t('migration.source.fields.type') }}</span>
       <select v-model="draft.type" class="select-field mt-1 w-full" :disabled="disabled">
@@ -87,12 +83,27 @@ function sourceTypeLabel(type: string): string {
       </select>
     </label>
 
-    <label class="block">
+    <label v-if="!isReaderBackup" class="block">
       <span class="settings-hint">{{ t('migration.source.fields.name') }}</span>
       <input v-model="draft.name" class="input-field mt-1 w-full" :placeholder="t('migration.source.fields.namePlaceholder')" :disabled="disabled" />
     </label>
 
-    <template v-if="isCalibreWebAutomated">
+    <template v-if="isReaderBackup">
+      <section
+        id="reader-backup-guidance"
+        class="space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm"
+        :class="wide ? 'md:col-span-2 xl:col-span-4' : 'md:col-span-2'"
+        aria-labelledby="reader-backup-guidance-title"
+      >
+        <h3 id="reader-backup-guidance-title" class="font-medium text-foreground">{{ t('settings.reader.komga.import.title') }}</h3>
+        <p class="text-muted-foreground">{{ t('settings.reader.komga.import.brief') }}</p>
+      </section>
+      <div :class="wide ? 'md:col-span-2 xl:col-span-4' : 'md:col-span-2'">
+        <ReaderBackupImport />
+      </div>
+    </template>
+
+    <template v-else-if="isCalibreWebAutomated">
       <section
         id="cwa-snapshot-guidance"
         class="space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm"

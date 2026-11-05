@@ -12365,7 +12365,8 @@
         "grimmory": "Grimmory",
         "audiobookshelf": "Audiobookshelf",
         "calibreWebAutomated": "Calibre-Web Automated",
-        "komga": "Komga"
+        "komga": "Komga",
+        "mihonBackup": "Mihon or Komikku backup"
       },
       "fields": {
         "type": "Source Type",
@@ -12420,8 +12421,6 @@
         "logicalRootGuidance": "Book path mapping uses the logical Calibre library root stored in app.db, not the host folder containing these database snapshots.",
         "compatibilityNote": "Schema behavior is verified against Calibre-Web Automated v4.0.6. Its databases do not expose a reliable application release version."
       },
-      "readerBackupHint": "Moving read progress from a comic reader app such as Mihon or Komikku? That uses the app's backup file instead of a server connection.",
-      "readerBackupLink": "Import a reader app backup",
       "komga": {
         "progressScopeHint": "Komga only exposes reading progress for the user that owns the API key. Use that user's key; metadata, collections, and read lists still import for the whole library."
       },
