@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  setSeriesFollowStatus: vi.fn(),
-  clearSeriesFollowStatus: vi.fn(),
-  markSeriesRead: vi.fn(),
-  markSeriesUnread: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
+  setSeriesFollowStatus: vi.fn<(seriesId: number, status: string) => Promise<unknown>>(),
+  clearSeriesFollowStatus: vi.fn<(seriesId: number) => Promise<void>>(),
+  markSeriesRead: vi.fn<(seriesId: number, upToBookId?: number) => Promise<{ updated: number }>>(),
+  markSeriesUnread: vi.fn<(seriesId: number, fromBookId: number) => Promise<{ updated: number }>>(),
+  toastSuccess: vi.fn<(message: string) => void>(),
+  toastError: vi.fn<(message: string) => void>(),
 }))
 
 vi.mock('../../api/series', () => ({
@@ -57,7 +57,7 @@ describe('useSeriesFollowActions', () => {
 
   it('marks unread from a book and tells listeners the series changed', async () => {
     mocks.markSeriesUnread.mockResolvedValue({ updated: 2 })
-    const listener = vi.fn()
+    const listener = vi.fn<(seriesId: number) => void>()
     const stop = onSeriesFollowChanged(listener)
     const { markUnreadFrom } = useSeriesFollowActions()
 
@@ -71,7 +71,7 @@ describe('useSeriesFollowActions', () => {
 
   it('does not notify listeners when the request fails', async () => {
     mocks.markSeriesUnread.mockRejectedValue(new Error('boom'))
-    const listener = vi.fn()
+    const listener = vi.fn<(seriesId: number) => void>()
     const stop = onSeriesFollowChanged(listener)
 
     await useSeriesFollowActions().markUnreadFrom(4, 91)
