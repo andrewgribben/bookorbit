@@ -161,6 +161,8 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
       'markUnread',
       'followedUnstarted',
       'partial',
+      'bulkA',
+      'bulkB',
     ])
       await createSeries(key);
     await seedBook('following-1', 'following', '1', { read: true, finishedAt: new Date(Date.now() - MONTH_MS) });
@@ -184,6 +186,9 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     await seedBook('partial-2', 'partial', '2', { progress: 40 });
     await seedBook('partial-3', 'partial', '3', { status: 'unread', progress: 40 });
     await seedBook('partial-4', 'partial', '4', { listened: 30 });
+    await seedBook('bulkA-1', 'bulkA', '1');
+    await seedBook('bulkA-2', 'bulkA', '2');
+    await seedBook('bulkB-1', 'bulkB', '1');
   });
 
   afterAll(async () => {
@@ -306,6 +311,37 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
       payload: {},
     });
     expect(missing.statusCode).toBe(400);
+  });
+
+  it('sets and clears the status of every series a book selection belongs to', async () => {
+    const bulk = (bookIds: number[], status: string | null) =>
+      ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/series/bulk-status',
+        headers: authHeader(reader.accessToken),
+        payload: { bookIds, status },
+      });
+    const seriesStatus = async (key: string) => {
+      const [row] = await ctx.db
+        .select({ status: schema.userSeriesStatus.status })
+        .from(schema.userSeriesStatus)
+        .where(and(eq(schema.userSeriesStatus.userId, reader.userId), eq(schema.userSeriesStatus.seriesId, series[key]!)));
+      return row?.status ?? null;
+    };
+
+    const set = await bulk([books['bulkA-1']!, books['bulkA-2']!, books['bulkB-1']!], 'on_hold');
+    expect(set.statusCode, set.body).toBe(201);
+    expect(set.json()).toEqual({ updated: 2 });
+    expect(await seriesStatus('bulkA')).toBe('on_hold');
+    expect(await seriesStatus('bulkB')).toBe('on_hold');
+
+    const cleared = await bulk([books['bulkB-1']!], null);
+    expect(cleared.json()).toEqual({ updated: 1 });
+    expect(await seriesStatus('bulkA')).toBe('on_hold');
+    expect(await seriesStatus('bulkB')).toBeNull();
+
+    expect((await bulk([books['bulkA-1']!], 'finished')).statusCode).toBe(400);
+    expect([403, 404]).toContain((await bulk([books['private-1']!], 'reading')).statusCode);
   });
 
   it('rejects series and books the user cannot reach', async () => {

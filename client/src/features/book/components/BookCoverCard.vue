@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BookCard, BookFileRef, CoverAspectRatio } from '@bookorbit/types'
+import type { BookCard, BookFileRef, CoverAspectRatio, SeriesFollowStatus } from '@bookorbit/types'
 import { getBookMediaProfile, isAudioFormat, READER_OPENABLE_FORMATS } from '@bookorbit/types'
 import BookFormatChip from './BookFormatChip.vue'
 import { bookFormatEntries, fileFormatKey, formatKeyName } from '../lib/book-formats'
@@ -45,6 +45,8 @@ import { useRefreshMetadata } from '../composables/useRefreshMetadata'
 import { useRefreshingBooks } from '../composables/useRefreshingBooks'
 import { mergeBookCardWithDetail } from '../lib/book-card-mapper'
 import SeriesBookMarkItems from '@/features/series/components/SeriesBookMarkItems.vue'
+import SeriesStatusSubmenu from '@/features/series/components/SeriesStatusSubmenu.vue'
+import { useSeriesFollowActions } from '@/features/series/composables/useSeriesFollowActions'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraryPermissions } from '@/features/library/composables/useLibraryPermissions'
 import { useDisplaySettings, type GridCardLabelField } from '@/composables/useDisplaySettings'
@@ -390,6 +392,13 @@ const showReadBadge = computed(
 )
 
 const seriesMarkTarget = computed(() => (props.book.seriesId && props.book.seriesIndex != null ? props.book.seriesId : null))
+
+const seriesFollow = useSeriesFollowActions()
+
+async function handleSetSeriesStatus(status: SeriesFollowStatus | null) {
+  if (props.book.seriesId == null) return
+  if (await seriesFollow.setStatus(props.book.seriesId, status)) toast.success(t('series.follow.updated', { count: 1 }))
+}
 
 async function handleSetStatus(status: ReadStatus) {
   const prev = localReadStatus.value
@@ -744,6 +753,7 @@ const secondaryLabelText = computed(() => resolveBookLabel(gridCardSecondaryLabe
                         <Check v-if="localReadStatus === opt.value" class="size-3 ml-auto text-primary" />
                       </DropdownMenuItem>
                       <SeriesBookMarkItems v-if="seriesMarkTarget" :series-id="seriesMarkTarget" :book-id="book.id" />
+                      <SeriesStatusSubmenu v-if="book.seriesId != null" @select="handleSetSeriesStatus" />
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
                   <DropdownMenuItem v-if="hasPermission('email_send')" @click="showSendDialog = true">
@@ -883,6 +893,7 @@ const secondaryLabelText = computed(() => resolveBookLabel(gridCardSecondaryLabe
                   <Check v-if="localReadStatus === opt.value" class="size-3 ml-auto text-primary" />
                 </DropdownMenuItem>
                 <SeriesBookMarkItems v-if="seriesMarkTarget" :series-id="seriesMarkTarget" :book-id="book.id" />
+                <SeriesStatusSubmenu v-if="book.seriesId != null" @select="handleSetSeriesStatus" />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem v-if="hasPermission('email_send')" @click="showSendDialog = true">

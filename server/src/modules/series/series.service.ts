@@ -20,6 +20,7 @@ import { BookReadService } from '../book/book-read.service';
 import { BookService } from '../book/book.service';
 import { BookCoverStore } from '../book-cover-store/book-cover-store.service';
 import { LibraryService } from '../library/library.service';
+import { BulkSetSeriesFollowStatusDto } from './dto/bulk-set-series-follow-status.dto';
 import { FindNextSeriesBookDto } from './dto/find-next-series-book.dto';
 import { ListSeriesBooksDto } from './dto/list-series-books.dto';
 import { ListSeriesDto } from './dto/list-series.dto';
@@ -221,6 +222,28 @@ export class SeriesService {
     await this.assertSeriesAccessible(user, seriesId);
     const row = await this.seriesRepo.upsertFollowStatus(user.id, seriesId, dto.status);
     return { seriesId, status: row.status, updatedAt: row.updatedAt.toISOString() };
+  }
+
+  /** Sets or clears the status of every series the selected books belong to. */
+  async bulkSetFollowStatus(user: RequestUser, dto: BulkSetSeriesFollowStatusDto): Promise<MarkSeriesReadResponse> {
+    const startedAt = Date.now();
+    this.logger.log(`[series.bulk_set_status] [start] userId=${user.id} status=${dto.status ?? 'none'} - bulk series status started`);
+    try {
+      const bookIds = await this.bookService.resolveSelectionToIds(dto, user);
+      const seriesIds = await this.seriesRepo.findSeriesIdsForBooks(bookIds);
+      if (dto.status === null) await this.seriesRepo.deleteFollowStatuses(user.id, seriesIds);
+      else await this.seriesRepo.upsertFollowStatuses(user.id, seriesIds, dto.status);
+      this.logger.log(
+        `[series.bulk_set_status] [end] userId=${user.id} durationMs=${Date.now() - startedAt} books=${bookIds.length} series=${seriesIds.length} - bulk series status completed`,
+      );
+      return { updated: seriesIds.length };
+    } catch (error) {
+      const err = error as Error;
+      this.logger.warn(
+        `[series.bulk_set_status] [fail] userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${err.name} error="${sanitizeLogValue(err.message)}" - bulk series status failed`,
+      );
+      throw error;
+    }
   }
 
   async clearFollowStatus(user: RequestUser, seriesId: number): Promise<void> {

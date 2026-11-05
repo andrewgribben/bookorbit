@@ -512,6 +512,7 @@ const {
   handleBulkReExtractCover,
   handleDownloadFiles,
   handleBulkSetStatus,
+  handleBulkSetSeriesStatus,
   handleBulkSetRating,
   handleBulkSetField,
   handleBulkSetMetadataLock,
@@ -1054,6 +1055,7 @@ defineOptions({ name: 'HomeView' })
       @refresh-metadata="handleBulkRefreshMetadata"
       @re-extract-cover="handleBulkReExtractCover"
       @set-status="handleBulkSetStatus"
+      @set-series-status="handleBulkSetSeriesStatus"
       @set-rating="handleBulkSetRating"
       @set-field="handleBulkSetField"
       @lock-metadata="handleBulkSetMetadataLock"
