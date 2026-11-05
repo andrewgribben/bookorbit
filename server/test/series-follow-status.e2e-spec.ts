@@ -34,7 +34,12 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     return row!.id;
   }
 
-  async function seedBook(key: string, seriesKey: string, index: string, opts: { read?: boolean; finishedAt?: Date; target?: CreatedLibrary } = {}) {
+  async function seedBook(
+    key: string,
+    seriesKey: string,
+    index: string,
+    opts: { read?: boolean; finishedAt?: Date; target?: CreatedLibrary; status?: 'unread' | 'want_to_read'; progress?: number } = {},
+  ) {
     const target = opts.target ?? library;
     const folder = `${target.folderPath}/${key}-${randomUUID()}`;
     const [book] = await ctx.db
@@ -61,6 +66,14 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
       })
       .returning({ id: schema.bookFiles.id });
     await ctx.db.update(schema.books).set({ primaryFileId: file!.id }).where(eq(schema.books.id, bookId));
+    if (opts.progress !== undefined) {
+      await ctx.db
+        .insert(schema.readingProgress)
+        .values({ bookFileId: file!.id, userId: reader.userId, percentage: opts.progress, lastReadAt: new Date() });
+    }
+    if (opts.status) {
+      await ctx.db.insert(schema.userBookStatus).values({ userId: reader.userId, bookId, status: opts.status, source: 'manual' });
+    }
     if (opts.read) {
       await ctx.db.insert(schema.userBookStatus).values({
         userId: reader.userId,
@@ -126,7 +139,8 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     reader = await createUserAndLogin(ctx);
     await grantLibraryAccess(ctx, reader.userId, library.libraryId);
 
-    for (const key of ['following', 'dropped', 'caughtUp', 'stale', 'markRead', 'private']) await createSeries(key);
+    for (const key of ['following', 'dropped', 'caughtUp', 'stale', 'markRead', 'private', 'skimmed', 'progressOnly', 'markUnread'])
+      await createSeries(key);
     await seedBook('following-1', 'following', '1', { read: true, finishedAt: new Date(Date.now() - MONTH_MS) });
     await seedBook('following-2', 'following', '2');
     await seedBook('dropped-1', 'dropped', '1', { read: true });
@@ -137,6 +151,11 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     await seedBook('stale-2', 'stale', '2');
     for (const index of ['1', '2', '3', '4']) await seedBook(`markRead-${index}`, 'markRead', index, { read: index === '2' });
     await seedBook('private-1', 'private', '1', { target: hidden });
+    await seedBook('skimmed-1', 'skimmed', '1', { progress: 100, status: 'unread' });
+    await seedBook('skimmed-2', 'skimmed', '2');
+    await seedBook('progressOnly-1', 'progressOnly', '1', { progress: 100 });
+    await seedBook('progressOnly-2', 'progressOnly', '2');
+    for (const index of ['1', '2', '3', '4']) await seedBook(`markUnread-${index}`, 'markUnread', index, { read: true });
   });
 
   afterAll(async () => {
@@ -147,6 +166,12 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     const { ids } = await upNext();
     expect(ids).toEqual(expect.arrayContaining([books['following-2'], books['dropped-2'], books['stale-2']]));
     expect(ids).not.toContain(books['caughtUp-2']);
+  });
+
+  it('lets an explicit unread status beat leftover 100% progress', async () => {
+    const { ids } = await upNext();
+    expect(ids).not.toContain(books['skimmed-2']);
+    expect(ids).toContain(books['progressOnly-2']);
   });
 
   it('drops a series from Up Next but keeps it findable through the library filter', async () => {
@@ -205,6 +230,27 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     });
     expect(all.json()).toEqual({ updated: 1 });
     expect(await readStatus('markRead-4')).toBe('read');
+  });
+
+  it('marks a book and every later one unread', async () => {
+    const response = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1/series/${series.markUnread}/mark-unread`,
+      headers: authHeader(reader.accessToken),
+      payload: { fromBookId: books['markUnread-2'] },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.json()).toEqual({ updated: 3 });
+    expect(await readStatus('markUnread-1')).toBe('read');
+    for (const index of ['2', '3', '4']) expect(await readStatus(`markUnread-${index}`)).toBe('unread');
+
+    const missing = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1/series/${series.markUnread}/mark-unread`,
+      headers: authHeader(reader.accessToken),
+      payload: {},
+    });
+    expect(missing.statusCode).toBe(400);
   });
 
   it('rejects series and books the user cannot reach', async () => {

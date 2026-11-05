@@ -338,16 +338,24 @@ export class SeriesRepository {
     return row !== undefined;
   }
 
-  /** Books to mark read: the whole series, or `upTo` and everything positioned at or before it in its library. */
-  async findUnreadBookIdsForMarkRead(params: {
+  /**
+   * Books a series-level mark would change. Read: the whole series, or `bound` and everything before it.
+   * Unread: `bound` and everything after it, skipping books with no status or flagged want to read.
+   */
+  async findBookIdsToMark(params: {
     seriesId: number;
     userId: number;
     libraryIds: number[];
     contentFilters?: ContentFilterRules;
-    upTo?: { libraryId: number; seriesIndex: string };
+    target: 'read' | 'unread';
+    bound?: { libraryId: number; seriesIndex: string };
   }): Promise<number[]> {
     if (params.libraryIds.length === 0) return [];
     const filterClauses = params.contentFilters ? buildContentFilterClauses(params.contentFilters, this.db) : [];
+    const statusClause =
+      params.target === 'read'
+        ? or(isNull(userBookStatus.status), sql`${userBookStatus.status} not in ('read', 'skimmed')`)
+        : sql`${userBookStatus.status} not in ('unread', 'want_to_read')`;
     const rows = await this.db
       .select({ id: books.id })
       .from(bookSeriesMemberships)
@@ -358,9 +366,12 @@ export class SeriesRepository {
           eq(bookSeriesMemberships.seriesId, params.seriesId),
           eq(books.status, 'present'),
           this.buildLibraryFilter(params.libraryIds),
-          or(isNull(userBookStatus.status), sql`${userBookStatus.status} not in ('read', 'skimmed')`),
-          ...(params.upTo
-            ? [eq(books.libraryId, params.upTo.libraryId), compareSeriesIndexSql(bookSeriesMemberships.seriesIndex, '<=', params.upTo.seriesIndex)]
+          statusClause,
+          ...(params.bound
+            ? [
+                eq(books.libraryId, params.bound.libraryId),
+                compareSeriesIndexSql(bookSeriesMemberships.seriesIndex, params.target === 'read' ? '<=' : '>=', params.bound.seriesIndex),
+              ]
             : []),
           ...filterClauses,
         ),

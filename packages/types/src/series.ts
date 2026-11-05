@@ -118,6 +118,10 @@ export type MarkSeriesReadRequest = {
   upToBookId?: number;
 };
 
+export type MarkSeriesUnreadRequest = {
+  fromBookId: number;
+};
+
 export type MarkSeriesReadResponse = {
   updated: number;
 };
