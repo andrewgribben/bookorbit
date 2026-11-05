@@ -14,6 +14,7 @@ import {
   FolderInput,
   FolderPlus,
   Image,
+  Layers,
   Lock,
   LockOpen,
   Loader2,
@@ -692,6 +693,10 @@ const secondaryLabelText = computed(() => resolveBookLabel(gridCardSecondaryLabe
                     <BookText class="size-4 mr-2" />
                     {{ t('book.actions.bookDetails') }}
                   </DropdownMenuItem>
+                  <DropdownMenuItem v-if="book.seriesId != null" @click="openSeriesDetails">
+                    <Layers class="size-4 mr-2" />
+                    {{ t('book.actions.viewInSeries') }}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator v-if="canEditMetadata" />
                   <DropdownMenuSub v-if="canEditMetadata">
                     <DropdownMenuSubTrigger>
@@ -834,6 +839,10 @@ const secondaryLabelText = computed(() => resolveBookLabel(gridCardSecondaryLabe
             <DropdownMenuItem @click="openBookDetails">
               <BookText class="size-4 mr-2" />
               {{ t('book.actions.bookDetails') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem v-if="book.seriesId != null" @click="openSeriesDetails">
+              <Layers class="size-4 mr-2" />
+              {{ t('book.actions.viewInSeries') }}
             </DropdownMenuItem>
             <DropdownMenuSeparator v-if="canEditMetadata" />
             <DropdownMenuSub v-if="canEditMetadata">
