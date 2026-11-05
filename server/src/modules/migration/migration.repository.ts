@@ -4,6 +4,8 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
+import { applyPathMappings } from './planner/matching.service';
+import type { PathMapping } from './planner/planner.types';
 
 type Db = NodePgDatabase<typeof schema>;
 type MigrationRunState = 'draft' | 'preflight_failed' | 'dry_run_ready' | 'running' | 'failed' | 'completed';
@@ -314,6 +316,35 @@ export class MigrationRepository {
       .from(schema.migrationRunMetrics)
       .where(eq(schema.migrationRunMetrics.runId, runId))
       .orderBy(asc(schema.migrationRunMetrics.stage), asc(schema.migrationRunMetrics.entityType));
+  }
+
+  /**
+   * Maps Komga book ids to the file paths Komga migration snapshots recorded for them, with that
+   * plan's path mappings applied. The newest snapshot wins when a book appears in several.
+   */
+  async findKomgaBookPaths(komgaBookIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    for (const ids of chunk([...new Set(komgaBookIds)], 5000)) {
+      const result = await this.db.execute<{ book_id: string; file_path: string | null; path_mappings: PathMapping[] | null }>(sql`
+        select distinct on (f->>'sourceBookId') f->>'sourceBookId' as book_id, f->>'filePath' as file_path,
+          a.plan->'pathMappings' as path_mappings
+        from ${schema.migrationPlanArtifacts} a
+        join ${schema.migrationSources} s on s.id = a.source_id and s.type = 'komga'
+        cross join lateral jsonb_array_elements(coalesce(a.source_data->'books', '[]'::jsonb)) b
+        cross join lateral jsonb_array_elements(coalesce(b->'files', '[]'::jsonb)) f
+        where f->>'sourceBookId' in (${sql.join(
+          ids.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        order by f->>'sourceBookId', a.id desc
+      `);
+      for (const row of (result as unknown as { rows: Array<{ book_id: string; file_path: string | null; path_mappings: PathMapping[] | null }> })
+        .rows) {
+        const path = applyPathMappings(row.file_path, row.path_mappings ?? []);
+        if (path) out.set(row.book_id, path);
+      }
+    }
+    return out;
   }
 }
 
