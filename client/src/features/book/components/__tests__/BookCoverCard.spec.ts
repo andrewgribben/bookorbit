@@ -230,6 +230,16 @@ describe('BookCoverCard - present state', () => {
     expect(routerPushMock).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'reader' }))
   })
 
+  it('offers View in Series from the menu only for books in a series', async () => {
+    expect(mountCard({ ...presentBook, seriesId: null }).text()).not.toContain('View in Series')
+
+    const wrapper = mountCard({ ...presentBook, seriesId: 7 })
+    const item = wrapper.findAll('div').find((node) => node.text() === 'View in Series')
+    await item!.trigger('click')
+
+    expect(routerPushMock).toHaveBeenCalledWith({ name: 'series-detail', params: { seriesId: 7 }, query: { from: '/' } })
+  })
+
   it('opens book details from the primary overlay action when thumbnail clicks prefer details', async () => {
     thumbnailClickAction.value = 'details'
     const wrapper = mountCard(presentBook)
