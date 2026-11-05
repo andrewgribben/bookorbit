@@ -941,7 +941,7 @@ export class BookQueryBuilder {
       ab.percentage,
       0
     )`;
-    const isCompleted = sql`(ubs.status in ('read', 'skimmed') or ${mergedProgress} >= 100)`;
+    const isCompleted = sql`(ubs.status in ('read', 'skimmed') or ((ubs.status is null or ubs.status not in ('unread', 'want_to_read')) and ${mergedProgress} >= 100))`;
     return sql`${books.id} in (
       with scoped as (
         select

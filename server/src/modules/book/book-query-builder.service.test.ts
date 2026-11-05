@@ -1917,6 +1917,7 @@ describe('seriesStatusRuleToSql', () => {
     expect(text).toContain('previous_is_completed');
     expect(text).toContain("'read'");
     expect(text).toContain("'skimmed'");
+    expect(text).toContain("ubs.status not in ('unread', 'want_to_read')");
   });
 
   it('isUpNext offers only volumes with no read status, unread or want to read, gated after the window', () => {
