@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { copyToClipboard } from '@/lib/clipboard'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import SettingsSection from './components/SettingsSection.vue'
+import ReaderBackupImport from '@/features/reader-import/components/ReaderBackupImport.vue'
 
 const { t } = useI18n()
 const { hasPermission } = usePermissions()
@@ -217,6 +218,10 @@ async function copyRevealedKey() {
         <Plus class="size-4 mr-1" />
         {{ t('settings.reader.komga.addKey') }}
       </Button>
+    </SettingsSection>
+
+    <SettingsSection :title="t('settings.reader.komga.import.title')" :brief="t('settings.reader.komga.import.brief')" class="mt-6">
+      <ReaderBackupImport />
     </SettingsSection>
   </template>
 </template>

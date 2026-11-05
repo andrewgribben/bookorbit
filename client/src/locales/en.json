@@ -3760,7 +3760,21 @@
         "keyCopyFailed": "Failed to copy the API key",
         "loadFailed": "Failed to load API keys",
         "createKeyFailed": "Failed to create API key",
-        "deleteKeyFailed": "Failed to delete API key"
+        "deleteKeyFailed": "Failed to delete API key",
+        "import": {
+          "title": "Import from Mihon or Komikku",
+          "brief": "Upload a backup from the app (Settings, Data and storage, Create backup). Series in its library are followed so they show in Up Next, and chapters you read there are marked read. Nothing is marked unread and series you already gave a status keep it.",
+          "preview": "Preview",
+          "summary": "{series} series in the app library. {matched} of {chapters} chapters matched to books here, {read} to mark read.",
+          "willSet": "{count, plural, one {# series will get a status} other {# series will get a status}}",
+          "kept": "{count, plural, one {# series already has a status and will keep it.} other {# series already have a status and will keep it.}}",
+          "numberMatches": "{count, plural, one {# chapter matched by issue number: check it} other {# chapters matched by issue number: check them}}",
+          "unmatched": "{count, plural, one {# app series not fully found here} other {# app series not fully found here}}",
+          "missingChapters": "{missing} of {total} missing",
+          "apply": "Apply import",
+          "applied": "Import applied. Up Next now follows your app library.",
+          "nothingToDo": "Nothing to change: everything here is already up to date."
+        }
       },
       "feeds": {
         "title": "Audiobook podcast feeds",
