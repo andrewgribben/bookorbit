@@ -24,6 +24,7 @@ import { FindNextSeriesBookDto } from './dto/find-next-series-book.dto';
 import { ListSeriesBooksDto } from './dto/list-series-books.dto';
 import { ListSeriesDto } from './dto/list-series.dto';
 import { MarkSeriesReadDto } from './dto/mark-series-read.dto';
+import { MarkSeriesUnreadDto } from './dto/mark-series-unread.dto';
 import { SetSeriesFollowStatusDto } from './dto/set-series-follow-status.dto';
 import { SeriesRepository } from './series.repository';
 import { computeSeriesGaps } from './utils/series-gaps.utils';
@@ -227,36 +228,50 @@ export class SeriesService {
     await this.seriesRepo.deleteFollowStatus(user.id, seriesId);
   }
 
-  async markRead(user: RequestUser, seriesId: number, dto: MarkSeriesReadDto): Promise<MarkSeriesReadResponse> {
-    const event = 'series.mark_read';
+  markRead(user: RequestUser, seriesId: number, dto: MarkSeriesReadDto): Promise<MarkSeriesReadResponse> {
+    return this.markSeriesBooks(user, seriesId, 'read', dto.upToBookId);
+  }
+
+  markUnread(user: RequestUser, seriesId: number, dto: MarkSeriesUnreadDto): Promise<MarkSeriesReadResponse> {
+    return this.markSeriesBooks(user, seriesId, 'unread', dto.fromBookId);
+  }
+
+  private async markSeriesBooks(
+    user: RequestUser,
+    seriesId: number,
+    target: 'read' | 'unread',
+    boundBookId: number | undefined,
+  ): Promise<MarkSeriesReadResponse> {
+    const event = target === 'read' ? 'series.mark_read' : 'series.mark_unread';
     const startedAt = Date.now();
-    this.logger.log(`[${event}] [start] seriesId=${seriesId} userId=${user.id} upToBookId=${dto.upToBookId ?? 'none'} - mark series read started`);
+    this.logger.log(`[${event}] [start] seriesId=${seriesId} userId=${user.id} boundBookId=${boundBookId ?? 'none'} - mark series ${target} started`);
     try {
       const libraryIds = await this.assertSeriesAccessible(user, seriesId);
-      let upTo: { libraryId: number; seriesIndex: string } | undefined;
-      if (dto.upToBookId !== undefined) {
-        const membership = await this.seriesRepo.findMembership(seriesId, dto.upToBookId, libraryIds);
+      let bound: { libraryId: number; seriesIndex: string } | undefined;
+      if (boundBookId !== undefined) {
+        const membership = await this.seriesRepo.findMembership(seriesId, boundBookId, libraryIds);
         if (!membership) throw new BadRequestException('Book is not in this series');
         if (membership.seriesIndex === null) throw new BadRequestException('Book has no position in this series');
-        upTo = { libraryId: membership.libraryId, seriesIndex: membership.seriesIndex };
+        bound = { libraryId: membership.libraryId, seriesIndex: membership.seriesIndex };
       }
-      const bookIds = await this.seriesRepo.findUnreadBookIdsForMarkRead({
+      const bookIds = await this.seriesRepo.findBookIdsToMark({
         seriesId,
         userId: user.id,
         libraryIds,
         contentFilters: user.isSuperuser ? undefined : user.contentFilters,
-        upTo,
+        target,
+        bound,
       });
-      if (bookIds.length > 0) await this.bookService.bulkSetStatus(bookIds, 'read', user);
+      if (bookIds.length > 0) await this.bookService.bulkSetStatus(bookIds, target, user);
       this.logger.log(
-        `[${event}] [end] seriesId=${seriesId} userId=${user.id} durationMs=${Date.now() - startedAt} updated=${bookIds.length} - mark series read completed`,
+        `[${event}] [end] seriesId=${seriesId} userId=${user.id} durationMs=${Date.now() - startedAt} updated=${bookIds.length} - mark series ${target} completed`,
       );
       return { updated: bookIds.length };
     } catch (error) {
       const errorClass = error instanceof Error ? error.constructor.name : typeof error;
       const message = sanitizeLogValue(error instanceof Error ? error.message : error);
       this.logger.warn(
-        `[${event}] [fail] seriesId=${seriesId} userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - mark series read failed`,
+        `[${event}] [fail] seriesId=${seriesId} userId=${user.id} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${message}" - mark series ${target} failed`,
       );
       throw error;
     }

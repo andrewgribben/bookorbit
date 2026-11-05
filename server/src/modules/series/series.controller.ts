@@ -10,6 +10,7 @@ import { FindNextSeriesBookDto } from './dto/find-next-series-book.dto';
 import { ListSeriesBooksDto } from './dto/list-series-books.dto';
 import { ListSeriesDto } from './dto/list-series.dto';
 import { MarkSeriesReadDto } from './dto/mark-series-read.dto';
+import { MarkSeriesUnreadDto } from './dto/mark-series-unread.dto';
 import { SetSeriesFollowStatusDto } from './dto/set-series-follow-status.dto';
 import { SeriesService } from './series.service';
 
@@ -45,6 +46,17 @@ export class SeriesController {
   })
   markRead(@CurrentUser() user: RequestUser, @Param('seriesId', ParseIntPipe) seriesId: number, @Body() dto: MarkSeriesReadDto) {
     return this.seriesService.markRead(user, seriesId, dto);
+  }
+
+  @Post(':seriesId/mark-unread')
+  @ForbidPermission(Permission.DemoRestricted, 'Demo-restricted account cannot perform bulk edits')
+  @Auditable({
+    action: AuditAction.BookBulkSetStatus,
+    resource: AuditResource.Book,
+    description: (req) => `Mark series books unread from book ${(req.body as { fromBookId?: number })?.fromBookId}`,
+  })
+  markUnread(@CurrentUser() user: RequestUser, @Param('seriesId', ParseIntPipe) seriesId: number, @Body() dto: MarkSeriesUnreadDto) {
+    return this.seriesService.markUnread(user, seriesId, dto);
   }
 
   @Get(':seriesId/books')

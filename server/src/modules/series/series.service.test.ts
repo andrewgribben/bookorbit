@@ -52,7 +52,7 @@ describe('SeriesService', () => {
     countSeries: vi.fn(),
     hasAccessibleBooks: vi.fn(),
     findMembership: vi.fn(),
-    findUnreadBookIdsForMarkRead: vi.fn(),
+    findBookIdsToMark: vi.fn(),
     upsertFollowStatus: vi.fn(),
     deleteFollowStatus: vi.fn(),
   };
@@ -729,23 +729,25 @@ describe('SeriesService', () => {
     });
 
     it('marks every unread book in the series when no book is given', async () => {
-      seriesRepo.findUnreadBookIdsForMarkRead.mockResolvedValue([12, 14]);
+      seriesRepo.findBookIdsToMark.mockResolvedValue([12, 14]);
 
       await expect(service.markRead(reqUser(), 31, {})).resolves.toEqual({ updated: 2 });
       expect(seriesRepo.findMembership).not.toHaveBeenCalled();
-      expect(seriesRepo.findUnreadBookIdsForMarkRead).toHaveBeenCalledWith(
-        expect.objectContaining({ seriesId: 31, userId: 7, libraryIds: [1, 2], upTo: undefined }),
+      expect(seriesRepo.findBookIdsToMark).toHaveBeenCalledWith(
+        expect.objectContaining({ seriesId: 31, userId: 7, libraryIds: [1, 2], target: 'read', bound: undefined }),
       );
       expect(bookService.bulkSetStatus).toHaveBeenCalledWith([12, 14], 'read', expect.objectContaining({ id: 7 }));
     });
 
     it('limits marking to the given book position and its library', async () => {
       seriesRepo.findMembership.mockResolvedValue({ libraryId: 2, seriesIndex: '9' });
-      seriesRepo.findUnreadBookIdsForMarkRead.mockResolvedValue([20]);
+      seriesRepo.findBookIdsToMark.mockResolvedValue([20]);
 
       await expect(service.markRead(reqUser(), 31, { upToBookId: 90 })).resolves.toEqual({ updated: 1 });
       expect(seriesRepo.findMembership).toHaveBeenCalledWith(31, 90, [1, 2]);
-      expect(seriesRepo.findUnreadBookIdsForMarkRead).toHaveBeenCalledWith(expect.objectContaining({ upTo: { libraryId: 2, seriesIndex: '9' } }));
+      expect(seriesRepo.findBookIdsToMark).toHaveBeenCalledWith(
+        expect.objectContaining({ target: 'read', bound: { libraryId: 2, seriesIndex: '9' } }),
+      );
     });
 
     it('rejects a book outside the series or without a position', async () => {
@@ -757,9 +759,32 @@ describe('SeriesService', () => {
     });
 
     it('skips the bulk write when everything is already read', async () => {
-      seriesRepo.findUnreadBookIdsForMarkRead.mockResolvedValue([]);
+      seriesRepo.findBookIdsToMark.mockResolvedValue([]);
 
       await expect(service.markRead(reqUser(), 31, {})).resolves.toEqual({ updated: 0 });
+      expect(bookService.bulkSetStatus).not.toHaveBeenCalled();
+    });
+  });
+  describe('markUnread', () => {
+    beforeEach(() => {
+      seriesRepo.hasAccessibleBooks.mockResolvedValue(true);
+    });
+
+    it('marks the given book and later ones unread without touching progress', async () => {
+      seriesRepo.findMembership.mockResolvedValue({ libraryId: 2, seriesIndex: '2' });
+      seriesRepo.findBookIdsToMark.mockResolvedValue([21, 22]);
+
+      await expect(service.markUnread(reqUser(), 31, { fromBookId: 21 })).resolves.toEqual({ updated: 2 });
+      expect(seriesRepo.findBookIdsToMark).toHaveBeenCalledWith(
+        expect.objectContaining({ target: 'unread', bound: { libraryId: 2, seriesIndex: '2' } }),
+      );
+      expect(bookService.bulkSetStatus).toHaveBeenCalledWith([21, 22], 'unread', expect.objectContaining({ id: 7 }));
+    });
+
+    it('rejects a book outside the series', async () => {
+      seriesRepo.findMembership.mockResolvedValue(null);
+
+      await expect(service.markUnread(reqUser(), 31, { fromBookId: 99 })).rejects.toBeInstanceOf(BadRequestException);
       expect(bookService.bulkSetStatus).not.toHaveBeenCalled();
     });
   });
