@@ -18,11 +18,18 @@ function mountFields(type = 'audiobookshelf', wide = false) {
       mediaRootPathHint: { className: 'text-muted-foreground', text: 'hint' },
       wide,
     },
+    global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
   })
   return { draft, wrapper }
 }
 
 describe('MigrationSourceFields', () => {
+  it('points comic reader app users to the backup import', () => {
+    const { wrapper } = mountFields('komga')
+
+    expect(wrapper.get('[data-testid="reader-backup-hint"]').text()).toContain('Import a reader app backup')
+  })
+
   it('renders translated source type labels instead of internal identifiers', () => {
     const { wrapper } = mountFields()
     const options = wrapper.findAll('option').map((option) => option.text())

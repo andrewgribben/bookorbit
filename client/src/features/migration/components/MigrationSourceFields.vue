@@ -73,6 +73,13 @@ function sourceTypeLabel(type: string): string {
 
 <template>
   <div class="grid gap-2" :class="gridClass" data-testid="migration-source-fields">
+    <p class="text-sm text-muted-foreground" :class="wide ? 'md:col-span-2 xl:col-span-4' : 'md:col-span-2'" data-testid="reader-backup-hint">
+      {{ t('migration.source.readerBackupHint') }}
+      <RouterLink :to="{ name: 'settings-komga' }" class="font-medium text-primary hover:underline">{{
+        t('migration.source.readerBackupLink')
+      }}</RouterLink>
+    </p>
+
     <label class="block">
       <span class="settings-hint">{{ t('migration.source.fields.type') }}</span>
       <select v-model="draft.type" class="select-field mt-1 w-full" :disabled="disabled">
