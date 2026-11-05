@@ -139,7 +139,18 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     reader = await createUserAndLogin(ctx);
     await grantLibraryAccess(ctx, reader.userId, library.libraryId);
 
-    for (const key of ['following', 'dropped', 'caughtUp', 'stale', 'markRead', 'private', 'skimmed', 'progressOnly', 'markUnread'])
+    for (const key of [
+      'following',
+      'dropped',
+      'caughtUp',
+      'stale',
+      'markRead',
+      'private',
+      'skimmed',
+      'progressOnly',
+      'markUnread',
+      'followedUnstarted',
+    ])
       await createSeries(key);
     await seedBook('following-1', 'following', '1', { read: true, finishedAt: new Date(Date.now() - MONTH_MS) });
     await seedBook('following-2', 'following', '2');
@@ -155,6 +166,8 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     await seedBook('skimmed-2', 'skimmed', '2');
     await seedBook('progressOnly-1', 'progressOnly', '1', { progress: 100 });
     await seedBook('progressOnly-2', 'progressOnly', '2');
+    await seedBook('followedUnstarted-1', 'followedUnstarted', '1');
+    await seedBook('followedUnstarted-2', 'followedUnstarted', '2');
     for (const index of ['1', '2', '3', '4']) await seedBook(`markUnread-${index}`, 'markUnread', index, { read: true });
   });
 
@@ -172,6 +185,15 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     const { ids } = await upNext();
     expect(ids).not.toContain(books['skimmed-2']);
     expect(ids).toContain(books['progressOnly-2']);
+  });
+
+  it('offers the first volume of a Reading series nobody has started', async () => {
+    expect((await upNext()).ids).not.toContain(books['followedUnstarted-1']);
+    expect((await setStatus('followedUnstarted', 'reading')).statusCode).toBe(200);
+    const { ids } = await upNext();
+    expect(ids).toContain(books['followedUnstarted-1']);
+    expect(ids).not.toContain(books['followedUnstarted-2']);
+    expect(await queryIds({ type: 'rule', field: 'seriesStatus', operator: 'isUpNext' })).toContain(books['followedUnstarted-1']);
   });
 
   it('drops a series from Up Next but keeps it findable through the library filter', async () => {
