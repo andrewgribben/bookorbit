@@ -168,6 +168,8 @@ describe('Reader app backup import (e2e)', { timeout: 300_000 }, () => {
       sourceData: { books: snapshotKeys.map((key) => ({ files: [{ sourceBookId: `K-${key}`, filePath: paths[key] }] })) },
     });
 
+    await ctx.db.insert(schema.userBookStatus).values({ userId: reader.userId, bookId: books['partway-2']!, status: 'unread', source: 'manual' });
+
     expect(
       (
         await ctx.app.inject({
@@ -189,10 +191,10 @@ describe('Reader app backup import (e2e)', { timeout: 300_000 }, () => {
     expect(response.statusCode, response.body).toBe(201);
     const result = response.json() as ReaderImportResult;
 
-    expect(result).toMatchObject({ applied: false, libraryEntries: 7, skippedHistoryEntries: 1, booksToMarkRead: 4 });
+    expect(result).toMatchObject({ applied: false, libraryEntries: 7, skippedHistoryEntries: 1, booksToMarkRead: 3 });
     const byName = Object.fromEntries(result.series.map((item) => [item.seriesName.replace(`${TOKEN} `, ''), item]));
     expect(byName.unstarted).toMatchObject({ action: 'set', status: 'reading' });
-    expect(byName.partway).toMatchObject({ action: 'set', status: 'reading', booksToMarkRead: 2 });
+    expect(byName.partway).toMatchObject({ action: 'set', status: 'reading', booksToMarkRead: 1 });
     expect(byName.finished).toMatchObject({ action: 'set', status: 'caught_up', booksToMarkRead: 2 });
     expect(byName.tracked).toMatchObject({ action: 'set', status: 'completed' });
     expect(byName.dropped).toMatchObject({ action: 'kept', status: 'dropped' });
@@ -211,14 +213,15 @@ describe('Reader app backup import (e2e)', { timeout: 300_000 }, () => {
     expect(response.statusCode, response.body).toBe(201);
     expect((response.json() as ReaderImportResult).applied).toBe(true);
 
-    for (const key of ['partway-1', 'partway-2', 'finished-1', 'finished-2']) expect(await readStatus(key)).toBe('read');
+    for (const key of ['partway-1', 'finished-1', 'finished-2']) expect(await readStatus(key)).toBe('read');
+    expect(await readStatus('partway-2')).toBe('unread');
     expect(await readStatus('partway-3')).toBeNull();
     expect(await readStatus('private-1')).toBeNull();
     expect(await followStatus('dropped')).toBe('dropped');
 
     const ids = await upNextIds();
     expect(ids).toContain(books['unstarted-1']);
-    expect(ids).toContain(books['partway-3']);
+    expect(ids).toContain(books['partway-2']);
     expect(ids).not.toContain(books['finished-2']);
     expect(ids).not.toContain(books['tracked-1']);
     expect(ids).not.toContain(books['dropped-1']);
