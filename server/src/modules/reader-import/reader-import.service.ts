@@ -39,7 +39,7 @@ export class ReaderImportService {
   /**
    * Turns a Mihon or Komikku backup into BookOrbit reading state: every series in the app library
    * gets a follow status unless the user already chose one, and chapters read in the app are
-   * marked read. Nothing is ever marked unread. With `apply` false it only reports the plan.
+   * marked read, except books the user marked unread or want-to-read here. Nothing is ever marked unread. With `apply` false it only reports the plan.
    */
   async importMihonBackup(user: RequestUser, file: Buffer, apply: boolean): Promise<ReaderImportResult> {
     const event = 'reader_import.mihon';
@@ -154,7 +154,7 @@ export class ReaderImportService {
       const trackerCompleted = pass.entry.trackerStatuses.some((t) => t.trackerId === KOMGA_TRACKER_ID && t.status === KOMGA_TRACKER_COMPLETED);
       for (const chapter of pass.matched) {
         const rows = knownBooks.get(chapter.bookId) ?? [];
-        if (chapter.read && !isRead(rows[0]?.readStatus ?? null)) markRead.add(chapter.bookId);
+        if (chapter.read && !isRead(rows[0]?.readStatus ?? null) && !isExplicitlyUnread(rows[0]?.readStatus ?? null)) markRead.add(chapter.bookId);
         for (const row of rows) {
           if (row.seriesId === null) continue;
           const plan = plans.get(row.seriesId) ?? {
@@ -210,6 +210,11 @@ export class ReaderImportService {
 
 function isRead(status: string | null): boolean {
   return status === 'read' || status === 'skimmed';
+}
+
+// Matches the Up Next rule: these are the user's deliberate overrides of reading progress.
+function isExplicitlyUnread(status: string | null): boolean {
+  return status === 'unread' || status === 'want_to_read';
 }
 
 function groupByBook(rows: ReaderImportBookRow[]): Map<number, ReaderImportBookRow[]> {
