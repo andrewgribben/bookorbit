@@ -1,5 +1,8 @@
 export type AudiobookshelfConnectionMode = 'api' | 'backup'
 
+// Uploaded in the browser and applied directly, so it never becomes a saved migration source.
+export const READER_BACKUP_SOURCE_TYPE = 'mihon_backup'
+
 export interface MigrationSourceDraft {
   type: string
   name: string

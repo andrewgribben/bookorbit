@@ -44,6 +44,7 @@ import { useMigrationSetupReset } from '@/features/migration/composables/useMigr
 import {
   buildMigrationSourceConnectionConfig,
   createMigrationSourceDraft,
+  READER_BACKUP_SOURCE_TYPE,
   hydrateMigrationSourceDraft,
   validateMigrationSourceDraft,
   type MigrationSourceValidationError,
@@ -232,6 +233,7 @@ const activeStepIndex = computed(() => {
 })
 
 const currentStep = ref(0)
+const isReaderBackup = computed(() => sourceDraft.type === READER_BACKUP_SOURCE_TYPE)
 
 watch(activeStepIndex, (newVal) => {
   const shouldHoldSourceStep = busy.savingSource && currentStep.value === 0 && newVal === 1
@@ -619,7 +621,7 @@ async function initialize() {
 
 async function loadSupportedTypes() {
   try {
-    supportedTypes.value = await listSupportedSourceTypes()
+    supportedTypes.value = [...(await listSupportedSourceTypes()), READER_BACKUP_SOURCE_TYPE]
   } catch (error) {
     supportedTypes.value = []
     toast.error(getErrorMessage(error, t('migration.toast.loadSupportedTypesFailed')))
@@ -1345,7 +1347,7 @@ const sourceTypeCompatibility = computed<SourceTypeCompatibility | null>(() => {
         <!-- Body: sidebar + content -->
         <div class="flex flex-1 min-h-0">
           <!-- Sidebar (desktop only) -->
-          <nav class="hidden md:flex flex-col w-52 shrink-0 bg-muted/40 border-r border-border">
+          <nav v-if="!isReaderBackup" class="hidden md:flex flex-col w-52 shrink-0 bg-muted/40 border-r border-border">
             <div class="px-4 pt-5 pb-4 border-b border-border flex items-center justify-between shrink-0">
               <span class="font-semibold text-foreground font-serif truncate">{{ t('migration.importTitle') }}</span>
               <Button variant="ghost" size="icon-sm" class="shrink-0" @click="handleClose">
@@ -1418,50 +1420,52 @@ const sourceTypeCompatibility = computed<SourceTypeCompatibility | null>(() => {
                     @test-media-path="onTestMediaPath"
                   />
 
-                  <div v-if="sourceTypeCompatibility" class="rounded-xs border border-border bg-muted/40 px-3.5 py-3 text-xs space-y-1">
-                    <p class="font-medium text-foreground">{{ t('migration.source.compatibility.title') }}</p>
-                    <p class="text-muted-foreground">
-                      {{ t('migration.source.compatibility.verifiedAgainst') }}
-                      <span class="font-mono font-medium text-foreground">{{ sourceTypeCompatibility.testedVersions.join(', ') }}</span>
-                    </p>
-                    <p class="text-muted-foreground">{{ sourceTypeCompatibility.note }}</p>
-                  </div>
-
-                  <div class="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" :disabled="busy.testingSource || hasActiveRun" @click="onTestSource">
-                      <Loader2 v-if="busy.testingSource" class="size-3.5 animate-spin" />
-                      {{ t('migration.source.testConnection') }}
-                    </Button>
-                    <Button size="sm" :disabled="busy.savingSource || hasActiveRun" @click="onSaveAndValidate">
-                      <Loader2 v-if="busy.savingSource" class="size-3.5 animate-spin" />
-                      {{ t('migration.source.saveAndValidate') }}
-                    </Button>
-                  </div>
-
-                  <div
-                    v-if="sourceValidationWarnings.length > 0"
-                    class="rounded-xs border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 space-y-1"
-                  >
-                    <p class="font-medium">{{ t('migration.source.validatedWithWarnings') }}</p>
-                    <p v-for="warn in sourceValidationWarnings" :key="warn">{{ warn }}</p>
-                  </div>
-
-                  <div v-if="sourceCapabilities" class="rounded-xs border border-border bg-muted/40 p-3 text-xs space-y-2">
-                    <p class="font-medium text-foreground">{{ t('migration.source.snapshot.title') }}</p>
-                    <p class="text-muted-foreground">
-                      {{
-                        t('migration.source.snapshot.sourceVersion', {
-                          version: sourceCapabilities.sourceVersion ?? t('migration.source.snapshot.unknown'),
-                        })
-                      }}
-                    </p>
-                    <p v-if="sourceCapabilities.missingTables.length > 0" class="text-amber-600">
-                      {{ t('migration.source.snapshot.missingTables', { tables: sourceCapabilities.missingTables.join(', ') }) }}
-                    </p>
-                    <div v-if="sourceRowCounts.length > 0" class="grid gap-1 text-muted-foreground sm:grid-cols-2">
-                      <p v-for="[key, count] in sourceRowCounts" :key="key">{{ formatSourceCountLabel(key) }}: {{ count }}</p>
+                  <template v-if="!isReaderBackup">
+                    <div v-if="sourceTypeCompatibility" class="rounded-xs border border-border bg-muted/40 px-3.5 py-3 text-xs space-y-1">
+                      <p class="font-medium text-foreground">{{ t('migration.source.compatibility.title') }}</p>
+                      <p class="text-muted-foreground">
+                        {{ t('migration.source.compatibility.verifiedAgainst') }}
+                        <span class="font-mono font-medium text-foreground">{{ sourceTypeCompatibility.testedVersions.join(', ') }}</span>
+                      </p>
+                      <p class="text-muted-foreground">{{ sourceTypeCompatibility.note }}</p>
                     </div>
-                  </div>
+
+                    <div class="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" :disabled="busy.testingSource || hasActiveRun" @click="onTestSource">
+                        <Loader2 v-if="busy.testingSource" class="size-3.5 animate-spin" />
+                        {{ t('migration.source.testConnection') }}
+                      </Button>
+                      <Button size="sm" :disabled="busy.savingSource || hasActiveRun" @click="onSaveAndValidate">
+                        <Loader2 v-if="busy.savingSource" class="size-3.5 animate-spin" />
+                        {{ t('migration.source.saveAndValidate') }}
+                      </Button>
+                    </div>
+
+                    <div
+                      v-if="sourceValidationWarnings.length > 0"
+                      class="rounded-xs border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 space-y-1"
+                    >
+                      <p class="font-medium">{{ t('migration.source.validatedWithWarnings') }}</p>
+                      <p v-for="warn in sourceValidationWarnings" :key="warn">{{ warn }}</p>
+                    </div>
+
+                    <div v-if="sourceCapabilities" class="rounded-xs border border-border bg-muted/40 p-3 text-xs space-y-2">
+                      <p class="font-medium text-foreground">{{ t('migration.source.snapshot.title') }}</p>
+                      <p class="text-muted-foreground">
+                        {{
+                          t('migration.source.snapshot.sourceVersion', {
+                            version: sourceCapabilities.sourceVersion ?? t('migration.source.snapshot.unknown'),
+                          })
+                        }}
+                      </p>
+                      <p v-if="sourceCapabilities.missingTables.length > 0" class="text-amber-600">
+                        {{ t('migration.source.snapshot.missingTables', { tables: sourceCapabilities.missingTables.join(', ') }) }}
+                      </p>
+                      <div v-if="sourceRowCounts.length > 0" class="grid gap-1 text-muted-foreground sm:grid-cols-2">
+                        <p v-for="[key, count] in sourceRowCounts" :key="key">{{ formatSourceCountLabel(key) }}: {{ count }}</p>
+                      </div>
+                    </div>
+                  </template>
                 </div>
 
                 <!-- Step 1: User & Path Mapping -->
@@ -1977,18 +1981,18 @@ const sourceTypeCompatibility = computed<SourceTypeCompatibility | null>(() => {
                     <ChevronLeft v-else :size="14" />
                     {{ currentStep === 0 ? t('common.cancel') : t('common.back') }}
                   </Button>
-                  <Button variant="outline" size="sm" v-if="canResetSetup" :disabled="resettingSource" @click="onResetSetup">
+                  <Button variant="outline" size="sm" v-if="canResetSetup && !isReaderBackup" :disabled="resettingSource" @click="onResetSetup">
                     <Loader2 v-if="resettingSource" class="size-3.5 animate-spin" />
                     <RotateCcw v-else :size="14" />
                     {{ t('migration.footer.resetSetup') }}
                   </Button>
                 </div>
 
-                <span class="text-xs text-muted-foreground hidden md:block">{{
+                <span v-if="!isReaderBackup" class="text-xs text-muted-foreground hidden md:block">{{
                   t('migration.footer.stepOf', { current: currentStep + 1, total: 5 })
                 }}</span>
 
-                <Button size="sm" v-if="currentStep < 4" @click="goNext">
+                <Button size="sm" v-if="currentStep < 4 && !isReaderBackup" @click="goNext">
                   {{ continueLabel }}
                   <ChevronRight :size="14" />
                 </Button>
