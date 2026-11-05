@@ -38,7 +38,14 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     key: string,
     seriesKey: string,
     index: string,
-    opts: { read?: boolean; finishedAt?: Date; target?: CreatedLibrary; status?: 'unread' | 'want_to_read'; progress?: number } = {},
+    opts: {
+      read?: boolean;
+      finishedAt?: Date;
+      target?: CreatedLibrary;
+      status?: 'unread' | 'want_to_read';
+      progress?: number;
+      listened?: number;
+    } = {},
   ) {
     const target = opts.target ?? library;
     const folder = `${target.folderPath}/${key}-${randomUUID()}`;
@@ -70,6 +77,9 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
       await ctx.db
         .insert(schema.readingProgress)
         .values({ bookFileId: file!.id, userId: reader.userId, percentage: opts.progress, lastReadAt: new Date() });
+    }
+    if (opts.listened !== undefined) {
+      await ctx.db.insert(schema.audiobookProgress).values({ bookId, userId: reader.userId, currentFileId: file!.id, percentage: opts.listened });
     }
     if (opts.status) {
       await ctx.db.insert(schema.userBookStatus).values({ userId: reader.userId, bookId, status: opts.status, source: 'manual' });
@@ -150,6 +160,7 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
       'progressOnly',
       'markUnread',
       'followedUnstarted',
+      'partial',
     ])
       await createSeries(key);
     await seedBook('following-1', 'following', '1', { read: true, finishedAt: new Date(Date.now() - MONTH_MS) });
@@ -169,6 +180,10 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     await seedBook('followedUnstarted-1', 'followedUnstarted', '1');
     await seedBook('followedUnstarted-2', 'followedUnstarted', '2');
     for (const index of ['1', '2', '3', '4']) await seedBook(`markUnread-${index}`, 'markUnread', index, { read: true });
+    await seedBook('partial-1', 'partial', '1', { read: true, progress: 40 });
+    await seedBook('partial-2', 'partial', '2', { progress: 40 });
+    await seedBook('partial-3', 'partial', '3', { status: 'unread', progress: 40 });
+    await seedBook('partial-4', 'partial', '4', { listened: 30 });
   });
 
   afterAll(async () => {
@@ -185,6 +200,24 @@ describe('Series follow status and Up Next (e2e)', { timeout: 300_000 }, () => {
     const { ids } = await upNext();
     expect(ids).not.toContain(books['skimmed-2']);
     expect(ids).toContain(books['progressOnly-2']);
+  });
+
+  it('lets explicit read and unread statuses beat leftover progress in reading progress rules', async () => {
+    const progress = (operator: string) => queryIds({ type: 'rule', field: 'readProgress', operator });
+    const inProgress = await progress('isInProgress');
+    expect(inProgress).toEqual(expect.arrayContaining([books['partial-2'], books['partial-4']]));
+    expect(inProgress).not.toContain(books['partial-1']);
+    expect(inProgress).not.toContain(books['partial-3']);
+
+    const finished = await progress('isFinished');
+    expect(finished).toEqual(expect.arrayContaining([books['partial-1'], books['progressOnly-1']]));
+    expect(finished).not.toContain(books['skimmed-1']);
+
+    const unread = await progress('isUnread');
+    expect(unread).toEqual(expect.arrayContaining([books['partial-3'], books['skimmed-1'], books['following-2']]));
+    expect(unread).not.toContain(books['partial-1']);
+    expect(unread).not.toContain(books['partial-2']);
+    expect(unread).not.toContain(books['partial-4']);
   });
 
   it('offers the first volume of a Reading series nobody has started', async () => {

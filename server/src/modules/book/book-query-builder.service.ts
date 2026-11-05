@@ -998,24 +998,47 @@ export class BookQueryBuilder {
 
   private readProgressRuleToSql(operator: string, userId?: number): SQL {
     if (userId === undefined) throw new BadRequestException('Reading progress filter requires an authenticated user');
-    const existsReadingProgress = (whereClause: SQL) => {
-      const sq = this.db
+    // Audiobook progress counts too, so "in progress" covers listening as well as reading.
+    const hasProgress = (inRange: (percentage: AnyColumn) => SQL) => {
+      const read = this.db
         .select({ one: sql`1` })
         .from(readingProgress)
         .innerJoin(bookFiles, eq(readingProgress.bookFileId, bookFiles.id))
-        .where(and(eq(bookFiles.bookId, books.id), whereClause)!);
+        .where(and(eq(bookFiles.bookId, books.id), eq(readingProgress.userId, userId), inRange(readingProgress.percentage))!);
+      const listened = this.db
+        .select({ one: sql`1` })
+        .from(audiobookProgress)
+        .where(and(eq(audiobookProgress.bookId, books.id), eq(audiobookProgress.userId, userId), inRange(audiobookProgress.percentage))!);
+      return sql`(exists (${read}) or exists (${listened}))`;
+    };
+    const hasStatus = (statuses: ReadStatus[]) => {
+      const sq = this.db
+        .select({ one: sql`1` })
+        .from(userBookStatus)
+        .where(and(eq(userBookStatus.bookId, books.id), eq(userBookStatus.userId, userId), inArray(userBookStatus.status, statuses))!);
       return sql`exists (${sq})`;
     };
+    // An explicit status beats leftover progress, matching how Up Next decides a book is done.
+    const markedDone = hasStatus(['read', 'skimmed']);
+    const markedUnread = hasStatus(['unread', 'want_to_read']);
 
     switch (operator) {
       case 'isUnread':
-        return not(existsReadingProgress(and(eq(readingProgress.userId, userId), gt(readingProgress.percentage, 0))!));
+        return or(markedUnread, and(not(markedDone), not(hasProgress((percentage) => gt(percentage, 0)))))!;
       case 'isInProgress':
-        return existsReadingProgress(
-          and(eq(readingProgress.userId, userId), gt(readingProgress.percentage, 0), lt(readingProgress.percentage, 100))!,
-        );
+        return and(
+          hasProgress((percentage) => and(gt(percentage, 0), lt(percentage, 100))!),
+          not(markedDone),
+          not(markedUnread),
+        )!;
       case 'isFinished':
-        return existsReadingProgress(and(eq(readingProgress.userId, userId), gte(readingProgress.percentage, 100))!);
+        return or(
+          markedDone,
+          and(
+            hasProgress((percentage) => gte(percentage, 100)),
+            not(markedUnread),
+          ),
+        )!;
       default:
         throw new BadRequestException(`Invalid operator '${operator}' for readProgress field`);
     }
