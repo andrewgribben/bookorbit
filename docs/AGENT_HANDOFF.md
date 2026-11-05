@@ -49,7 +49,8 @@ Open items:
 
 - User has not yet run the Komikku import on live (preview first, then Apply).
 - Mylar created folders with a placeholder `(2099)` year (e.g. `Midnight Spider-Man (2099)`); the user is renaming them in Mylar. After the files move, run "Apply rules to existing books" on Comics again.
-- `Marvel Age 1000 (2023)` got issue 1000 from its filename; `Legion of Super-Heroes 5 (2005)` got issue 5 from its folder name. Ask the user whether to lock them.
+- `Marvel Age 1000 (2023)` got issue 1000 from its filename; `Legion of Super-Heroes 5 (2005)` got issue 5 from its folder name. The user will check and fix these by hand; do not lock or change them.
+- Next step: the user runs the Komikku import preview on live and reports back. Do not merge the stacked branches into `development` before that.
 - No admin CLI exists; refreshes need a logged-in session (user's browser is not Chromium, so no shared session for the agent).
 
 Verify tips for this work:
