@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Permission, type AuthUser, type ScrollerConfig } from '@bookorbit/types'
+import { Permission, type AuthUser, type ExternalShelfConfig, type ScrollerConfig } from '@bookorbit/types'
 import { effectScope, ref } from 'vue'
 import type { api } from '@/lib/api'
 
@@ -15,8 +15,12 @@ function signedIn(settings: AuthUser['settings'] = {}, id = 1) {
 
 const STORAGE_KEY = 'bookorbit:dashboard:config'
 
-function storedConfig(): { scrollers: ScrollerConfig[]; shelfLayout: string } {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { scrollers: ScrollerConfig[]; shelfLayout: string }
+function storedConfig(): { scrollers: ScrollerConfig[]; shelfLayout: string; externalShelves?: ExternalShelfConfig[] } {
+  return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+    scrollers: ScrollerConfig[]
+    shelfLayout: string
+    externalShelves?: ExternalShelfConfig[]
+  }
 }
 
 describe('useDashboardConfig', () => {
@@ -217,14 +221,50 @@ describe('useDashboardConfig', () => {
       ['random', 'Discover Something New', true, 2],
       ['continue-reading', 'Continue Reading', true, 3],
       ['continue-listening', 'Continue Listening', true, 4],
-      ['want-to-read', 'Want to Read', false, 6],
-      ['up-next-in-series', 'Up Next in Series', false, 7],
+      ['want-to-read', 'Want to Read', false, 5],
+      ['up-next-in-series', 'Up Next in Series', false, 6],
     ])
 
     addScroller('smart-scope')
 
     expect(scrollers.value).toHaveLength(7)
     expect(DEFAULT_SCROLLERS).toHaveLength(6)
+  })
+
+  it('drops stored shelves of a type this client no longer has and never writes them back', async () => {
+    const retired = { id: '7', type: 'retired-shelf', label: 'Retired', enabled: true, order: 2, limit: 20, rows: 1 }
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        scrollers: [{ id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 }, retired],
+        shelfLayout: 'wide',
+      }),
+    )
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const local = useDashboardConfig()
+
+    expect(local.scrollers.value.map((scroller) => scroller.type)).toEqual(['recently-added'])
+    local.saveScrollers(local.scrollers.value)
+    expect(storedConfig().scrollers.map((scroller) => scroller.type)).toEqual(['recently-added'])
+
+    localStorage.clear()
+    vi.resetModules()
+    signedIn({
+      dashboardShelfConfig: {
+        syncAcrossSessions: true,
+        shelfLayout: 'wide',
+        scrollers: [
+          retired,
+          { id: '2', type: 'random', label: 'Discover', enabled: true, order: 1, limit: 20, rows: 1 },
+        ] as unknown as ScrollerConfig[],
+      },
+    })
+    const synced = (await import('../useDashboardConfig')).useDashboardConfig()
+
+    expect(synced.scrollers.value.map((scroller) => scroller.type)).toEqual(['random'])
+    await synced.saveShelfSettings(synced.scrollers.value, 'wide')
+    const body = JSON.parse(String(mocks.api.mock.calls[0]![1]?.body))
+    expect(body.settings.dashboardShelfConfig.scrollers.map((scroller: ScrollerConfig) => scroller.type)).toEqual(['random'])
   })
 
   it('prunes shelves that reference deleted smart scopes', async () => {
@@ -247,7 +287,7 @@ describe('useDashboardConfig', () => {
       { id: '3', type: 'smart-scope', label: 'Favorites', enabled: true, order: 2, limit: 20, rows: 1, smartScopeId: 42 },
     ])
 
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide' })
+    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide', externalShelves: [] })
   })
 
   it('falls back to defaults when stored JSON is malformed', async () => {
@@ -289,7 +329,7 @@ describe('useDashboardConfig', () => {
       { id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 },
       { id: '17', type: 'smart-scope', label: 'Smart Scope', enabled: true, order: 2, limit: 20, rows: 1, smartScopeId: 23 },
     ])
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide' })
+    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide', externalShelves: [] })
 
     reset()
 
@@ -333,7 +373,21 @@ describe('useDashboardConfig', () => {
     saveShelfSettings(scrollers.value, SHELF_LAYOUT.TWO_COLUMNS)
 
     expect(shelfLayout.value).toBe(SHELF_LAYOUT.TWO_COLUMNS)
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: SHELF_LAYOUT.TWO_COLUMNS })
+    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: SHELF_LAYOUT.TWO_COLUMNS, externalShelves: [] })
+  })
+
+  it('keeps external shelves from private adapter providers when saving', async () => {
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const { scrollers, shelfLayout, externalShelves, saveShelfSettings } = useDashboardConfig()
+    const shelves = [
+      { provider: 'readwise-social', shelf: 'friends-reading', enabled: true, order: 1 },
+      { provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 2 },
+    ] as unknown as ExternalShelfConfig[]
+
+    await saveShelfSettings(scrollers.value, shelfLayout.value, false, shelves)
+
+    expect(externalShelves.value).toEqual(shelves)
+    expect(storedConfig().externalShelves).toEqual(shelves)
   })
 
   it('normalizes an unknown stored shelf layout to wide rows', async () => {

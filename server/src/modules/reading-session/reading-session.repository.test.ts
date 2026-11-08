@@ -686,6 +686,22 @@ describe('ReadingSessionRepository - findLatestEndProgress', () => {
 
     await expect(repo.findLatestEndProgress(1, 2)).resolves.toBeNull();
   });
+
+  it('excludes readwise-sourced sessions from the position query (never move the reading position)', async () => {
+    const { repo, where } = makeLatestHarness([{ endProgress: 42.5 }]);
+
+    await repo.findLatestEndProgress(1, 2);
+
+    const seen = new WeakSet();
+    const whereArg = JSON.stringify(where.mock.calls[0], (_key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) return '[circular]';
+        seen.add(value);
+      }
+      return value;
+    });
+    expect(whereArg).toContain('readwise');
+  });
 });
 
 describe('ReadingSessionRepository - deleteSessionByBook', () => {

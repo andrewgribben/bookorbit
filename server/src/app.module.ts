@@ -18,8 +18,8 @@ import {
   fileWriteConfig,
   migrationConfig,
   oidcRuntimeConfig,
-  podcastConfig,
   readAloudConfig,
+  readingServicesConfig,
   storageConfig,
 } from './config/config';
 import { validateEnv } from './config/env.validation';
@@ -89,6 +89,7 @@ import { ReleaseNotesModule } from './modules/release-notes/release-notes.module
 import { AchievementModule } from './modules/achievement/achievement.module';
 import { HardcoverModule } from './modules/hardcover/hardcover.module';
 import { ReadwiseModule } from './modules/readwise/readwise.module';
+import { ReadingServicesModule } from './modules/reading-services/reading-services.module';
 import { StorygraphModule } from './modules/storygraph/storygraph.module';
 import { CustomMetadataModule } from './modules/custom-metadata/custom-metadata.module';
 import { CustomIconModule } from './modules/custom-icon/custom-icon.module';
@@ -104,7 +105,6 @@ import { ChapterHealthModule } from './modules/chapter-health/chapter-health.mod
 import { TtsModule } from './modules/tts/tts.module';
 import { SearchModule } from './modules/search/search.module';
 import { WatchDownloadModule } from './modules/watch-download/watch-download.module';
-import { PodcastModule } from './modules/podcast/podcast.module';
 import { ReadAloudModule } from './modules/read-aloud/read-aloud.module';
 
 @Module({
@@ -124,11 +124,11 @@ import { ReadAloudModule } from './modules/read-aloud/read-aloud.module';
         migrationConfig,
         bookRequestConfig,
         oidcRuntimeConfig,
-        podcastConfig,
         audiolessEpubConfig,
         djvuConfig,
         readAloudConfig,
         audioToolsConfig,
+        readingServicesConfig,
       ],
     }),
     ScheduleModule.forRoot(),
@@ -210,6 +210,7 @@ import { ReadAloudModule } from './modules/read-aloud/read-aloud.module';
     AchievementModule,
     HardcoverModule,
     ReadwiseModule,
+    ReadingServicesModule,
     StorygraphModule,
     AccountActivityModule,
     SharedReadingInsightsModule,
@@ -220,7 +221,6 @@ import { ReadAloudModule } from './modules/read-aloud/read-aloud.module';
     TtsModule,
     SearchModule,
     WatchDownloadModule,
-    PodcastModule,
     ReadAloudModule,
   ],
   providers: [{ provide: APP_INTERCEPTOR, useClass: AuditInterceptor }, ...GLOBAL_GUARDS.map((useClass) => ({ provide: APP_GUARD, useClass }))],

@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronUp, Columns2, GripVertical, Plus, RotateCcw, Rows3, Trash2 } from '@lucide/vue'
 
-import { APP_FEATURES, type ScrollerConfig, type ScrollerType, type WidgetConfig } from '@bookorbit/types'
+import type { ExternalShelfConfig, ScrollerConfig, ScrollerType, WidgetConfig } from '@bookorbit/types'
+import type { RouteLocationRaw } from 'vue-router'
 import { formatList } from '@/i18n/formatters'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useSmartScopes } from '@/features/smart-scope/composables/useSmartScopes'
@@ -21,6 +22,7 @@ import { SHELF_ROW_OPTIONS } from '../lib/shelf-rows'
 import { useDashboardLabels } from '../composables/useDashboardLabels'
 import { useDashboardWidgets } from '../composables/useDashboardWidgets'
 import { useDraggableList } from '../composables/useDraggableList'
+import { useExternalShelvesConfig } from '../composables/useExternalShelvesConfig'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean]; saved: [] }>()
@@ -32,13 +34,25 @@ const { scrollers, shelfLayout, syncAcrossSessions, saveShelfSettings, MAX_SCROL
 const { widgets, libraryIds, saveWidgets, saveLibraryScope, DEFAULT_WIDGETS } = useDashboardWidgets()
 const { smartScopes, fetchSmartScopes } = useSmartScopes()
 const { libraries, fetchLibraries } = useLibraries()
-const { widgetName, shelfTypeName } = useDashboardLabels()
+const { widgetName, shelfTypeName, externalShelfTitle, externalShelfProviderName } = useDashboardLabels()
+const { pickerShelves: externalShelfPickerShelves, loaded: externalShelvesLoaded } = useExternalShelvesConfig()
+
+// Which providers are already connected, so the picker description can link unconnected ones
+// straight to their settings page instead of just naming them (owner bug report).
+const connectedProviders = computed(() => new Set(externalShelfPickerShelves.value.filter((shelf) => shelf.connected).map((shelf) => shelf.provider)))
+
+function providerSettingsRoute(provider: string): RouteLocationRaw {
+  if (provider === 'readwise') return { name: 'settings-readwise' }
+  if (provider === 'hardcover') return { name: 'settings-hardcover' }
+  return { name: 'settings-reading-service', params: { provider } }
+}
 
 const activeTab = ref<'widgets' | 'shelves'>('shelves')
 const draft = ref<ScrollerConfig[]>([])
 const shelfLayoutDraft = ref<DashboardShelfLayout>(SHELF_LAYOUT.WIDE)
 const syncShelvesDraft = ref(false)
 const widgetDraft = ref<WidgetConfig[]>([])
+const externalShelvesDraft = ref<ExternalShelfConfig[]>([])
 const libraryIdsDraft = ref<number[] | null>(null)
 const libraryScopeOpen = ref(false)
 const saving = ref(false)
@@ -69,6 +83,12 @@ watch(
       syncShelvesDraft.value = syncAcrossSessions.value
       saveError.value = false
       widgetDraft.value = widgets.value.map((w) => ({ ...w }))
+      externalShelvesDraft.value = externalShelfPickerShelves.value.map((s) => ({
+        provider: s.provider,
+        shelf: s.shelf,
+        enabled: s.enabled,
+        order: s.order,
+      }))
       libraryIdsDraft.value = libraryIds.value ? [...libraryIds.value] : null
       libraryScopeOpen.value = false
       fetchSmartScopes()
@@ -76,6 +96,13 @@ watch(
     }
   },
 )
+
+// The picker's available-shelves fetch can finish after the sheet is opened; re-seed the draft
+// once it has, so a first-ever open does not show an empty list while loading.
+watch(externalShelfPickerShelves, (rows) => {
+  if (!props.open) return
+  externalShelvesDraft.value = rows.map((s) => ({ provider: s.provider, shelf: s.shelf, enabled: s.enabled, order: s.order }))
+})
 
 // ── Drag to reorder ──────────────────────────────────────────
 const { draggedIndex, dragOverIndex, onDragStart, onDragOver, onDrop, onDragEnd, moveUp, moveDown } = useDraggableList(draft)
@@ -94,7 +121,6 @@ const {
 const ALL_TYPES: ScrollerType[] = [
   'continue-reading',
   'continue-listening',
-  ...(APP_FEATURES.podcasts ? (['continue-podcasts'] as const) : []),
   'want-to-read',
   'up-next-in-series',
   'recently-added',
@@ -167,10 +193,14 @@ function handleLibraryChange(libraryId: number, event: Event) {
   libraryIdsDraft.value = [...selected]
 }
 
+function toggleExternalShelf(entry: ExternalShelfConfig) {
+  entry.enabled = !entry.enabled
+}
+
 // ── Save / Reset / Close ─────────────────────────────────────
 async function saveShelves() {
   await saveLibraryScope(selectedAccessibleLibraryIds.value)
-  await saveShelfSettings(draft.value, shelfLayoutDraft.value, syncShelvesDraft.value)
+  await saveShelfSettings(draft.value, shelfLayoutDraft.value, syncShelvesDraft.value, externalShelvesDraft.value)
 }
 
 function selectWideShelfLayout() {
@@ -521,6 +551,53 @@ function handleCancel() {
             {{ t('dashboard.settings.addShelf') }}
             <span class="text-xs opacity-60">({{ draft.length }}/{{ MAX_SCROLLERS }})</span>
           </button>
+
+          <!-- External (provider) shelves -->
+          <!-- min-w-0: browsers give <fieldset> a default min-width: min-content, which lets its
+               content (the shelf rows below) force this fieldset wider than the drawer at narrow
+               viewports, overflowing the sheet horizontally. Override it so the fieldset shrinks
+               to the drawer's width like a normal block element. -->
+          <fieldset class="mt-6 min-w-0">
+            <legend class="text-sm font-medium text-foreground">{{ t('dashboard.settings.externalShelvesPicker.title') }}</legend>
+            <p class="mt-1 text-xs text-muted-foreground">{{ t('dashboard.settings.externalShelvesPicker.description') }}</p>
+
+            <p v-if="externalShelvesLoaded && externalShelfPickerShelves.length === 0" class="mt-3 text-xs text-muted-foreground">
+              {{ t('dashboard.settings.externalShelvesPicker.empty') }}
+            </p>
+
+            <div v-else class="mt-3 space-y-2">
+              <div
+                v-for="entry in externalShelvesDraft"
+                :key="`${entry.provider}-${entry.shelf}`"
+                class="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+              >
+                <button
+                  type="button"
+                  class="relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  :class="entry.enabled ? 'bg-primary' : 'bg-muted'"
+                  role="switch"
+                  :aria-checked="entry.enabled"
+                  :aria-label="externalShelfTitle(entry.provider, entry.shelf)"
+                  @click="toggleExternalShelf(entry)"
+                >
+                  <span
+                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform duration-200"
+                    :class="entry.enabled ? 'translate-x-4' : 'translate-x-0'"
+                  />
+                </button>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium leading-snug text-foreground">{{ externalShelfTitle(entry.provider, entry.shelf) }}</p>
+                  <RouterLink
+                    v-if="!connectedProviders.has(entry.provider)"
+                    :to="providerSettingsRoute(entry.provider)"
+                    class="mt-0.5 inline-block text-xs text-primary underline-offset-2 hover:underline"
+                  >
+                    {{ t('dashboard.settings.externalShelvesPicker.signInToShow', { provider: externalShelfProviderName(entry.provider) }) }}
+                  </RouterLink>
+                </div>
+              </div>
+            </div>
+          </fieldset>
         </div>
 
         <!-- WIDGETS TAB -->

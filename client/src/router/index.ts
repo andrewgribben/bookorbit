@@ -6,7 +6,7 @@ import {
   type RouteLocationNormalizedLoaded,
   type RouteRecordRaw,
 } from 'vue-router'
-import { APP_FEATURES, Permission } from '@bookorbit/types'
+import { Permission } from '@bookorbit/types'
 import { normalizeEmailTab } from '@/features/email/lib/email-tabs'
 import { normalizeMetadataTab, type MetadataTab } from '@/features/settings/lib/metadata-tabs'
 import { normalizeReaderTab, type ReaderTab } from '@/features/settings/lib/reader-tabs'
@@ -43,6 +43,16 @@ function fallbackById(prefixKey: string, id: number | null): string {
 function resolveEmailTitle(to: RouteLocationNormalizedLoaded): string {
   const tab = normalizeEmailTab(to.query.tab)
   return `${t(`titles.email.${tab}`)} · ${t('titles.emailSuffix')}`
+}
+
+/**
+ * The provider's real `displayName` lives in a reading-service summary the nav already fetched,
+ * not in this route meta table, so this falls back to a capitalised provider id - good enough
+ * for a document title while the page itself shows the real name once loaded.
+ */
+function resolveReadingServiceProviderTitle(to: RouteLocationNormalizedLoaded): string {
+  const provider = typeof to.params.provider === 'string' ? to.params.provider : ''
+  return provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : t('settings.nav.title')
 }
 
 function resolveStatisticsTitle(): string {
@@ -136,63 +146,6 @@ function resolveLegacyIntegrationRoute(tab: unknown): string | null {
       return null
   }
 }
-
-const PODCAST_SETTINGS_ROUTES: RouteRecordRaw[] = APP_FEATURES.podcasts
-  ? [
-      {
-        path: 'podcasts',
-        name: 'settings-podcasts',
-        component: () => import('@/features/settings/PodcastSettings.vue'),
-        meta: { maxWidth: 'max-w-4xl', title: () => t('titles.podcasts') },
-      },
-    ]
-  : []
-
-const PODCAST_APP_ROUTES: RouteRecordRaw[] = APP_FEATURES.podcasts
-  ? [
-      {
-        path: '/podcasts/libraries',
-        name: 'podcast-libraries',
-        component: () => import('@/features/podcast/views/PodcastLibrariesView.vue'),
-        meta: { title: () => t('titles.podcastLibraries') },
-      },
-      {
-        path: '/podcasts/playlist/:id',
-        name: 'podcast-playlist',
-        component: () => import('@/features/podcast/views/PodcastScopeView.vue'),
-        meta: { title: (to) => fallbackById('titles.podcastScope', numericParam(to, 'id')) },
-      },
-      {
-        path: '/podcasts/collection/:id',
-        name: 'podcast-collection',
-        component: () => import('@/features/podcast/views/PodcastCollectionView.vue'),
-        meta: { title: (to) => fallbackById('titles.podcastCollection', numericParam(to, 'id')) },
-      },
-      {
-        path: '/podcasts/library/:id',
-        name: 'podcast-library',
-        component: () => import('@/features/podcast/views/PodcastLibraryView.vue'),
-        meta: { title: (to) => fallbackById('titles.podcasts', numericParam(to, 'id')) },
-      },
-      {
-        path: '/podcasts/:podcastId',
-        name: 'podcast-show',
-        component: () => import('@/features/podcast/views/PodcastShowView.vue'),
-        meta: { title: (to) => fallbackById('titles.podcast', numericParam(to, 'podcastId')) },
-      },
-    ]
-  : []
-
-const PODCAST_STANDALONE_ROUTES: RouteRecordRaw[] = APP_FEATURES.podcasts
-  ? [
-      {
-        path: '/listen/podcast/:episodeId',
-        name: 'podcast-player',
-        component: () => import('@/features/podcast/views/PodcastPlayerView.vue'),
-        meta: { title: (to) => `${t('podcast.actions.listen')} · ${fallbackById('titles.podcastEpisode', numericParam(to, 'episodeId'))}` },
-      },
-    ]
-  : []
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -487,12 +440,17 @@ export const routes: RouteRecordRaw[] = [
             meta: { maxWidth: 'max-w-3xl', title: () => t('settings.integrations.tabs.storygraph') },
           },
           {
+            path: 'integrations/:provider',
+            name: 'settings-reading-service',
+            component: () => import('@/features/reading-services/components/ReadingServiceSettingsPage.vue'),
+            meta: { maxWidth: 'max-w-3xl', title: resolveReadingServiceProviderTitle },
+          },
+          {
             path: 'tts',
             name: 'settings-tts',
             component: () => import('@/features/tts/TtsSettings.vue'),
             meta: { title: () => t('titles.tts') },
           },
-          ...PODCAST_SETTINGS_ROUTES,
 
           // ── Server ─────────────────────────────────────────────────────────
           {
@@ -678,7 +636,6 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/views/HomeView.vue'),
         meta: { titleRow: true, title: (to) => fallbackById('titles.library', numericParam(to, 'id')) },
       },
-      ...PODCAST_APP_ROUTES,
       {
         path: '/smart-scope/:id',
         name: 'smartScope',
@@ -805,7 +762,6 @@ export const routes: RouteRecordRaw[] = [
       title: (to) => `${t('titles.readPrefix')} · ${fallbackById('titles.book', numericParam(to, 'bookId'))}`,
     },
   },
-  ...PODCAST_STANDALONE_ROUTES,
   {
     path: '/login',
     name: 'login',

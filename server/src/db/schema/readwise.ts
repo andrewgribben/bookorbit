@@ -9,6 +9,9 @@ export const readwiseUserSettings = pgTable('readwise_user_settings', {
     .references(() => users.id, { onDelete: 'cascade' })
     .unique(),
   apiToken: text('api_token'),
+  // Nullable: populated by the lazy migration in ReadingServiceTokenService, which also nulls
+  // out `apiToken` once the value is re-encrypted here.
+  apiTokenEncrypted: text('api_token_encrypted'),
   enabled: boolean('enabled').notNull().default(true),
   lastSyncedAnnotationId: integer('last_synced_annotation_id').notNull().default(0),
   disabledReason: text('disabled_reason'),

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, max, min, notLike, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, max, min, ne, notLike, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type {
@@ -455,6 +455,9 @@ export class ReadingSessionRepository {
           eq(readingSessions.bookId, bookId),
           lt(readingSessions.startedAt, before),
           isNotNull(readingSessions.endProgress),
+          // A Readwise-imported session never carries a position (reading-services plan §9); the
+          // insert path already enforces this, this filter is defense in depth.
+          ne(readingSessions.source, 'readwise'),
         ),
       )
       .orderBy(desc(readingSessions.startedAt))
@@ -469,7 +472,15 @@ export class ReadingSessionRepository {
     const [row] = await this.db
       .select({ endProgress: readingSessions.endProgress })
       .from(readingSessions)
-      .where(and(eq(readingSessions.userId, userId), eq(readingSessions.bookId, bookId), isNotNull(readingSessions.endProgress)))
+      .where(
+        and(
+          eq(readingSessions.userId, userId),
+          eq(readingSessions.bookId, bookId),
+          isNotNull(readingSessions.endProgress),
+          // Readwise sessions contribute to stats only, never to BookOrbit's reading position.
+          ne(readingSessions.source, 'readwise'),
+        ),
+      )
       .orderBy(desc(readingSessions.startedAt), desc(readingSessions.id))
       .limit(1);
 

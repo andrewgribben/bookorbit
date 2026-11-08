@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { BookService } from '../book/book.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { HardcoverBookMatchService } from './hardcover-book-match.service';
 import { HardcoverClientService } from './hardcover-client.service';
 import { buildHardcoverMatchBasis } from './hardcover-id.utils';
@@ -45,8 +46,19 @@ const mockBookService = {
   setHardcoverEditionIdIfEmpty: vi.fn(),
 };
 
+const mockLibraryScopeService = {
+  getEffectiveLibraryIds: vi.fn(),
+};
+
 function makeService() {
-  return new HardcoverSyncService(mockRepo as any, mockClient as any, mockMatchService as any, mockSettingsService as any, mockBookService as any);
+  return new HardcoverSyncService(
+    mockRepo as any,
+    mockClient as any,
+    mockMatchService as any,
+    mockSettingsService as any,
+    mockBookService as any,
+    mockLibraryScopeService as any,
+  );
 }
 
 async function makeTestingService() {
@@ -58,6 +70,7 @@ async function makeTestingService() {
       { provide: HardcoverBookMatchService, useValue: mockMatchService },
       { provide: HardcoverSettingsService, useValue: mockSettingsService },
       { provide: BookService, useValue: mockBookService },
+      { provide: ReadingServiceLibraryScopeService, useValue: mockLibraryScopeService },
     ],
   }).compile();
   return module.get(HardcoverSyncService);
@@ -87,6 +100,7 @@ const readingBook = {
   finishedAt: null,
   rating: null,
   progress: 42,
+  libraryId: 1,
 };
 
 describe('HardcoverSyncService', () => {
@@ -107,6 +121,7 @@ describe('HardcoverSyncService', () => {
     mockRepo.updateLastSyncedAt.mockResolvedValue(undefined);
     mockSettingsService.getSettings.mockResolvedValue(defaultSettings);
     mockBookService.setHardcoverEditionIdIfEmpty.mockResolvedValue(false);
+    mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValue([1]);
   });
 
   describe('syncBook', () => {

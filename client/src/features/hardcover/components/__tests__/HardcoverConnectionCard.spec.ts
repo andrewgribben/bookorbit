@@ -66,7 +66,9 @@ describe('HardcoverConnectionCard', () => {
     validating.value = false
     error.value = null
     mocks.saveSettings.mockResolvedValue(true)
-    mocks.disconnect.mockResolvedValue()
+    mocks.disconnect.mockImplementation(async () => {
+      settings.value = null
+    })
     mocks.validateToken.mockResolvedValue({ valid: true, username: 'neon' })
   })
 
@@ -87,6 +89,7 @@ describe('HardcoverConnectionCard', () => {
     const wrapper = mount(HardcoverConnectionCard)
     await flushPromises()
     await flushPromises()
+    await wrapper.get('[data-testid="hardcover-connected-row"] button').trigger('click')
 
     expect(wrapper.text()).toContain('Book sync scope')
     expect(wrapper.text()).toContain('All eligible books')
@@ -138,6 +141,7 @@ describe('HardcoverConnectionCard', () => {
   it('validates tokens and shows both valid and invalid results', async () => {
     const wrapper = mount(HardcoverConnectionCard)
     await flushPromises()
+    await wrapper.get('[data-testid="hardcover-connected-row"] button').trigger('click')
 
     const tokenInput = wrapper.get('input[placeholder="Paste your Hardcover API token"]')
     const validateButton = wrapper.findAll('button').find((button) => button.text().includes('Validate token'))!
@@ -163,6 +167,7 @@ describe('HardcoverConnectionCard', () => {
 
     const wrapper = mount(HardcoverConnectionCard)
     await flushPromises()
+    await wrapper.get('[data-testid="hardcover-connected-row"] button').trigger('click')
 
     const tokenInput = wrapper.get('input[placeholder="Paste your Hardcover API token"]')
     const showButton = wrapper.get('button[type="button"]')

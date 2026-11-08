@@ -104,10 +104,12 @@ import { FileRenameService, RENAME_RELEVANT_FIELDS } from '../file-write/file-re
 import { FileWriteService } from '../file-write/file-write.service';
 import { NarratorService } from '../narrator/narrator.service';
 import { UserBookNoteService } from '../user-book-note/user-book-note.service';
+import { UserBookReviewService } from '../user-book-review/user-book-review.service';
 import { UserBookStatusService, type AutoReadingActivity } from '../user-book-status/user-book-status.service';
 import {
   ACHIEVEMENT_EVENT_BOOK_HARDCOVER_EDITION_CHANGED,
   ACHIEVEMENT_EVENT_BOOK_RATING_CHANGED,
+  ACHIEVEMENT_EVENT_BOOK_REVIEW_CHANGED,
   AchievementEventsService,
 } from '../achievement/achievement-events.service';
 import { BookMetadataLockService } from '../book-metadata-lock/book-metadata-lock.service';
@@ -134,6 +136,7 @@ import { UpsertAudioProgressDto } from './dto/upsert-audio-progress.dto';
 import { UpdateBookMetadataDto } from './dto/update-book-metadata.dto';
 import { UpdateBookAddedAtDto } from './dto/update-book-added-at.dto';
 import { UpdatePersonalNoteDto } from './dto/update-personal-note.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
 import type { UpdateBookMetadataAndLocksDto } from './dto/update-book-metadata-and-locks.dto';
 import { buildBookDetailSupplementalFields } from './utils/build-book-detail-supplemental-fields';
 import type { SetStatusDto } from '../user-book-status/dto/set-status.dto';
@@ -324,6 +327,7 @@ export class BookService {
     private readonly appSettings: AppSettingsService,
     private readonly userBookStatusService: UserBookStatusService,
     private readonly userBookNoteService: UserBookNoteService,
+    private readonly userBookReviewService: UserBookReviewService,
     private readonly narratorService: NarratorService,
     private readonly comicMetadataService: ComicMetadataRepository,
     private readonly customMetadataService: CustomMetadataService,
@@ -3530,10 +3534,11 @@ export class BookService {
 
   async getDetail(id: number, user: RequestUser): Promise<BookDetailDto> {
     await this.verifyBookAccess(id, user);
-    const [result, personalRating, personalNote, readStatus, comicMeta, collectionRows, readAloudSyncMode, coverContext] = await Promise.all([
+    const [result, personalRating, personalNote, review, readStatus, comicMeta, collectionRows, readAloudSyncMode, coverContext] = await Promise.all([
       this.bookRepo.findById(id),
       this.bookRepo.findRatingByBookAndUser(id, user.id),
       this.userBookNoteService.findOne(user.id, id),
+      this.userBookReviewService.findOne(user.id, id),
       this.userBookStatusService.findOne(user.id, id),
       this.comicMetadataService.findByBookId(id),
       this.bookRepo.findCollectionsByBookId(id, user.id),
@@ -3594,6 +3599,8 @@ export class BookService {
       rating: personalRating,
       personalNote: personalNote?.note ?? null,
       personalNoteUpdatedAt: personalNote ? new Date(personalNote.updatedAt) : null,
+      review: review?.review ?? null,
+      reviewUpdatedAt: review ? new Date(review.updatedAt) : null,
       communityRatings: this.mapCommunityRatingRows(communityRatingRows),
       coverSource: (meta?.coverSource as 'extracted' | 'custom' | null) ?? null,
       coverMedia: [...(coverContext.media.hasEbook ? (['ebook'] as const) : []), ...(coverContext.media.hasAudio ? (['audio'] as const) : [])],
@@ -3799,6 +3806,22 @@ export class BookService {
     // A body without `note` leaves the note alone, as an omitted key does on the other partial
     // routes; `null` clears it. The web and every iOS build send the key, null included.
     if (dto.note !== undefined) await this.userBookNoteService.setNote(user.id, id, dto.note);
+    return this.getDetail(id, user);
+  }
+
+  async updateReview(id: number, dto: UpdateReviewDto, user: RequestUser): Promise<BookDetailDto> {
+    await this.verifyBookAccess(id, user);
+    // Same omitted-key-vs-null contract as `updatePersonalNote`: a missing `review` key leaves it
+    // alone, `null` clears it. Unlike the personal note, this field syncs to Readwise (plan §9a
+    // D2), so every write raises `book.review-changed` for the push listener to pick up.
+    if (dto.review !== undefined) {
+      const saved = await this.userBookReviewService.setReview(user.id, id, dto.review);
+      this.achievementEvents?.emit(ACHIEVEMENT_EVENT_BOOK_REVIEW_CHANGED, {
+        userId: user.id,
+        bookId: id,
+        review: saved.review,
+      });
+    }
     return this.getDetail(id, user);
   }
 

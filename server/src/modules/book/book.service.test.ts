@@ -287,6 +287,10 @@ function makeService(
     findOne: vi.fn().mockResolvedValue(null),
     setNote: vi.fn().mockResolvedValue({ note: null, updatedAt: '2026-01-01T00:00:00.000Z' }),
   };
+  const userBookReviewService = {
+    findOne: vi.fn().mockResolvedValue(null),
+    setReview: vi.fn().mockResolvedValue({ review: null, updatedAt: '2026-01-01T00:00:00.000Z' }),
+  };
   const coverStore = {
     resolve: vi.fn().mockResolvedValue(null),
     fetchState: vi.fn().mockResolvedValue({ media: { hasEbook: true, hasAudio: false }, filled: { ebook: false, audio: false }, locked: [] }),
@@ -325,6 +329,7 @@ function makeService(
     appSettings as never,
     userBookStatusService as never,
     userBookNoteService as never,
+    userBookReviewService as never,
     narratorService as never,
     comicMetadataService as never,
     customMetadataService as never,
@@ -359,6 +364,7 @@ function makeService(
     appSettings,
     userBookStatusService,
     userBookNoteService,
+    userBookReviewService,
     embedder,
     fileWriteService,
     fileRenameService,
@@ -6536,6 +6542,7 @@ describe('BookService', () => {
         appSettings,
         userBookStatusService,
         userBookNoteService,
+        userBookReviewService,
         narratorService,
         comicMetadataService,
         customMetadataService,
@@ -6560,6 +6567,7 @@ describe('BookService', () => {
         appSettings as never,
         userBookStatusService as never,
         userBookNoteService as never,
+        userBookReviewService as never,
         narratorService as never,
         comicMetadataService as never,
         customMetadataService as never,
@@ -6590,6 +6598,7 @@ describe('BookService', () => {
         appSettings,
         userBookStatusService,
         userBookNoteService,
+        userBookReviewService,
         narratorService,
         comicMetadataService,
         customMetadataService,
@@ -6614,6 +6623,7 @@ describe('BookService', () => {
         appSettings as never,
         userBookStatusService as never,
         userBookNoteService as never,
+        userBookReviewService as never,
         narratorService as never,
         comicMetadataService as never,
         customMetadataService as never,

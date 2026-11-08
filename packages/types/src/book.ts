@@ -326,6 +326,9 @@ export type BookDetail = {
   rating: number | null;
   personalNote: string | null;
   personalNoteUpdatedAt: string | null;
+  /** Synced both ways with Readwise's `review` field when that toggle is on. Absent from servers that predate it. */
+  review?: string | null;
+  reviewUpdatedAt?: string | null;
   communityRatings: BookCommunityRating[];
   coverSource: "extracted" | "custom" | null;
   coverMedia: CoverMedium[];

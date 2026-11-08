@@ -9,6 +9,7 @@ import type {
 } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { ReadingServiceTokenService } from '../reading-services/reading-service-token.service';
 import { HARDCOVER_PRIVACY } from './hardcover.constants';
 import { HardcoverClientService } from './hardcover-client.service';
 import { HardcoverRepository } from './hardcover.repository';
@@ -23,11 +24,20 @@ export class HardcoverSettingsService {
   constructor(
     private readonly repo: HardcoverRepository,
     private readonly client: HardcoverClientService,
+    private readonly tokenService: ReadingServiceTokenService,
   ) {}
+
+  /** The only path that should read a user's Hardcover token; migrates legacy plaintext lazily. */
+  async getToken(userId: number): Promise<string | null> {
+    const row = await this.repo.findSettings(userId);
+    return this.tokenService.getToken(row, async (encrypted) => {
+      await this.repo.upsertSettings(userId, { apiToken: null, apiTokenEncrypted: encrypted });
+    });
+  }
 
   async getSettings(userId: number): Promise<HardcoverSettings> {
     const [row, hasSyncPermission] = await Promise.all([this.repo.findSettings(userId), this.repo.userHasHardcoverSyncPermission(userId)]);
-    const tokenConfigured = Boolean(row?.apiToken);
+    const tokenConfigured = Boolean(row?.apiToken || row?.apiTokenEncrypted);
     const enabled = row?.enabled ?? false;
 
     return {
@@ -56,15 +66,21 @@ export class HardcoverSettingsService {
 
     const rawToken = payload.apiToken !== undefined ? this.stripBearerPrefix(payload.apiToken.trim()) : undefined;
 
-    if (!existing && !rawToken) {
+    if (!existing?.apiToken && !existing?.apiTokenEncrypted && !rawToken) {
       throw new BadRequestException('API token is required to connect Hardcover');
     }
 
-    const data: Parameters<typeof this.repo.upsertSettings>[1] = {};
-    // Always carry a token into the INSERT side so the NOT NULL constraint is satisfied.
-    // PostgreSQL checks NOT NULL before ON CONFLICT, so even on a conflict-update path
-    // the INSERT values must be valid.
-    data.apiToken = rawToken ?? existing!.apiToken;
+    const data: Parameters<HardcoverRepository['upsertSettings']>[1] = {};
+    if (rawToken) {
+      // Encrypt immediately on write when a key is configured, rather than waiting for the
+      // lazy migrate-on-read path, so a freshly entered token is never persisted in plaintext.
+      if (this.tokenService.isConfigured()) {
+        data.apiTokenEncrypted = this.tokenService.encrypt(rawToken);
+        data.apiToken = null;
+      } else {
+        data.apiToken = rawToken;
+      }
+    }
     if (payload.enabled !== undefined) data.enabled = payload.enabled;
     if (payload.bookSyncMode !== undefined) data.bookSyncMode = payload.bookSyncMode;
     if (payload.autoSyncOnStatusChange !== undefined) data.autoSyncOnStatusChange = payload.autoSyncOnStatusChange;
@@ -86,9 +102,8 @@ export class HardcoverSettingsService {
   async validateToken(userId: number, token?: string): Promise<HardcoverTokenValidationResult> {
     let resolvedToken = this.stripBearerPrefix(token?.trim());
     if (!resolvedToken) {
-      const settings = await this.repo.findSettings(userId);
-      if (!settings) return { valid: false };
-      resolvedToken = settings.apiToken;
+      resolvedToken = (await this.getToken(userId)) ?? undefined;
+      if (!resolvedToken) return { valid: false };
     }
 
     try {
@@ -104,10 +119,11 @@ export class HardcoverSettingsService {
   }
 
   async getTokenForUser(userId: number): Promise<string | null> {
-    const [settings, hasSyncPermission] = await Promise.all([this.repo.findSettings(userId), this.repo.userHasHardcoverSyncPermission(userId)]);
+    const hasSyncPermission = await this.repo.userHasHardcoverSyncPermission(userId);
     if (!hasSyncPermission) return null;
+    const settings = await this.repo.findSettings(userId);
     if (!settings || !settings.enabled) return null;
-    return settings.apiToken;
+    return this.getToken(userId);
   }
 
   private stripBearerPrefix(token: string | undefined): string | undefined {

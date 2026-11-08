@@ -14,12 +14,8 @@ import type { api } from '@/lib/api'
 // behind a new dashboard key.
 const PT_WIDGET_NAMES = { ...en.dashboard.settings.widgetNames, ...pt.dashboard.settings.widgetNames }
 const PT_SHELF_NAMES = { ...en.dashboard.settings.shelfNames, ...pt.dashboard.settings.shelfNames }
-const ENABLED_EN_SHELF_NAMES = Object.entries(en.dashboard.settings.shelfNames)
-  .filter(([key]) => key !== 'continuePodcasts')
-  .map(([, label]) => label)
-const ENABLED_PT_SHELF_NAMES = Object.entries(PT_SHELF_NAMES)
-  .filter(([key]) => key !== 'continuePodcasts')
-  .map(([, label]) => label)
+const EN_SHELF_NAMES = Object.values(en.dashboard.settings.shelfNames)
+const PT_SHELF_LABELS = Object.values(PT_SHELF_NAMES)
 
 type UseSmartScopesMock = () => {
   smartScopes: Ref<unknown[]>
@@ -44,6 +40,14 @@ const saveShelfApi = vi.fn<typeof api>()
 
 vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: shelfUser }) }))
 vi.mock('@/lib/api', () => ({ api: (...args: Parameters<typeof api>) => saveShelfApi(...args) }))
+// Shelf labels look up provider display names; keep that fetch out of the save-call assertions.
+vi.mock('@/features/reading-services/composables/useReadingServices', () => ({
+  useReadingServices: () => ({
+    summaries: { value: [] },
+    getSummary: () => ({ value: null }),
+    fetchSummaries: vi.fn<(...args: unknown[]) => unknown>(),
+  }),
+}))
 
 vi.mock('@/components/ui/sheet', () => {
   const passthrough = { template: '<div><slot /></div>' }
@@ -77,6 +81,17 @@ vi.mock('../composables/useDashboardWidgets', () => ({
     saveLibraryScope: saveLibraryScopeMock,
     DEFAULT_WIDGETS: [],
   })),
+}))
+
+vi.mock('../composables/useExternalShelvesConfig', () => ({
+  useExternalShelvesConfig: () => ({
+    availableShelves: ref([]),
+    enabledExternalShelves: ref([]),
+    pickerShelves: ref([]),
+    loading: ref(false),
+    loaded: ref(true),
+    fetchAvailableShelves: vi.fn<() => Promise<void>>(),
+  }),
 }))
 
 import DashboardSettingsSheet from './DashboardSettingsSheet.vue'
@@ -316,7 +331,7 @@ describe('DashboardSettingsSheet', () => {
     const wrapper = await openSheet()
     await openShelvesTab(wrapper)
 
-    expect(shelfOptionLabels(wrapper).sort()).toEqual(ENABLED_EN_SHELF_NAMES.sort())
+    expect(shelfOptionLabels(wrapper).sort()).toEqual(EN_SHELF_NAMES.sort())
   })
 
   it('offers wide-row and two-column shelf layouts', async () => {
@@ -342,7 +357,7 @@ describe('DashboardSettingsSheet', () => {
     await setI18nLocale('pt')
     await nextTick()
 
-    expect(shelfOptionLabels(wrapper).sort()).toEqual(ENABLED_PT_SHELF_NAMES.sort())
+    expect(shelfOptionLabels(wrapper).sort()).toEqual(PT_SHELF_LABELS.sort())
   })
 
   it('opens on the shelves tab and lists it before widgets', async () => {
@@ -429,6 +444,7 @@ describe('DashboardSettingsSheet', () => {
       en.dashboard.settings.widgetNames.libraryOverview,
       en.dashboard.settings.widgetNames.yearProjection,
       en.dashboard.settings.widgetNames.longWait,
+      en.dashboard.settings.widgetNames.readingRecap,
     ])
   })
 
@@ -454,6 +470,7 @@ describe('DashboardSettingsSheet', () => {
       PT_WIDGET_NAMES.libraryOverview,
       PT_WIDGET_NAMES.yearProjection,
       PT_WIDGET_NAMES.longWait,
+      PT_WIDGET_NAMES.readingRecap,
     ])
 
     // Only meaningful for names Portuguese actually translates. A name that falls

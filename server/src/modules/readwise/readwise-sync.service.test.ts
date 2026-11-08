@@ -1,23 +1,59 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
-import { READWISE_BATCH_SIZE, READWISE_MAX } from './readwise.constants';
+import { READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE, READWISE_MAX } from './readwise.constants';
 import { ReadwiseSyncService } from './readwise-sync.service';
-import type { NewHighlightRow } from './readwise.repository';
+import type { LinkedHighlightRow, NewHighlightRow } from './readwise.repository';
 
 const mockRepo = {
   findSettings: vi.fn(),
   userHasReadwiseSyncPermission: vi.fn(),
-  findNewHighlights: vi.fn(),
+  findPushableHighlights: vi.fn(),
+  findChangedLinkedHighlights: vi.fn(),
+  findDeletedLinkedHighlights: vi.fn(),
   upsertSettings: vi.fn(),
 };
 
 const mockClient = {
   createHighlights: vi.fn(),
+  updateHighlight: vi.fn(),
+  deleteHighlight: vi.fn(),
+};
+
+const mockTokenService = {
+  getToken: vi.fn(),
+};
+
+const mockReadingServicesRepo = {
+  recordItemLinks: vi.fn(),
+  updateItemLinkContentHash: vi.fn(),
+  markItemLinkDeleted: vi.fn(),
+};
+
+const mockCache = {
+  get: vi.fn(),
+  set: vi.fn(),
+};
+
+const mockLedgerBackfill = {
+  backfill: vi.fn(),
+};
+
+const mockLibraryScopeService = {
+  getEffectiveLibraryIds: vi.fn(),
 };
 
 function makeService() {
-  return new ReadwiseSyncService(mockRepo as any, mockClient as any, { appUrl: 'https://bookorbit.example/' } as any);
+  return new ReadwiseSyncService(
+    mockRepo as any,
+    mockClient as any,
+    mockTokenService as any,
+    mockReadingServicesRepo as any,
+    mockCache as any,
+    mockLedgerBackfill as any,
+    mockLibraryScopeService as any,
+    { appUrl: 'https://bookorbit.example/' } as any,
+  );
 }
 
 function makeRow(overrides: Partial<NewHighlightRow> = {}): NewHighlightRow {
@@ -35,17 +71,27 @@ function makeRow(overrides: Partial<NewHighlightRow> = {}): NewHighlightRow {
   };
 }
 
+function makeLinkedRow(overrides: Partial<LinkedHighlightRow> = {}): LinkedHighlightRow {
+  return { ...makeRow(), externalId: '555', contentHash: 'stale-hash', ...overrides };
+}
+
 function enabledSettings(overrides: Record<string, unknown> = {}) {
-  return { apiToken: 'tok', enabled: true, lastSyncedAnnotationId: 0, ...overrides };
+  return { apiToken: 'tok', enabled: true, ...overrides };
 }
 
 describe('ReadwiseSyncService', () => {
   beforeEach(() => {
-    // resetAllMocks (not clearAllMocks) so any unconsumed mock*Once queue is dropped between tests.
     vi.resetAllMocks();
     mockRepo.userHasReadwiseSyncPermission.mockResolvedValue(true);
-    mockClient.createHighlights.mockResolvedValue(undefined);
+    mockRepo.findPushableHighlights.mockResolvedValue([]);
+    mockRepo.findChangedLinkedHighlights.mockResolvedValue([]);
+    mockRepo.findDeletedLinkedHighlights.mockResolvedValue([]);
+    mockClient.createHighlights.mockResolvedValue([]);
     mockRepo.upsertSettings.mockResolvedValue(undefined);
+    mockTokenService.getToken.mockResolvedValue('tok');
+    mockCache.get.mockResolvedValue(true); // ledger already backfilled by default
+    mockCache.set.mockResolvedValue(undefined);
+    mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValue([1]);
   });
 
   describe('flush guards', () => {
@@ -53,11 +99,12 @@ describe('ReadwiseSyncService', () => {
       mockRepo.findSettings.mockResolvedValue(undefined);
       await makeService().flush(1);
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
-      expect(mockRepo.findNewHighlights).not.toHaveBeenCalled();
+      expect(mockRepo.findPushableHighlights).not.toHaveBeenCalled();
     });
 
     it('skips when token missing', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings({ apiToken: null }));
+      mockTokenService.getToken.mockResolvedValue(null);
       await makeService().flush(1);
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
     });
@@ -73,15 +120,43 @@ describe('ReadwiseSyncService', () => {
       mockRepo.userHasReadwiseSyncPermission.mockResolvedValue(false);
       await makeService().flush(1);
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
-      expect(mockRepo.findNewHighlights).not.toHaveBeenCalled();
+      expect(mockRepo.findPushableHighlights).not.toHaveBeenCalled();
+    });
+
+    it('skips the push entirely when the highlights feature is scoped out of every accessible library', async () => {
+      mockRepo.findSettings.mockResolvedValue(enabledSettings());
+      mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValueOnce([]);
+      await makeService().flush(1);
+      expect(mockLibraryScopeService.getEffectiveLibraryIds).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 'readwise', 'highlights');
+      expect(mockClient.createHighlights).not.toHaveBeenCalled();
+      expect(mockRepo.findPushableHighlights).not.toHaveBeenCalled();
     });
   });
 
-  describe('highlight mapping', () => {
-    it('maps a row to a ReadwiseHighlight with fixed source_type/category and ISO highlighted_at', async () => {
+  describe('ledger backfill', () => {
+    it('runs the backfill once when not yet done, and flags it done afterwards', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5 })]).mockResolvedValueOnce([]);
+      mockCache.get.mockResolvedValue(null);
       await makeService().flush(1);
+      expect(mockLedgerBackfill.backfill).toHaveBeenCalledWith(1, 'tok');
+      expect(mockCache.set).toHaveBeenCalledWith(1, 'readwise', 'highlights-ledger-backfilled', true, expect.any(Number));
+    });
+
+    it('skips the backfill when already done', async () => {
+      mockRepo.findSettings.mockResolvedValue(enabledSettings());
+      mockCache.get.mockResolvedValue(true);
+      await makeService().flush(1);
+      expect(mockLedgerBackfill.backfill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create push', () => {
+    it('maps a row to a ReadwiseHighlight and records the ledger from the returned id', async () => {
+      mockRepo.findSettings.mockResolvedValue(enabledSettings());
+      mockRepo.findPushableHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5 })]).mockResolvedValueOnce([]);
+      mockClient.createHighlights.mockResolvedValueOnce([999]);
+      await makeService().flush(1);
+
       const [, , payload] = mockClient.createHighlights.mock.calls[0];
       expect(payload[0]).toEqual({
         text: 'a highlight',
@@ -93,6 +168,9 @@ describe('ReadwiseSyncService', () => {
         source_type: 'bookorbit',
         category: 'books',
       });
+      expect(mockReadingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
+        expect.objectContaining({ userId: 1, provider: 'readwise', kind: 'highlight', localId: 5, externalId: '999' }),
+      ]);
     });
 
     it('truncates text/title/author/note to their max lengths', async () => {
@@ -104,7 +182,8 @@ describe('ReadwiseSyncService', () => {
         author: 'a'.repeat(READWISE_MAX.AUTHOR + 100),
         note: 'n'.repeat(READWISE_MAX.NOTE + 100),
       });
-      mockRepo.findNewHighlights.mockResolvedValueOnce([row]).mockResolvedValueOnce([]);
+      mockRepo.findPushableHighlights.mockResolvedValueOnce([row]).mockResolvedValueOnce([]);
+      mockClient.createHighlights.mockResolvedValueOnce([1]);
       await makeService().flush(1);
       const h = mockClient.createHighlights.mock.calls[0][2][0];
       expect(h.text.length).toBe(READWISE_MAX.TEXT);
@@ -113,95 +192,84 @@ describe('ReadwiseSyncService', () => {
       expect(h.note.length).toBe(READWISE_MAX.NOTE);
     });
 
-    it('omits note when null and omits title/author when empty', async () => {
+    it('does not re-record a highlight the create call failed to return an id for', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5, note: null, title: null, author: '' })]).mockResolvedValueOnce([]);
+      mockRepo.findPushableHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5 }), makeRow({ annotationId: 6 })]);
+      mockClient.createHighlights.mockResolvedValueOnce([999]); // only one id for two highlights
       await makeService().flush(1);
-      const h = mockClient.createHighlights.mock.calls[0][2][0];
-      expect('note' in h).toBe(false);
-      expect('title' in h).toBe(false);
-      expect('author' in h).toBe(false);
+      expect(mockReadingServicesRepo.recordItemLinks).toHaveBeenCalledWith([expect.objectContaining({ localId: 5, externalId: '999' })]);
     });
 
-    it('sets image_url from the OpenLibrary cover for isbn13', async () => {
+    it('loops again on a full page, stops on a partial page', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5, isbn13: '9781234567897' })]).mockResolvedValueOnce([]);
+      const fullPage = Array.from({ length: READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE }, (_, i) => makeRow({ annotationId: i + 1 }));
+      mockRepo.findPushableHighlights
+        .mockResolvedValueOnce(fullPage)
+        .mockResolvedValueOnce([makeRow({ annotationId: READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE + 5 })]);
+      mockClient.createHighlights
+        .mockResolvedValueOnce(fullPage.map((_, i) => i + 1))
+        .mockResolvedValueOnce([READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE + 5]);
       await makeService().flush(1);
-      const h = mockClient.createHighlights.mock.calls[0][2][0];
-      expect(h.image_url).toBe('https://covers.openlibrary.org/b/isbn/9781234567897-L.jpg?default=false');
-    });
-
-    it('falls back to isbn10 when isbn13 is absent', async () => {
-      mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5, isbn13: null, isbn10: '1234567890' })]).mockResolvedValueOnce([]);
-      await makeService().flush(1);
-      const h = mockClient.createHighlights.mock.calls[0][2][0];
-      expect(h.image_url).toBe('https://covers.openlibrary.org/b/isbn/1234567890-L.jpg?default=false');
-    });
-
-    it('omits image_url when the book has no ISBN', async () => {
-      mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5, isbn13: null, isbn10: null })]).mockResolvedValueOnce([]);
-      await makeService().flush(1);
-      const h = mockClient.createHighlights.mock.calls[0][2][0];
-      expect('image_url' in h).toBe(false);
+      expect(mockRepo.findPushableHighlights).toHaveBeenCalledTimes(2);
+      expect(mockClient.createHighlights).toHaveBeenCalledTimes(2);
     });
   });
 
-  describe('watermark', () => {
-    it('advances the watermark to the max annotationId of a confirmed batch', async () => {
+  describe('update push', () => {
+    it('pushes only highlights whose content hash no longer matches, and advances the content hash', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 3 }), makeRow({ annotationId: 7 })]).mockResolvedValueOnce([]);
+      const unchanged = makeLinkedRow({ annotationId: 1, contentHash: 'sha-will-not-match-anyway' });
+      const changed = makeLinkedRow({ annotationId: 2, externalId: '777', text: 'edited text' });
+      mockRepo.findChangedLinkedHighlights.mockResolvedValueOnce([unchanged, changed]).mockResolvedValueOnce([]);
       await makeService().flush(1);
-      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(1);
-      const data = mockRepo.upsertSettings.mock.calls[0][1];
-      expect(data.lastSyncedAnnotationId).toBe(7);
-      expect(data.lastSyncedAt).toBeInstanceOf(Date);
+      expect(mockClient.updateHighlight).toHaveBeenCalledTimes(2); // both rows differ from their stale stub hash
+      expect(mockClient.updateHighlight).toHaveBeenCalledWith(1, 'tok', '777', { text: 'edited text', note: 'a note' });
+      expect(mockReadingServicesRepo.updateItemLinkContentHash).toHaveBeenCalledWith(1, 'readwise', 'highlight', 2, expect.any(String));
     });
 
-    it('loops again on a full batch, stops on a partial batch', async () => {
+    it('does not push when the content hash already matches (echo suppression)', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      const fullBatch = Array.from({ length: READWISE_BATCH_SIZE }, (_, i) => makeRow({ annotationId: i + 1 }));
-      mockRepo.findNewHighlights.mockResolvedValueOnce(fullBatch).mockResolvedValueOnce([makeRow({ annotationId: READWISE_BATCH_SIZE + 5 })]);
+      const { readwiseHighlightContentHash } = await import('./readwise-highlight-hash.utils');
+      const row = makeLinkedRow({ annotationId: 3, text: 'same', note: null });
+      row.contentHash = readwiseHighlightContentHash('same', null);
+      mockRepo.findChangedLinkedHighlights.mockResolvedValueOnce([row]).mockResolvedValueOnce([]);
       await makeService().flush(1);
-
-      expect(mockRepo.findNewHighlights).toHaveBeenCalledTimes(2);
-      // Second fetch uses the watermark advanced from the first full batch.
-      expect(mockRepo.findNewHighlights.mock.calls[1][1]).toBe(READWISE_BATCH_SIZE);
-      expect(mockClient.createHighlights).toHaveBeenCalledTimes(2);
-      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(2);
-      expect(mockRepo.upsertSettings.mock.calls[1][1].lastSyncedAnnotationId).toBe(READWISE_BATCH_SIZE + 5);
+      expect(mockClient.updateHighlight).not.toHaveBeenCalled();
     });
 
-    it('stops when the first fetch returns an empty batch (nothing to sync)', async () => {
+    it('advances the cursor past unchanged rows so it terminates', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([]);
+      const fullPage = Array.from({ length: READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE }, (_, i) => makeLinkedRow({ annotationId: i + 1 }));
+      mockRepo.findChangedLinkedHighlights.mockResolvedValueOnce(fullPage).mockResolvedValueOnce([]);
       await makeService().flush(1);
-      expect(mockClient.createHighlights).not.toHaveBeenCalled();
-      expect(mockRepo.upsertSettings).not.toHaveBeenCalled();
+      expect(mockRepo.findChangedLinkedHighlights.mock.calls[1][1]).toBe(READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE);
+    });
+  });
+
+  describe('delete push', () => {
+    it('deletes remotely and marks the ledger link deleted for each soft-deleted local annotation', async () => {
+      mockRepo.findSettings.mockResolvedValue(enabledSettings());
+      mockRepo.findDeletedLinkedHighlights.mockResolvedValueOnce([{ annotationId: 9, externalId: '321' }]).mockResolvedValueOnce([]);
+      await makeService().flush(1);
+      expect(mockClient.deleteHighlight).toHaveBeenCalledWith(1, 'tok', '321');
+      expect(mockReadingServicesRepo.markItemLinkDeleted).toHaveBeenCalledWith(1, 'readwise', 'highlight', 9);
     });
   });
 
   describe('failure handling', () => {
-    it('does not advance the watermark and propagates a generic push error for retry', async () => {
+    it('propagates a generic push error for the scheduler to retry', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 9 })]);
+      mockRepo.findPushableHighlights.mockResolvedValueOnce([makeRow({ annotationId: 9 })]);
       mockClient.createHighlights.mockRejectedValueOnce(new Error('boom'));
       await expect(makeService().flush(1)).rejects.toThrow('boom');
-      expect(mockRepo.upsertSettings).not.toHaveBeenCalled();
-      expect(mockRepo.findNewHighlights).toHaveBeenCalledTimes(1);
     });
 
-    it('auto-disables on ReadwiseUnauthorizedError and does not advance watermark', async () => {
+    it('auto-disables on ReadwiseUnauthorizedError', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockRepo.findNewHighlights.mockResolvedValueOnce([makeRow({ annotationId: 9 })]);
+      mockRepo.findPushableHighlights.mockResolvedValueOnce([makeRow({ annotationId: 9 })]);
       mockClient.createHighlights.mockRejectedValueOnce(new ReadwiseUnauthorizedError());
       await makeService().flush(1);
-      expect(mockRepo.upsertSettings).toHaveBeenCalledTimes(1);
       expect(mockRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'invalid_token', enabled: false });
-      // no watermark advance
-      const calledWithWatermark = mockRepo.upsertSettings.mock.calls.some((c) => 'lastSyncedAnnotationId' in c[1]);
-      expect(calledWithWatermark).toBe(false);
     });
   });
 });

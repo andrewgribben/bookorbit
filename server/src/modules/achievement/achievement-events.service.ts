@@ -5,6 +5,8 @@ import type { ReadingSessionSource } from '@bookorbit/types';
 export const ACHIEVEMENT_EVENT_READING_SESSION_SAVED = 'reading-session.saved';
 export const ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED = 'book.status-changed';
 export const ACHIEVEMENT_EVENT_ANNOTATION_CREATED = 'annotation.created';
+export const ACHIEVEMENT_EVENT_ANNOTATION_UPDATED = 'annotation.updated';
+export const ACHIEVEMENT_EVENT_ANNOTATION_DELETED = 'annotation.deleted';
 export const ACHIEVEMENT_EVENT_COLLECTION_CREATED = 'collection.created';
 export const ACHIEVEMENT_EVENT_LIBRARY_CATALOG_CHANGED = 'library.catalog-changed';
 export const ACHIEVEMENT_EVENT_BACKFILL = 'achievement.backfill';
@@ -12,6 +14,7 @@ export const ACHIEVEMENT_EVENT_ACHIEVEMENT_AWARDED = 'achievement.awarded';
 export const ACHIEVEMENT_EVENT_BOOK_RATING_CHANGED = 'book.rating-changed';
 export const ACHIEVEMENT_EVENT_BOOK_PROGRESS_CHANGED = 'book.progress-changed';
 export const ACHIEVEMENT_EVENT_BOOK_HARDCOVER_EDITION_CHANGED = 'book.hardcover-edition-changed';
+export const ACHIEVEMENT_EVENT_BOOK_REVIEW_CHANGED = 'book.review-changed';
 
 export interface ReadingSessionSavedPayload {
   userId: number;
@@ -33,6 +36,18 @@ export interface BookStatusChangedPayload {
 }
 
 export interface AnnotationCreatedPayload {
+  userId: number;
+  bookId: number;
+  annotationId: number;
+}
+
+export interface AnnotationUpdatedPayload {
+  userId: number;
+  bookId: number;
+  annotationId: number;
+}
+
+export interface AnnotationDeletedPayload {
   userId: number;
   bookId: number;
   annotationId: number;
@@ -69,15 +84,24 @@ export interface BookHardcoverEditionChangedPayload {
   hardcoverEditionId: string;
 }
 
+export interface BookReviewChangedPayload {
+  userId: number;
+  bookId: number;
+  review: string | null;
+}
+
 export type AchievementEventPayload =
   | ReadingSessionSavedPayload
   | BookStatusChangedPayload
   | AnnotationCreatedPayload
+  | AnnotationUpdatedPayload
+  | AnnotationDeletedPayload
   | CollectionCreatedPayload
   | LibraryCatalogChangedPayload
   | BookRatingChangedPayload
   | BookProgressChangedPayload
-  | BookHardcoverEditionChangedPayload;
+  | BookHardcoverEditionChangedPayload
+  | BookReviewChangedPayload;
 
 @Injectable()
 export class AchievementEventsService extends EventEmitter {}

@@ -7,8 +7,9 @@ import { ArrowLeft, ChevronRight, Search, X } from '@lucide/vue'
 import { useModifierKey } from '@/composables/useModifierKey'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useBookRequestVisibility } from '@/features/book-requests/composables/useBookRequestVisibility'
+import { usePrivateAdapterNavItems } from '@/features/reading-services/composables/usePrivateAdapterNavItems'
 import { useSettingsNavStatus } from '../composables/useSettingsNavStatus'
-import { searchSettingsNav, visibleSettingsNav, type SettingsNavItem, type SettingsNavSearchHit } from '../lib/settings-nav'
+import { mergeDynamicAccountItems, searchSettingsNav, visibleSettingsNav, type SettingsNavItem, type SettingsNavSearchHit } from '../lib/settings-nav'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -16,6 +17,7 @@ const router = useRouter()
 const { isSuperuser, userPermissions, isDemoRestrictedAccount } = usePermissions()
 const { showBookRequests } = useBookRequestVisibility()
 const { isMac, modifierKey } = useModifierKey()
+const { items: adapterNavItems } = usePrivateAdapterNavItems()
 
 /** Apple writes the combo as one glyph pair, everyone else separates the two keys. */
 const shortcutLabel = computed(() => (isMac.value ? `${modifierKey.value}K` : `${modifierKey.value}+K`))
@@ -24,12 +26,15 @@ const query = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 
 const groups = computed(() =>
-  visibleSettingsNav({
-    isSuperuser: isSuperuser.value,
-    permissions: userPermissions.value,
-    isDemoRestricted: isDemoRestrictedAccount.value,
-    showBookRequests: showBookRequests.value,
-  }),
+  mergeDynamicAccountItems(
+    visibleSettingsNav({
+      isSuperuser: isSuperuser.value,
+      permissions: userPermissions.value,
+      isDemoRestricted: isDemoRestrictedAccount.value,
+      showBookRequests: showBookRequests.value,
+    }),
+    adapterNavItems.value,
+  ),
 )
 
 const showsLibraryScan = computed(() => groups.value.some((group) => group.items.some((item) => item.status === 'libraryScan')))
@@ -38,7 +43,9 @@ const { isLibraryScanning } = useSettingsNavStatus(showsLibraryScan)
 const activeRouteName = computed(() => (typeof route.name === 'string' ? route.name : ''))
 
 function isActive(item: SettingsNavItem): boolean {
-  return item.routeName === activeRouteName.value
+  if (item.routeName !== activeRouteName.value) return false
+  if (item.routeParams?.provider) return route.params.provider === item.routeParams.provider
+  return true
 }
 
 function isBranchActive(item: SettingsNavItem): boolean {
@@ -85,7 +92,7 @@ function rowTag(item: SettingsNavItem): string {
 
 function rowProps(item: SettingsNavItem): Record<string, unknown> {
   if (item.children?.length) return { type: 'button', 'aria-expanded': isBranchOpen(item) }
-  return { to: { name: item.routeName }, 'aria-current': isActive(item) ? 'page' : undefined }
+  return { to: { name: item.routeName, params: item.routeParams }, 'aria-current': isActive(item) ? 'page' : undefined }
 }
 
 function handleRowClick(item: SettingsNavItem): void {
@@ -171,7 +178,7 @@ defineExpose({ focusSearch })
         <RouterLink
           v-for="hit in results"
           :key="`${hit.group.id}-${hit.item.id}`"
-          :to="{ name: hit.item.routeName }"
+          :to="{ name: hit.item.routeName, params: hit.item.routeParams }"
           class="group flex items-start gap-2.5 rounded-md px-2.5 py-2 text-left outline-hidden transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           :class="isActive(hit.item) ? 'bg-sidebar-accent' : ''"
           :aria-current="isActive(hit.item) ? 'page' : undefined"

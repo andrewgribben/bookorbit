@@ -14,14 +14,22 @@ const mockClient = {
   query: vi.fn(),
 };
 
+const mockTokenService = {
+  getToken: vi.fn().mockImplementation((row: { apiToken: string | null } | undefined) => Promise.resolve(row?.apiToken ?? null)),
+  isConfigured: vi.fn().mockReturnValue(false),
+  encrypt: vi.fn().mockImplementation((plaintext: string) => `enc:${plaintext}`),
+};
+
 function makeService() {
-  return new HardcoverSettingsService(mockRepo as any, mockClient as any);
+  return new HardcoverSettingsService(mockRepo as any, mockClient as any, mockTokenService as any);
 }
 
 describe('HardcoverSettingsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRepo.userHasHardcoverSyncPermission.mockResolvedValue(true);
+    mockTokenService.isConfigured.mockReturnValue(false);
+    mockTokenService.encrypt.mockImplementation((plaintext: string) => `enc:${plaintext}`);
   });
 
   describe('getSettings', () => {
@@ -161,7 +169,7 @@ describe('HardcoverSettingsService', () => {
       expect(mockRepo.upsertSettings).toHaveBeenCalledWith(1, { apiToken: 'token', bookSyncMode: 'selected_only' });
     });
 
-    it('carries existing token forward when updating settings without a new token', async () => {
+    it('does not re-send an unchanged token when updating settings without a new token', async () => {
       const existing = {
         apiToken: 'saved-token',
         enabled: true,
@@ -174,10 +182,61 @@ describe('HardcoverSettingsService', () => {
       mockRepo.findSettings.mockResolvedValue(existing);
       mockRepo.upsertSettings.mockResolvedValue({});
       await makeService().upsertSettings(1, { enabled: false });
-      expect(mockRepo.upsertSettings).toHaveBeenCalledWith(1, {
-        apiToken: 'saved-token',
-        enabled: false,
+      expect(mockRepo.upsertSettings).toHaveBeenCalledWith(1, { enabled: false });
+    });
+
+    it('encrypts a new token immediately when an encryption key is configured', async () => {
+      mockTokenService.isConfigured.mockReturnValue(true);
+      mockRepo.findSettings.mockResolvedValueOnce(undefined).mockResolvedValue({
+        apiToken: null,
+        apiTokenEncrypted: 'enc:fresh-token',
+        enabled: true,
+        bookSyncMode: 'all_eligible',
+        autoSyncOnStatusChange: true,
+        autoSyncOnProgressUpdate: true,
+        autoSyncOnRatingChange: true,
+        privacySettingId: 3,
       });
+      mockRepo.upsertSettings.mockResolvedValue({});
+
+      await makeService().upsertSettings(1, { apiToken: 'fresh-token' });
+
+      const data = mockRepo.upsertSettings.mock.calls[0][1];
+      expect(mockTokenService.encrypt).toHaveBeenCalledWith('fresh-token');
+      expect(data.apiTokenEncrypted).toBe('enc:fresh-token');
+      expect(data.apiToken).toBeNull();
+    });
+
+    it('stores the token in plaintext when no encryption key is configured', async () => {
+      mockTokenService.isConfigured.mockReturnValue(false);
+      mockRepo.findSettings.mockResolvedValueOnce(undefined).mockResolvedValue({
+        apiToken: 'fresh-token',
+        enabled: true,
+        bookSyncMode: 'all_eligible',
+        autoSyncOnStatusChange: true,
+        autoSyncOnProgressUpdate: true,
+        autoSyncOnRatingChange: true,
+        privacySettingId: 3,
+      });
+      mockRepo.upsertSettings.mockResolvedValue({});
+
+      await makeService().upsertSettings(1, { apiToken: 'fresh-token' });
+
+      const data = mockRepo.upsertSettings.mock.calls[0][1];
+      expect(mockTokenService.encrypt).not.toHaveBeenCalled();
+      expect(data.apiToken).toBe('fresh-token');
+      expect(data.apiTokenEncrypted).toBeUndefined();
+    });
+
+    it('does not require a plaintext token on an existing row that only has an encrypted token', async () => {
+      mockRepo.findSettings.mockResolvedValue({
+        apiToken: null,
+        apiTokenEncrypted: 'enc:existing',
+        enabled: true,
+        bookSyncMode: 'all_eligible',
+      });
+      mockRepo.upsertSettings.mockResolvedValue({});
+      await expect(makeService().upsertSettings(1, { enabled: false })).resolves.toBeDefined();
     });
   });
 

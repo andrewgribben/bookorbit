@@ -103,13 +103,17 @@ export const bookRequestConfig = registerAs('bookRequest', () => ({
   encryptionKey: process.env.BOOK_REQUEST_ENCRYPTION_KEY ?? '',
 }));
 
-export const podcastConfig = registerAs('podcast', () => ({
-  encryptionKey: process.env.PODCAST_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
-  maxFeedBytes: parsePositiveInteger(process.env.PODCAST_MAX_FEED_BYTES, 10 * 1024 * 1024),
-  maxEpisodeBytes: parsePositiveInteger(process.env.PODCAST_MAX_EPISODE_BYTES, 2 * 1024 * 1024 * 1024),
-  maxConcurrentDownloads: parsePositiveInteger(process.env.PODCAST_MAX_CONCURRENT_DOWNLOADS, 2),
-  requestTimeoutMs: parsePositiveInteger(process.env.PODCAST_REQUEST_TIMEOUT_MS, 30_000),
-  maxDownloadDurationMs: parsePositiveInteger(process.env.PODCAST_MAX_DOWNLOAD_DURATION_MS, 6 * 60 * 60_000),
+/**
+ * Encrypts Readwise and Hardcover tokens at rest. Dev falls back to JWT_SECRET so a fresh
+ * checkout still encrypts tokens without extra setup.
+ */
+export const readingServicesConfig = registerAs('readingServices', () => ({
+  encryptionKey: process.env.READING_SERVICES_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
+  // Opt-in hook (plan phase 2 item 5): an operator-supplied extra provider module, loaded at
+  // runtime and never committed to this repo. Disabled (no loading attempted, nothing logged
+  // beyond "disabled") when unset. See reading-service-private-adapter-loader.service.ts for the
+  // security implications before setting this.
+  privateAdaptersDir: process.env.READING_SERVICES_PRIVATE_ADAPTERS_DIR?.trim() || null,
 }));
 
 export const oidcRuntimeConfig = registerAs('oidcRuntime', () => ({

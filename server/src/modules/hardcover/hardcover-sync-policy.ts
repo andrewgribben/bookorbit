@@ -38,12 +38,22 @@ export function resolveHardcoverBookSyncDecision(input: {
   settings: HardcoverBookSyncPolicySettings;
   status: string | null | undefined;
   syncOverride: HardcoverBookSyncOverride;
+  /**
+   * Set when the book's library is outside the user's Hardcover library scope. Checked right
+   * after the enabled check and before the per-book override (owner decision: library exclusion
+   * wins over a per-book "included" override).
+   */
+  libraryExcluded?: boolean;
 }): HardcoverBookSyncDecision {
   if (!input.settings.effectiveEnabled) {
     return {
       syncEnabled: false,
       effectiveReason: input.settings.disabledReason ?? 'global_disabled',
     };
+  }
+
+  if (input.libraryExcluded) {
+    return { syncEnabled: false, effectiveReason: 'library_excluded' };
   }
 
   if (!input.status || !SYNCABLE_STATUSES.has(input.status as ReadStatus)) {

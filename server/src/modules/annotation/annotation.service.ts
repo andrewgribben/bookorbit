@@ -5,7 +5,12 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import type { AnnotationListResponse } from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { BookService } from '../book/book.service';
-import { AchievementEventsService, ACHIEVEMENT_EVENT_ANNOTATION_CREATED } from '../achievement/achievement-events.service';
+import {
+  AchievementEventsService,
+  ACHIEVEMENT_EVENT_ANNOTATION_CREATED,
+  ACHIEVEMENT_EVENT_ANNOTATION_UPDATED,
+  ACHIEVEMENT_EVENT_ANNOTATION_DELETED,
+} from '../achievement/achievement-events.service';
 import { DEFAULT_ANNOTATION_COLOR, DEFAULT_ANNOTATION_STYLE } from './annotation.constants';
 import { normalizeAnnotationNote } from './annotation-note.utils';
 import { AnnotationConversionService } from './annotation-conversion.service';
@@ -153,6 +158,14 @@ export class AnnotationService {
         ? await this.annotationRepo.update(bookId, annotationId, user.id, content)
         : await this.annotationRepo.update(bookId, annotationId, user.id, content, { starred: dto.starred });
     if (!row) throw new NotFoundException(this.notFoundMessage(bookId, annotationId));
+    // Mirrors AnnotationRepository.update's own bumpVersion condition: a pure star/unstar
+    // (the only field left out of `version`) must not emit, or Readwise sync would re-push
+    // a highlight whose content never changed.
+    const contentChanged = dto.note !== undefined || dto.color !== undefined || dto.style !== undefined;
+    const versionBumped = dto.starred === undefined || contentChanged;
+    if (versionBumped) {
+      this.achievementEvents.emit(ACHIEVEMENT_EVENT_ANNOTATION_UPDATED, { userId: user.id, bookId, annotationId });
+    }
     return AnnotationResponseDto.from(row);
   }
 
@@ -160,6 +173,7 @@ export class AnnotationService {
     await this.bookService.verifyBookAccess(bookId, user);
     const deleted = await this.annotationRepo.softDelete(bookId, annotationId, user.id);
     if (!deleted) throw new NotFoundException(this.notFoundMessage(bookId, annotationId));
+    this.achievementEvents.emit(ACHIEVEMENT_EVENT_ANNOTATION_DELETED, { userId: user.id, bookId, annotationId });
   }
 
   private buildFilters(query: AnnotationQueryDto): AnnotationFilters {

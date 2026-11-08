@@ -61,7 +61,18 @@ vi.mock('@/features/dashboard/composables/useDashboardConfig', () => ({
 }))
 
 vi.mock('@/features/dashboard/composables/useDashboardLabels', () => ({
-  useDashboardLabels: () => ({ shelfTitle: () => '' }),
+  useDashboardLabels: () => ({ shelfTitle: () => '', externalShelfTitle: () => '', externalShelfDescription: () => '' }),
+}))
+
+vi.mock('@/features/dashboard/composables/useExternalShelvesConfig', () => ({
+  useExternalShelvesConfig: () => ({
+    availableShelves: ref([]),
+    enabledExternalShelves: ref([]),
+    pickerShelves: ref([]),
+    loading: ref(false),
+    loaded: ref(true),
+    fetchAvailableShelves: vi.fn<() => Promise<void>>(),
+  }),
 }))
 
 vi.mock('@/features/onboarding/composables/useOnboardingTour', () => ({

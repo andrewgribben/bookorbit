@@ -531,6 +531,33 @@ describe('AnnotationService', () => {
       expect(annotationRepo.update).toHaveBeenCalledWith(5, 10, 1, { note: null }, { starred: false });
     });
 
+    it('emits annotation.updated when note/color/style content changes', async () => {
+      const { service, annotationRepo, achievementEvents } = await makeService();
+      annotationRepo.update.mockResolvedValue(makeAnnotationRow({ note: 'updated' }));
+
+      await service.updateAnnotation(5, 10, makeUser(), { note: 'updated' });
+
+      expect(achievementEvents.emit).toHaveBeenCalledWith('annotation.updated', { userId: 1, bookId: 5, annotationId: 10 });
+    });
+
+    it('does not emit annotation.updated for a pure star/unstar toggle', async () => {
+      const { service, annotationRepo, achievementEvents } = await makeService();
+      annotationRepo.update.mockResolvedValue(makeAnnotationRow({ starredAt: new Date() }));
+
+      await service.updateAnnotation(5, 10, makeUser(), { starred: true });
+
+      expect(achievementEvents.emit).not.toHaveBeenCalled();
+    });
+
+    it('emits annotation.updated for a starred toggle combined with a content change', async () => {
+      const { service, annotationRepo, achievementEvents } = await makeService();
+      annotationRepo.update.mockResolvedValue(makeAnnotationRow());
+
+      await service.updateAnnotation(5, 10, makeUser(), { starred: false, note: null });
+
+      expect(achievementEvents.emit).toHaveBeenCalledWith('annotation.updated', { userId: 1, bookId: 5, annotationId: 10 });
+    });
+
     it('throws NotFoundException when annotation is not found', async () => {
       const { service, annotationRepo } = await makeService();
       annotationRepo.update.mockResolvedValue(null);
@@ -585,6 +612,15 @@ describe('AnnotationService', () => {
 
       await expect(service.deleteAnnotation(5, 10, makeUser())).resolves.toBeUndefined();
       expect(annotationRepo.softDelete).toHaveBeenCalledWith(5, 10, 1);
+    });
+
+    it('emits annotation.deleted on a successful delete', async () => {
+      const { service, annotationRepo, achievementEvents } = await makeService();
+      annotationRepo.softDelete.mockResolvedValue(true);
+
+      await service.deleteAnnotation(5, 10, makeUser());
+
+      expect(achievementEvents.emit).toHaveBeenCalledWith('annotation.deleted', { userId: 1, bookId: 5, annotationId: 10 });
     });
 
     it('throws NotFoundException when annotation is not found', async () => {

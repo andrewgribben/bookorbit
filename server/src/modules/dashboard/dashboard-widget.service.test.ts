@@ -1,6 +1,7 @@
 import type { CurrentlyReadingWidgetData, LibraryOverviewWidgetData, NeglectedGemsWidgetData, ReadingStreakWidgetData } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
+import { primeServerTextCatalog, resetServerTextCache } from '../../common/i18n/server-text';
 import { pickAnnotationIndex } from './dashboard-widget.calculations';
 import { DashboardWidgetService } from './dashboard-widget.service';
 import { EMPTY_CONTENT_FILTER_RULES } from '@bookorbit/types';
@@ -51,8 +52,9 @@ function makeService() {
   };
 
   const events = new ReadingAttemptEventsService();
-  const service = new DashboardWidgetService(widgetRepo as never, libraryService as never, events);
-  return { service, widgetRepo, libraryService, events };
+  const readwiseRecapService = { getRecap: vi.fn().mockResolvedValue(null) };
+  const service = new DashboardWidgetService(widgetRepo as never, libraryService as never, events, readwiseRecapService as never);
+  return { service, widgetRepo, libraryService, events, readwiseRecapService };
 }
 
 describe('DashboardWidgetService', () => {
@@ -333,6 +335,41 @@ describe('DashboardWidgetService', () => {
       expect(result.title).toBeTruthy();
       expect(result.target).toBeGreaterThan(0);
       expect(typeof result.completed).toBe('boolean');
+    });
+
+    it('translates the title and description on the way out and leaves the cached English alone', async () => {
+      const { service, widgetRepo, libraryService } = makeService();
+      libraryService.findAccessibleLibraryIds.mockResolvedValue([1]);
+      widgetRepo.getChallengePatternData.mockResolvedValue({
+        avgPageCount: 100,
+        uniqueGenresLast6Months: 10,
+        staleInProgressCount: 0,
+        currentStreak: 10,
+        maxStreakThisMonth: 10,
+        topAuthorBookCount: 1,
+        totalBooksRead: 20,
+        pagesThisMonth: 200,
+        shortBooksCompleted: 0,
+        newGenresRead: 0,
+        oldestInProgressFinished: false,
+        newAuthorsRead: 0,
+        pagesReadThisMonth: 200,
+      });
+      primeServerTextCatalog('de', {
+        monthlyChallenge: { 'page-milestone': { title: 'Seitenwender', description: 'Lies diesen Monat 500 Seiten' } },
+      });
+
+      try {
+        const german = await service.getMonthlyChallenge(makeUser(), 'de');
+        const english = await service.getMonthlyChallenge(makeUser());
+
+        expect(german.challengeType).toBe('page-milestone');
+        expect([german.title, german.description]).toEqual(['Seitenwender', 'Lies diesen Monat 500 Seiten']);
+        expect([english.title, english.description]).toEqual(['Page Turner', 'Read 500 pages this month']);
+        expect(widgetRepo.getChallengePatternData).toHaveBeenCalledTimes(1);
+      } finally {
+        resetServerTextCache();
+      }
     });
 
     it('marks finish-oldest challenge complete when oldestInProgressFinished is true', async () => {
@@ -842,6 +879,24 @@ describe('DashboardWidgetService', () => {
       await service.getReadingDna(denver());
 
       expect(widgetRepo.getReadingDnaData).toHaveBeenCalledWith(42, [1], expect.any(Date), 'America/Denver', EMPTY_CONTENT_FILTER_RULES);
+    });
+  });
+
+  describe('getReadingRecap', () => {
+    it('delegates to ReadwiseRecapService with the reader-local year', async () => {
+      const { service, readwiseRecapService } = makeService();
+      const recap = { provider: 'readwise', year: 2026, booksFinished: 1, sessions: 1, totalSeconds: 1, readingDays: 1, goal: null, byMonth: [] };
+      readwiseRecapService.getRecap.mockResolvedValue(recap);
+
+      await expect(service.getReadingRecap(makeUser())).resolves.toEqual(recap);
+      expect(readwiseRecapService.getRecap).toHaveBeenCalledWith(42, expect.any(Number));
+    });
+
+    it('returns null when Readwise is not connected', async () => {
+      const { service, readwiseRecapService } = makeService();
+      readwiseRecapService.getRecap.mockResolvedValue(null);
+
+      await expect(service.getReadingRecap(makeUser())).resolves.toBeNull();
     });
   });
 

@@ -45,7 +45,7 @@ import {
   Wrench,
   Zap,
 } from '@lucide/vue'
-import { APP_FEATURES, Permission } from '@bookorbit/types'
+import { Permission } from '@bookorbit/types'
 
 export interface SettingsNavContext {
   isSuperuser: boolean
@@ -70,6 +70,8 @@ export interface SettingsNavItem {
   status?: SettingsNavStatus
   isVisible?: (context: SettingsNavContext) => boolean
   children?: SettingsNavItem[]
+  /** Route params for a shared route name used by more than one dynamic item (e.g. `:provider`). */
+  routeParams?: Record<string, string>
 }
 
 export interface SettingsNavGroup {
@@ -223,17 +225,6 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
           },
         ],
       },
-      ...(APP_FEATURES.podcasts
-        ? [
-            {
-              id: 'podcasts',
-              routeName: 'settings-podcasts',
-              labelKey: 'settings.common.nav.podcasts',
-              icon: Podcast,
-              keywords: 'podcast show episode feed download playback queue',
-            },
-          ]
-        : []),
       {
         id: 'notifications',
         routeName: 'settings-notifications',
@@ -654,4 +645,26 @@ export function firstVisibleSettingsRoute(context: SettingsNavContext): string {
   const item = groups[0]?.items[0]
   if (!item) return 'settings-account-profile'
   return item.children?.[0]?.routeName ?? item.routeName
+}
+
+/**
+ * Appends items built from `GET /reading-services` summaries (private adapters) into the
+ * "accounts" group, after the static permission-gated tree has already been filtered. These
+ * items don't exist in `SETTINGS_NAV` because the provider set is only known at runtime; the
+ * group is created on the fly when every static account item is hidden (no built-in permission).
+ */
+export function mergeDynamicAccountItems(groups: SettingsNavGroup[], items: readonly SettingsNavItem[]): SettingsNavGroup[] {
+  if (items.length === 0) return groups
+  const existing = groups.find((group) => group.id === 'accounts')
+  if (existing) {
+    return groups.map((group) => (group.id === 'accounts' ? { ...group, items: [...group.items, ...items] } : group))
+  }
+  const accountsTemplate = SETTINGS_NAV.find((group) => group.id === 'accounts')
+  const accountsGroup: SettingsNavGroup = {
+    id: 'accounts',
+    labelKey: accountsTemplate?.labelKey ?? 'settings.nav.groups.accounts',
+    icon: accountsTemplate?.icon ?? Link2,
+    items: [...items],
+  }
+  return [...groups, accountsGroup]
 }

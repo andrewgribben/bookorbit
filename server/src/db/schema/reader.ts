@@ -167,6 +167,35 @@ export const userBookNotes = pgTable(
 export type UserBookNoteRow = typeof userBookNotes.$inferSelect;
 export type NewUserBookNote = typeof userBookNotes.$inferInsert;
 
+export const userBookReviews = pgTable(
+  'user_book_reviews',
+  {
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bookId: integer('book_id')
+      .notNull()
+      .references(() => books.id, { onDelete: 'cascade' }),
+    review: text('review'),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdateFn(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.bookId] }),
+    index('ubrv_user_id_idx').on(t.userId),
+    index('ubrv_book_id_idx').on(t.bookId),
+    index('ubrv_book_user_idx').on(t.bookId, t.userId),
+    // Mirrors Readwise's own 10,000 character cap on the `review` field (readwise-api.md §2),
+    // so a value this app accepts can never be silently truncated by the sync.
+    check('user_book_reviews_review_length_chk', sql`${t.review} is null or char_length(${t.review}) <= 10000`),
+  ],
+);
+
+export type UserBookReviewRow = typeof userBookReviews.$inferSelect;
+export type NewUserBookReview = typeof userBookReviews.$inferInsert;
+
 export const bookJournalEntries = pgTable(
   'book_journal_entries',
   {
@@ -331,7 +360,7 @@ export const readingSessions = pgTable(
     index('rs_user_book_source_device_started_idx').on(t.userId, t.bookId, t.source, t.sourceDeviceKey, t.startedAt),
     index('reading_sessions_book_id_idx').on(t.bookId),
     index('rs_attempt_started_at_idx').on(t.attemptId, t.startedAt),
-    check('reading_sessions_source_chk', sql`${t.source} in ('web', 'ios', 'watchos', 'android', 'koreader', 'manual', 'kobo')`),
+    check('reading_sessions_source_chk', sql`${t.source} in ('web', 'ios', 'watchos', 'android', 'koreader', 'manual', 'kobo', 'readwise')`),
     check('reading_sessions_duration_seconds_nonnegative_chk', sql`${t.durationSeconds} >= 0`),
     check('reading_sessions_end_progress_range_chk', sql`${t.endProgress} is null or (${t.endProgress} >= 0 and ${t.endProgress} <= 100)`),
     check('reading_sessions_ended_after_started_chk', sql`${t.endedAt} >= ${t.startedAt}`),
