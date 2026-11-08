@@ -102,7 +102,9 @@ function featureLabel(feature: ReadingServiceFeature): string {
       </div>
 
       <p v-if="!entryFor(library.id)" class="pl-7 text-xs text-muted-foreground">{{ t('settings.readingServices.libraries.inherits') }}</p>
-      <p v-else-if="hasCustomisation(library.id)" class="pl-7 text-xs text-muted-foreground">{{ t('settings.readingServices.libraries.customised') }}</p>
+      <p v-else-if="hasCustomisation(library.id)" class="pl-7 text-xs text-muted-foreground">
+        {{ t('settings.readingServices.libraries.customised') }}
+      </p>
 
       <div v-if="expandedLibraryId === library.id && isLibraryEnabled(library.id)" class="pl-7 mt-2 space-y-2">
         <div v-for="feature in customisableFeatures" :key="feature" class="flex items-center justify-between gap-3">
