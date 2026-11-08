@@ -245,25 +245,29 @@ function startSwitching(): void {
         @submit.prevent="handlePasswordSubmit"
       >
         <div class="space-y-2">
-          <label :for="`reading-service-${provider}-username`" class="settings-label">{{ activeMethod.fields.username.label }}</label>
+          <label :for="`reading-service-${provider}-username`" class="settings-label">{{
+            activeMethod.fields?.username?.label || t('settings.readingServices.signIn.password.usernameLabel')
+          }}</label>
           <input
             :id="`reading-service-${provider}-username`"
             v-model="usernameInput"
             type="text"
             autocomplete="username"
-            :placeholder="activeMethod.fields.username.placeholder"
+            :placeholder="activeMethod.fields?.username?.placeholder"
             class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
         <div class="space-y-2">
-          <label :for="`reading-service-${provider}-password`" class="settings-label">{{ activeMethod.fields.password.label }}</label>
+          <label :for="`reading-service-${provider}-password`" class="settings-label">{{
+            activeMethod.fields?.password?.label || t('settings.readingServices.signIn.password.passwordLabel')
+          }}</label>
           <div class="flex gap-2">
             <input
               :id="`reading-service-${provider}-password`"
               v-model="passwordInput"
               :type="passwordVisible ? 'text' : 'password'"
               autocomplete="current-password"
-              :placeholder="activeMethod.fields.password.placeholder"
+              :placeholder="activeMethod.fields?.password?.placeholder"
               class="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
             <Button variant="outline" size="sm" type="button" @click="passwordVisible = !passwordVisible">

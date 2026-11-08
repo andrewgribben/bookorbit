@@ -113,6 +113,15 @@ describe('ReadingServiceSignIn', () => {
     expect(wrapper.emitted('changed')).toBeFalsy()
   })
 
+  it('renders the password form with default labels when the adapter declares no fields', () => {
+    const bare = { kind: 'password', label: 'Email and password' } as ReadingServiceAuthMethod
+    const wrapper = mountSignIn({ provider: 'fixturewise', authMethods: [bare], connected: false })
+    const form = wrapper.find('[data-testid="reading-service-password-form"]')
+    expect(form.exists()).toBe(true)
+    expect(form.find('input[autocomplete="username"]').exists()).toBe(true)
+    expect(form.find('input[autocomplete="current-password"]').exists()).toBe(true)
+  })
+
   it('shows the waiting code, link and countdown while a device-code sign-in is pending', async () => {
     mocks.startReadingServiceDeviceAuth.mockResolvedValue({
       verificationUrl: 'https://example.com/device',
