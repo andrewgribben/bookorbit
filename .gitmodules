@@ -1,0 +1,4 @@
+[submodule "private/readwise-accessibility-poc"]
+	path = private/readwise-accessibility-poc
+	url = https://github.com/andrewgribben/readwise-accessibility-poc.git
+	branch = master

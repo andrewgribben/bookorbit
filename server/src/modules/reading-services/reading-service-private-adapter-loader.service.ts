@@ -81,7 +81,9 @@ function hasV2AdapterShape(value: unknown): value is PrivateAdapterV2Module {
  * SECURITY: a module loaded here runs inside this process with this process's full reach
  * (database access, every other injected service, the user's decrypted tokens) - the same trust
  * boundary `PluginLoaderService` documents for indexer plugins. It must:
- *  - never live inside this repository (nothing under `server/src` imports or ships one);
+ *  - never ship inside the application: the personal adapter is pinned only as the private git
+ *    submodule `private/readwise-accessibility-poc`, which `.dockerignore` keeps out of the image,
+ *    and nothing under `server/src` imports it;
  *  - only be pointed at by an operator who deliberately set `READING_SERVICES_PRIVATE_ADAPTERS_DIR`
  *    to a path they trust, outside the deployed application tree;
  *  - be treated as equivalent to giving that code admin access to the BookOrbit instance.
