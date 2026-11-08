@@ -98,6 +98,26 @@ export class ReadingServiceSyncRunService implements OnModuleInit {
     return toProgress(run);
   }
 
+  /**
+   * Restarts a failed run from its stored cursor and counters rather than starting a fresh run
+   * with an empty cursor, so progress already made against the remote provider isn't redone.
+   */
+  async resumeMigration(id: number, userId: number): Promise<SyncRunProgress> {
+    const run = await this.repo.findRun(id, userId);
+    if (!run) throw new NotFoundException(`Reading-service run ${id} not found`);
+    if (run.status !== 'failed') {
+      throw new BadRequestException(`Reading-service run ${id} is not in a failed state`);
+    }
+
+    await this.repo.updateRun(id, { status: 'running', error: null, finishedAt: null });
+    const resumed: ReadingServiceRun = { ...run, status: 'running', error: null, finishedAt: null };
+    this.logger.log(
+      `[${EVENT}] [start] userId=${resumed.userId} provider=${resumed.provider} runId=${resumed.id} - migration resumed from cursor`,
+    );
+    void this.runLoop(resumed).catch((err) => this.logFailure(resumed, err, Date.now()));
+    return toProgress(resumed);
+  }
+
   async getLatestMigrationSummary(userId: number, provider: ReadingServiceProvider): Promise<ReadingServiceSummary['migration']> {
     const run = await this.repo.findLatestRun(userId, provider, 'migration');
     if (!run) return { state: 'never', runId: null, finishedAt: null };

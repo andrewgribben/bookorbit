@@ -32,7 +32,7 @@ function directionLabel(capability: 'both' | 'push' | 'pull' | 'read' | undefine
 }
 
 function featureLabel(feature: ReadingServiceFeature): string {
-  return t(`settings.readingServices.features.${feature}.label`)
+  return t(`settings.readingServices.features.${feature}.label`, { provider: providerLabel.value })
 }
 
 function featureHint(feature: ReadingServiceFeature): string {
@@ -40,7 +40,7 @@ function featureHint(feature: ReadingServiceFeature): string {
 }
 
 function unavailableReason(feature: ReadingServiceFeature): string {
-  return t(`settings.readingServices.features.${feature}.unavailable`)
+  return t(`settings.readingServices.features.${feature}.unavailable`, { provider: providerLabel.value })
 }
 
 /**
@@ -70,7 +70,7 @@ async function handleToggle(feature: ReadingServiceFeature, value: boolean): Pro
       :label="featureLabel(feature)"
       :hint="isSupported(feature) ? featureHint(feature) : unavailableReason(feature)"
       :control-id="`reading-service-${provider}-${feature}`"
-      :class="{ 'opacity-60': !isSupported(feature) }"
+      :class="{ 'opacity-60': !isSupported(feature), 'pl-6': feature === 'publish_sessions' }"
     >
       <span class="text-xs text-muted-foreground whitespace-nowrap">{{ directionLabel(summary?.capabilities[feature]) }}</span>
       <ToggleSwitch

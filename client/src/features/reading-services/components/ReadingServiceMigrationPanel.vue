@@ -12,11 +12,35 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const { preview, run, previewing, starting, cancelling, error, trackRun, runPreview, startMigration, cancelMigration } = useReadingServiceMigration(
-  props.provider,
-)
+const {
+  preview,
+  run,
+  previewing,
+  starting,
+  cancelling,
+  resuming,
+  error,
+  readwiseOnlyBooks,
+  readwiseOnlyTotal,
+  readwiseOnlyNextOffset,
+  loadingReadwiseOnlyBooks,
+  trackRun,
+  runPreview,
+  startMigration,
+  resumeMigration,
+  cancelMigration,
+  loadReadwiseOnlyBooks,
+} = useReadingServiceMigration(props.provider)
 
 const providerLabel = props.provider.charAt(0).toUpperCase() + props.provider.slice(1)
+
+function ownershipLabel(book: { ownership: 'owned' | 'not_owned' | 'unknown' }): string {
+  return t(`settings.readingServices.migration.readwiseOnlyList.ownership.${book.ownership}`)
+}
+
+function handleLoadMoreReadwiseOnlyBooks(): void {
+  void loadReadwiseOnlyBooks()
+}
 
 onMounted(() => {
   const migration = props.summary?.migration
@@ -31,6 +55,8 @@ onMounted(() => {
       finishedAt: null,
       error: null,
     })
+  } else if (migration?.state === 'done') {
+    void loadReadwiseOnlyBooks(true)
   }
 })
 </script>
@@ -60,9 +86,9 @@ onMounted(() => {
         </div>
       </div>
       <div class="flex justify-end pt-2 border-t border-border">
-        <Button size="sm" type="button" :disabled="starting" @click="startMigration">
-          <Loader2 v-if="starting" class="size-3.5 animate-spin" />
-          {{ starting ? t('settings.readingServices.migration.startingButton') : t('settings.readingServices.migration.retryButton') }}
+        <Button size="sm" type="button" :disabled="resuming" @click="resumeMigration">
+          <Loader2 v-if="resuming" class="size-3.5 animate-spin" />
+          {{ resuming ? t('settings.readingServices.migration.resumingButton') : t('settings.readingServices.migration.resumeButton') }}
         </Button>
       </div>
     </template>
@@ -150,5 +176,43 @@ onMounted(() => {
         </Button>
       </div>
     </template>
+
+    <!-- Readwise-only books list -->
+    <div v-if="readwiseOnlyBooks.length > 0" class="pt-3 border-t border-border space-y-2">
+      <div>
+        <p class="font-medium text-sm">{{ t('settings.readingServices.migration.readwiseOnlyList.title', { provider: providerLabel }) }}</p>
+        <p class="text-xs text-muted-foreground mt-0.5">
+          {{ t('settings.readingServices.migration.readwiseOnlyList.subtitle', { provider: providerLabel }) }}
+        </p>
+      </div>
+      <div class="divide-y divide-border rounded-md border border-border">
+        <div v-for="book in readwiseOnlyBooks" :key="book.externalId" class="flex items-center gap-3 px-3 py-2">
+          <span class="w-9 h-12 rounded-sm bg-muted overflow-hidden shrink-0 border border-border">
+            <img v-if="book.coverImageUrl" :src="book.coverImageUrl" :alt="book.title ?? ''" class="w-full h-full object-cover" />
+          </span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">{{ book.title ?? t('settings.readingServices.migration.readwiseOnlyList.untitled') }}</p>
+            <p class="text-xs text-muted-foreground truncate">{{ book.author }}</p>
+          </div>
+          <span class="text-xs text-muted-foreground whitespace-nowrap">{{ ownershipLabel(book) }}</span>
+        </div>
+      </div>
+      <div class="flex items-center justify-between">
+        <p class="text-xs text-muted-foreground">
+          {{ t('settings.readingServices.migration.readwiseOnlyList.count', { shown: readwiseOnlyBooks.length, total: readwiseOnlyTotal }) }}
+        </p>
+        <Button
+          v-if="readwiseOnlyNextOffset !== null"
+          variant="outline"
+          size="sm"
+          type="button"
+          :disabled="loadingReadwiseOnlyBooks"
+          @click="handleLoadMoreReadwiseOnlyBooks"
+        >
+          <Loader2 v-if="loadingReadwiseOnlyBooks" class="size-3.5 animate-spin" />
+          {{ t('settings.readingServices.migration.readwiseOnlyList.loadMoreButton') }}
+        </Button>
+      </div>
+    </div>
   </div>
 </template>

@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 
 import {
   READING_SERVICE_PROVIDERS,
   Permission,
   type ReadingServiceProvider,
+  type ReadingServiceRemoteOnlyBooksPage,
   type ReadingServiceSummary,
   type SyncRunProgress,
 } from '@bookorbit/types';
@@ -83,6 +84,28 @@ export class ReadingServicesController {
   async startMigration(@CurrentUser() user: RequestUser, @Param('provider') provider: string): Promise<SyncRunProgress> {
     const typedProvider = this.assertProviderAccess(user, provider);
     return this.syncRunService.startMigration(user.id, typedProvider);
+  }
+
+  @Get(':provider/migration/readwise-only')
+  async listReadwiseOnlyBooks(
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Query('offset') offsetRaw?: string,
+    @Query('limit') limitRaw?: string,
+  ): Promise<ReadingServiceRemoteOnlyBooksPage> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    const offset = Math.max(0, Number.parseInt(offsetRaw ?? '0', 10) || 0);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(limitRaw ?? '50', 10) || 50));
+    if (!adapter?.listRemoteOnlyBooks) return { items: [], next: null, total: 0 };
+    return adapter.listRemoteOnlyBooks(user.id, offset, limit);
+  }
+
+  @Post('runs/:id/resume')
+  async resumeRun(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number): Promise<SyncRunProgress> {
+    const progress = await this.syncRunService.getRun(id, user.id);
+    this.assertProviderAccess(user, progress.provider);
+    return this.syncRunService.resumeMigration(id, user.id);
   }
 
   @Get('runs/:id')

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
-import { READING_SERVICE_FEATURES, type ReadingServiceFeature, type ReadingServiceProvider } from '@bookorbit/types';
+import { READING_SERVICE_FEATURES, READING_SERVICE_FEATURES_DEFAULT_OFF, type ReadingServiceFeature, type ReadingServiceProvider } from '@bookorbit/types';
 
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServicesRepository } from './reading-services.repository';
@@ -13,7 +13,12 @@ export class ReadingServiceFeaturesService {
   ) {}
 
   async getFeatures(userId: number, provider: ReadingServiceProvider): Promise<Partial<Record<ReadingServiceFeature, boolean>>> {
-    return this.repo.findFeatures(userId, provider);
+    const stored = await this.repo.findFeatures(userId, provider);
+    const withDefaults: Partial<Record<ReadingServiceFeature, boolean>> = { ...stored };
+    for (const feature of READING_SERVICE_FEATURES_DEFAULT_OFF) {
+      if (withDefaults[feature] === undefined) withDefaults[feature] = false;
+    }
+    return withDefaults;
   }
 
   async setFeatures(userId: number, provider: ReadingServiceProvider, features: Partial<Record<ReadingServiceFeature, boolean>>): Promise<void> {

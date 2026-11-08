@@ -21,6 +21,7 @@ export interface ReadwiseBookProduct {
   title?: string | null;
   author?: string | null;
   format?: string | null;
+  cover_image?: string | null;
 }
 
 export interface ReadwiseBook {

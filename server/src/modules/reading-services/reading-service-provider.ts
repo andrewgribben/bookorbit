@@ -1,4 +1,9 @@
-import type { ReadingServiceCapabilities, ReadingServiceProvider, SyncRunProgressCounters } from '@bookorbit/types';
+import type {
+  ReadingServiceCapabilities,
+  ReadingServiceProvider,
+  ReadingServiceRemoteOnlyBooksPage,
+  SyncRunProgressCounters,
+} from '@bookorbit/types';
 
 export interface ReadingServiceProviderAdapter {
   readonly provider: ReadingServiceProvider;
@@ -21,4 +26,11 @@ export interface ReadingServiceProviderAdapter {
    * touched. Optional because not every stage of every provider implements it yet.
    */
   previewMigration?(userId: number): Promise<{ matched: number; toCreate: number; readwiseOnly: number }>;
+
+  /**
+   * Paginated list of remote-only books classified from the last completed migration run.
+   * Optional because it depends on `finishMigration` having cached a classification; a
+   * provider that never ran a migration (or doesn't support one) has nothing to list.
+   */
+  listRemoteOnlyBooks?(userId: number, offset: number, limit: number): Promise<ReadingServiceRemoteOnlyBooksPage>;
 }

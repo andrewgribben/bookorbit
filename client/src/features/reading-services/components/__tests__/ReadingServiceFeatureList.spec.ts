@@ -37,10 +37,20 @@ describe('ReadingServiceFeatureList', () => {
     })
 
     const switches = wrapper.findAll('[role="switch"]')
-    expect(switches.length).toBeGreaterThanOrEqual(11)
+    expect(switches.length).toBeGreaterThanOrEqual(12)
 
     const statusSwitch = wrapper.get('#reading-service-readwise-status')
     expect(statusSwitch.attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables the bookmarks row with a reason, since no provider declares that capability', () => {
+    const wrapper = mount(ReadingServiceFeatureList, {
+      props: { provider: 'readwise', summary: makeSummary() },
+    })
+
+    const bookmarksSwitch = wrapper.get('#reading-service-readwise-bookmarks')
+    expect(bookmarksSwitch.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Readwise has no bookmarks API.')
   })
 
   it('disables rows for features the provider has no capability for, with a reason shown', () => {

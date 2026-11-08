@@ -171,6 +171,71 @@ describe('ReadwiseBooksMigrationService', () => {
       expect(result).toBeNull();
       expect(counters.skipped).toBe(2);
     });
+
+    it('caches a readwise-only classification with title, author, cover and ownership for the migration list', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({
+        results: [
+          {
+            id: 'owned-remote',
+            product: { isbn: '9781111111111', title: 'Piranesi', author: 'Susanna Clarke', cover_image: 'https://example.com/cover.jpg' },
+            creation_origin: 'kindle',
+          },
+        ],
+        next: null,
+      });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([]);
+
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      const page = await service.listRemoteOnlyBooks(1, 0, 50);
+      expect(page).toEqual({
+        total: 1,
+        next: null,
+        items: [
+          {
+            externalId: 'owned-remote',
+            title: 'Piranesi',
+            author: 'Susanna Clarke',
+            coverImageUrl: 'https://example.com/cover.jpg',
+            externalUrl: null,
+            ownership: 'owned',
+          },
+        ],
+      });
+    });
+  });
+
+  describe('listRemoteOnlyBooks', () => {
+    it('returns an empty page when no migration has finished yet', async () => {
+      const { service } = makeService();
+      await expect(service.listRemoteOnlyBooks(1, 0, 50)).resolves.toEqual({ items: [], next: null, total: 0 });
+    });
+
+    it('paginates the cached classification by offset and limit', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({
+        results: [
+          { id: 'rw1', product: { title: 'Book One' }, creation_origin: 'kindle' },
+          { id: 'rw2', product: { title: 'Book Two' }, creation_origin: 'goodreads' },
+          { id: 'rw3', product: { title: 'Book Three' }, creation_origin: null },
+        ],
+        next: null,
+      });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([]);
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      const firstPage = await service.listRemoteOnlyBooks(1, 0, 2);
+      expect(firstPage.items).toHaveLength(2);
+      expect(firstPage.total).toBe(3);
+      expect(firstPage.next).toBe(2);
+
+      const secondPage = await service.listRemoteOnlyBooks(1, 2, 2);
+      expect(secondPage.items).toHaveLength(1);
+      expect(secondPage.next).toBeNull();
+    });
   });
 
   describe('previewMigration', () => {

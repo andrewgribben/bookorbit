@@ -1,5 +1,11 @@
 import { api } from '@/lib/api'
-import type { ReadingServiceFeature, ReadingServiceProvider, ReadingServiceSummary, SyncRunProgress } from '@bookorbit/types'
+import type {
+  ReadingServiceFeature,
+  ReadingServiceProvider,
+  ReadingServiceRemoteOnlyBooksPage,
+  ReadingServiceSummary,
+  SyncRunProgress,
+} from '@bookorbit/types'
 
 const BASE = '/api/v1/reading-services'
 
@@ -50,5 +56,21 @@ export async function fetchReadingServiceRun(id: number): Promise<SyncRunProgres
 export async function cancelReadingServiceRun(id: number): Promise<SyncRunProgress> {
   const res = await api(`${BASE}/runs/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await errorMessage(res, 'Failed to cancel migration'))
+  return res.json()
+}
+
+export async function resumeReadingServiceMigration(id: number): Promise<SyncRunProgress> {
+  const res = await api(`${BASE}/runs/${id}/resume`, { method: 'POST' })
+  if (!res.ok) throw new Error(await errorMessage(res, 'Failed to resume migration'))
+  return res.json()
+}
+
+export async function fetchReadwiseOnlyBooks(
+  provider: ReadingServiceProvider,
+  offset: number,
+  limit: number,
+): Promise<ReadingServiceRemoteOnlyBooksPage> {
+  const res = await api(`${BASE}/${provider}/migration/readwise-only?offset=${offset}&limit=${limit}`)
+  if (!res.ok) throw new Error(await errorMessage(res, 'Failed to fetch provider-only books'))
   return res.json()
 }

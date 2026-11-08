@@ -15,8 +15,22 @@ describe('ReadingServiceFeaturesService', () => {
     const { service, repo } = makeService();
     (repo.findFeatures as any).mockResolvedValue({ status: true });
 
-    await expect(service.getFeatures(1, 'readwise')).resolves.toEqual({ status: true });
+    await expect(service.getFeatures(1, 'readwise')).resolves.toEqual({ status: true, publish_sessions: false });
     expect(repo.findFeatures).toHaveBeenCalledWith(1, 'readwise');
+  });
+
+  it('defaults publish_sessions to off when no row is stored', async () => {
+    const { service, repo } = makeService();
+    (repo.findFeatures as any).mockResolvedValue({});
+
+    await expect(service.getFeatures(1, 'readwise')).resolves.toEqual({ publish_sessions: false });
+  });
+
+  it('respects a stored publish_sessions=true override instead of the default', async () => {
+    const { service, repo } = makeService();
+    (repo.findFeatures as any).mockResolvedValue({ publish_sessions: true });
+
+    await expect(service.getFeatures(1, 'readwise')).resolves.toEqual({ publish_sessions: true });
   });
 
   it('persists a supported feature toggle', async () => {

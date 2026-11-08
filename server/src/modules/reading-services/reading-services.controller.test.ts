@@ -22,6 +22,7 @@ function makeController() {
     startMigration: vi.fn(),
     getRun: vi.fn(),
     cancel: vi.fn(),
+    resumeMigration: vi.fn(),
     getLatestMigrationSummary: vi.fn().mockResolvedValue({ state: 'never', runId: null, finishedAt: null }),
   } as unknown as ReadingServiceSyncRunService;
   const controller = new ReadingServicesController(registry, featuresService, syncRunService, new PermissionService());
@@ -125,5 +126,61 @@ describe('ReadingServicesController', () => {
 
     expect(syncRunService.cancel).toHaveBeenCalledWith(1, 1);
     expect(result).toEqual({ id: 1, provider: 'readwise', status: 'cancelled' });
+  });
+
+  it('resumes a run for a provider the user has permission for', async () => {
+    const { controller, syncRunService } = makeController();
+    const user = makeUser([Permission.ReadwiseSync]);
+    (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'readwise' });
+    (syncRunService.resumeMigration as any).mockResolvedValue({ id: 1, provider: 'readwise', status: 'running' });
+
+    const result = await controller.resumeRun(user, 1);
+
+    expect(syncRunService.resumeMigration).toHaveBeenCalledWith(1, 1);
+    expect(result).toEqual({ id: 1, provider: 'readwise', status: 'running' });
+  });
+
+  it('rejects resuming a run that belongs to a provider the user lacks permission for', async () => {
+    const { controller, syncRunService } = makeController();
+    const user = makeUser([Permission.ReadwiseSync]);
+    (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'hardcover' });
+
+    await expect(controller.resumeRun(user, 1)).rejects.toThrow(ForbiddenException);
+    expect(syncRunService.resumeMigration).not.toHaveBeenCalled();
+  });
+
+  it('lists readwise-only books for a permitted provider via the adapter', async () => {
+    const { controller, registry } = makeController();
+    const user = makeUser([Permission.ReadwiseSync]);
+    const listRemoteOnlyBooks = vi.fn().mockResolvedValue({ items: [{ externalId: 'rw1', title: 'A', author: 'B', coverImageUrl: null, ownership: 'unknown', externalUrl: null }], next: null, total: 1 });
+    registry.register({
+      provider: 'readwise',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      listRemoteOnlyBooks,
+    });
+
+    const result = await controller.listReadwiseOnlyBooks(user, 'readwise', '0', '50');
+
+    expect(listRemoteOnlyBooks).toHaveBeenCalledWith(1, 0, 50);
+    expect(result.total).toBe(1);
+  });
+
+  it('returns an empty page when the adapter has no readwise-only listing support', async () => {
+    const { controller, registry } = makeController();
+    const user = makeUser([Permission.ReadwiseSync]);
+    registry.register({
+      provider: 'readwise',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
+
+    const result = await controller.listReadwiseOnlyBooks(user, 'readwise');
+
+    expect(result).toEqual({ items: [], next: null, total: 0 });
   });
 });

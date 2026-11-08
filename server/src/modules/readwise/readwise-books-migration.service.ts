@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
-import type { ReadingServiceCapabilities, ReadingServiceProvider, SyncRunProgressCounters } from '@bookorbit/types';
+import type { ReadingServiceCapabilities, ReadingServiceProvider, ReadingServiceRemoteOnlyBooksPage, SyncRunProgressCounters } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
@@ -22,6 +22,7 @@ const EVENT = 'readwise.books_migration';
 const MIGRATION_INDEX_CACHE_KEY = 'migration-remote-index';
 const MIGRATION_MATCHED_CACHE_KEY = 'migration-matched-external-ids';
 const MIGRATION_INDEX_TTL_MS = 60 * 60 * 1000;
+const MIGRATION_READWISE_ONLY_CACHE_KEY = 'migration-readwise-only';
 
 type MigrationCursor = Record<string, never> | { phase: 'index'; next: string | null } | { phase: 'push'; afterBookId: number };
 
@@ -31,6 +32,7 @@ interface CachedRemoteBook {
   isbn10: string | null;
   title: string | null;
   author: string | null;
+  coverImageUrl: string | null;
   creationOrigin: string | null;
 }
 
@@ -41,6 +43,7 @@ function toRemoteIndexBook(book: ReadwiseBook): CachedRemoteBook {
     isbn10: null,
     title: book.product?.title ?? null,
     author: book.product?.author ?? null,
+    coverImageUrl: book.product?.cover_image ?? null,
     creationOrigin: book.creation_origin ?? null,
   };
 }
@@ -317,9 +320,31 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     const classified = readwiseOnly.map((b) => ({
       externalId: b.externalId,
       title: b.title,
+      author: b.author,
+      // The Books API response captured by `ReadwiseBooksClientService` has no public web URL
+      // for a book entry, so this stays null rather than guessing a URL shape.
+      externalUrl: null,
+      coverImageUrl: b.coverImageUrl,
       ownership: classifyReadwiseOwnership(b.creationOrigin),
     }));
-    await this.cache.set(userId, this.provider, 'migration-readwise-only', classified, MIGRATION_INDEX_TTL_MS);
+    await this.cache.set(userId, this.provider, MIGRATION_READWISE_ONLY_CACHE_KEY, classified, MIGRATION_INDEX_TTL_MS);
+  }
+
+  /**
+   * Paginated read of the classification `finishMigration` cached from the last completed
+   * migration run. Returns an empty page (not an error) if no migration has finished yet or
+   * the cache entry has expired, since this is a read-only convenience list, not a live query.
+   */
+  async listRemoteOnlyBooks(userId: number, offset: number, limit: number): Promise<ReadingServiceRemoteOnlyBooksPage> {
+    const classified =
+      (await this.cache.get<Array<{ externalId: string; title: string | null; author: string | null; externalUrl: string | null; coverImageUrl: string | null; ownership: 'owned' | 'not_owned' | 'unknown' }>>(
+        userId,
+        this.provider,
+        MIGRATION_READWISE_ONLY_CACHE_KEY,
+      )) ?? [];
+    const page = classified.slice(offset, offset + limit);
+    const next = offset + limit < classified.length ? offset + limit : null;
+    return { items: page, next, total: classified.length };
   }
 
   private async fetchFullRemoteIndex(userId: number, token: string): Promise<ReadwiseBook[]> {

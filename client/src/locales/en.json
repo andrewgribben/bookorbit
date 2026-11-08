@@ -1790,7 +1790,7 @@
           "unavailable": "Session sync isn't available yet."
         },
         "publish_sessions": {
-          "label": "Publish sessions to my feed",
+          "label": "Share sessions to my {provider} feed",
           "hint": "Off by default. Only your own feed.",
           "unavailable": "Needs session sync first."
         },
@@ -1798,6 +1798,11 @@
           "label": "Highlights",
           "hint": "New highlights, edits and deletes, both directions.",
           "unavailable": "Highlights sync through a separate connection for now."
+        },
+        "bookmarks": {
+          "label": "Bookmarks",
+          "hint": "These stay BookOrbit-only.",
+          "unavailable": "{provider} has no bookmarks API."
         },
         "owned": {
           "label": "Owned books",
@@ -1843,13 +1848,27 @@
         "runAgainButton": "Run again",
         "failedTitle": "Migration failed",
         "retryButton": "Retry migration",
+        "resumeButton": "Resume migration",
+        "resumingButton": "Resuming…",
         "counters": {
           "updated": "Updated",
           "created": "Created",
           "skipped": "Skipped",
           "failed": "Failed"
         },
-        "error": "{message}"
+        "error": "{message}",
+        "readwiseOnlyList": {
+          "title": "{provider}-only books",
+          "subtitle": "In {provider} but not in your library yet.",
+          "untitled": "Untitled",
+          "count": "{shown} of {total} shown",
+          "loadMoreButton": "Load more",
+          "ownership": {
+            "owned": "Owned",
+            "not_owned": "Not owned",
+            "unknown": "Ownership unknown"
+          }
+        }
       }
     },
     "metadata": {

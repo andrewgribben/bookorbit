@@ -258,4 +258,43 @@ describe('ReadingServiceSyncRunService', () => {
       finishedAt: finishedAt.toISOString(),
     });
   });
+
+  it('resumes a failed run from its stored cursor instead of starting over', async () => {
+    const run = makeRun({ status: 'failed', cursor: { phase: 'push', afterBookId: 42 }, error: 'rate limited' });
+    const { repo } = makeRepo(run);
+    const registry = new ReadingServiceRegistry();
+    const migratePage = vi.fn().mockResolvedValue(null);
+    registry.register({
+      provider: 'readwise',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage,
+      pull: () => Promise.resolve(undefined),
+    });
+    const service = new ReadingServiceSyncRunService(repo, registry);
+
+    const progress = await service.resumeMigration(run.id, run.userId);
+    expect(progress.status).toBe('running');
+    expect(progress.error).toBeNull();
+
+    await flushMicrotasks();
+
+    expect(migratePage).toHaveBeenCalledWith(run.userId, { phase: 'push', afterBookId: 42 }, run.counters);
+    expect(run.status).toBe('completed');
+  });
+
+  it('rejects resuming a run that is not in a failed state', async () => {
+    const run = makeRun({ status: 'completed' });
+    const { repo } = makeRepo(run);
+    const service = new ReadingServiceSyncRunService(repo, new ReadingServiceRegistry());
+
+    await expect(service.resumeMigration(run.id, run.userId)).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws NotFoundException when resuming a run that does not belong to the user', async () => {
+    const repo = { findRun: vi.fn().mockResolvedValue(undefined) } as unknown as ReadingServicesRepository;
+    const service = new ReadingServiceSyncRunService(repo, new ReadingServiceRegistry());
+
+    await expect(service.resumeMigration(1, 999)).rejects.toThrow(NotFoundException);
+  });
 });

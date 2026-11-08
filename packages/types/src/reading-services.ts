@@ -9,12 +9,16 @@ export const READING_SERVICE_FEATURES = [
   "sessions",
   "publish_sessions",
   "highlights",
+  "bookmarks",
   "owned",
   "recap_widget",
   "friends_shelf",
   "discover_shelf",
 ] as const;
 export type ReadingServiceFeature = (typeof READING_SERVICE_FEATURES)[number];
+
+/** Features that default to off unless a user has explicitly opted in (everything else is opt-out). */
+export const READING_SERVICE_FEATURES_DEFAULT_OFF: ReadonlyArray<ReadingServiceFeature> = ["publish_sessions"];
 
 export type ReadingServiceCapabilities = Partial<Record<ReadingServiceFeature, "both" | "push" | "pull" | "read">>;
 
@@ -46,4 +50,22 @@ export type SyncRunProgress = {
   startedAt: string;
   finishedAt: string | null;
   error: string | null;
+};
+
+export type ReadingServiceRemoteOwnership = "owned" | "not_owned" | "unknown";
+
+/** A book that exists on the remote provider but has no match in the local library yet. */
+export type ReadingServiceRemoteOnlyBook = {
+  externalId: string;
+  title: string | null;
+  author: string | null;
+  coverImageUrl: string | null;
+  ownership: ReadingServiceRemoteOwnership;
+  externalUrl: string | null;
+};
+
+export type ReadingServiceRemoteOnlyBooksPage = {
+  items: ReadingServiceRemoteOnlyBook[];
+  next: number | null;
+  total: number;
 };
