@@ -3534,18 +3534,17 @@ export class BookService {
 
   async getDetail(id: number, user: RequestUser): Promise<BookDetailDto> {
     await this.verifyBookAccess(id, user);
-    const [result, personalRating, personalNote, review, readStatus, comicMeta, collectionRows, readAloudSyncMode, coverContext] =
-      await Promise.all([
-        this.bookRepo.findById(id),
-        this.bookRepo.findRatingByBookAndUser(id, user.id),
-        this.userBookNoteService.findOne(user.id, id),
-        this.userBookReviewService.findOne(user.id, id),
-        this.userBookStatusService.findOne(user.id, id),
-        this.comicMetadataService.findByBookId(id),
-        this.bookRepo.findCollectionsByBookId(id, user.id),
-        this.bookRepo.findReadAloudSyncMode(user.id, id),
-        this.coverStore.contextFor(id),
-      ]);
+    const [result, personalRating, personalNote, review, readStatus, comicMeta, collectionRows, readAloudSyncMode, coverContext] = await Promise.all([
+      this.bookRepo.findById(id),
+      this.bookRepo.findRatingByBookAndUser(id, user.id),
+      this.userBookNoteService.findOne(user.id, id),
+      this.userBookReviewService.findOne(user.id, id),
+      this.userBookStatusService.findOne(user.id, id),
+      this.comicMetadataService.findByBookId(id),
+      this.bookRepo.findCollectionsByBookId(id, user.id),
+      this.bookRepo.findReadAloudSyncMode(user.id, id),
+      this.coverStore.contextFor(id),
+    ]);
     if (!result || !coverContext) throw new NotFoundException(`Book ${id} not found`);
 
     const { book, authorRows, genreRows, tagRows, fileRows, narratorRows, seriesMembershipRows, communityRatingRows } = result;

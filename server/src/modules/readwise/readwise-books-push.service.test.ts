@@ -90,7 +90,7 @@ describe('ReadwiseBooksPushService', () => {
       1,
       'readwise',
       12,
-      expect.objectContaining({ snapshot: { status: 'read', rating: 5, startedAt: null, finishedAt: null } }),
+      expect.objectContaining({ snapshot: { status: 'read', rating: 5, review: null, startedAt: null, finishedAt: null } }),
     );
   });
 

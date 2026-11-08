@@ -2001,15 +2001,12 @@ watch(
             :placeholder="t('book.detail.details.review.placeholder')"
           />
           <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p
-              class="text-[11px]"
-              :class="reviewNearLimit ? 'font-medium text-amber-500' : 'text-muted-foreground'"
-            >
+            <p class="text-[11px]" :class="reviewNearLimit ? 'font-medium text-amber-500' : 'text-muted-foreground'">
               {{
-                t(
-                  reviewNearLimit ? 'book.detail.details.review.charCountNearLimit' : 'book.detail.details.review.charCount',
-                  { count: reviewCharCount, max: BOOK_REVIEW_MAX_LENGTH },
-                )
+                t(reviewNearLimit ? 'book.detail.details.review.charCountNearLimit' : 'book.detail.details.review.charCount', {
+                  count: reviewCharCount,
+                  max: BOOK_REVIEW_MAX_LENGTH,
+                })
               }}
             </p>
             <div class="flex items-center gap-1.5">

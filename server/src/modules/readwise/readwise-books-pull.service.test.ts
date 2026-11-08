@@ -240,7 +240,9 @@ describe('ReadwiseBooksPullService', () => {
       results: [remoteBook({ id: 'r1', status: 'reading' as any, review: 'Loved it.' })],
       next: null,
     }) as any;
-    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(link({ bookId: 10, externalBookId: 'r1' }));
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(
+      link({ bookId: 10, externalBookId: 'r1', snapshot: { review: null } }),
+    );
     (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, status: 'reading', review: null }));
 
     await service.pullForUser(1);
