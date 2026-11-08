@@ -12,8 +12,9 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const { preview, run, previewing, starting, cancelling, error, trackRun, runPreview, startMigration, cancelMigration } =
-  useReadingServiceMigration(props.provider)
+const { preview, run, previewing, starting, cancelling, error, trackRun, runPreview, startMigration, cancelMigration } = useReadingServiceMigration(
+  props.provider,
+)
 
 const providerLabel = props.provider.charAt(0).toUpperCase() + props.provider.slice(1)
 
@@ -53,7 +54,7 @@ onMounted(() => {
         <p class="text-xs text-destructive leading-relaxed">{{ run.error ?? t('settings.readingServices.migration.failedTitle') }}</p>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div v-for="key in (['updated', 'created', 'skipped', 'failed'] as const)" :key="key" class="rounded-md border border-border px-3 py-2">
+        <div v-for="key in ['updated', 'created', 'skipped', 'failed'] as const" :key="key" class="rounded-md border border-border px-3 py-2">
           <p class="text-lg font-semibold tabular-nums text-right">{{ run.counters[key] }}</p>
           <p class="text-xs text-muted-foreground text-right">{{ t(`settings.readingServices.migration.counters.${key}`) }}</p>
         </div>
@@ -70,7 +71,7 @@ onMounted(() => {
     <template v-else-if="run?.status === 'running'">
       <p class="text-xs text-muted-foreground">{{ t('settings.readingServices.migration.runningDescription') }}</p>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div v-for="key in (['updated', 'created', 'skipped', 'failed'] as const)" :key="key" class="rounded-md border border-border px-3 py-2">
+        <div v-for="key in ['updated', 'created', 'skipped', 'failed'] as const" :key="key" class="rounded-md border border-border px-3 py-2">
           <p class="text-lg font-semibold tabular-nums text-right">{{ run.counters[key] }}</p>
           <p class="text-xs text-muted-foreground text-right">{{ t(`settings.readingServices.migration.counters.${key}`) }}</p>
         </div>
@@ -91,7 +92,7 @@ onMounted(() => {
         {{ t('settings.readingServices.migration.completedTitle') }}
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div v-for="key in (['updated', 'created', 'skipped', 'failed'] as const)" :key="key" class="rounded-md border border-border px-3 py-2">
+        <div v-for="key in ['updated', 'created', 'skipped', 'failed'] as const" :key="key" class="rounded-md border border-border px-3 py-2">
           <p class="text-lg font-semibold tabular-nums text-right">{{ run.counters[key] }}</p>
           <p class="text-xs text-muted-foreground text-right">{{ t(`settings.readingServices.migration.counters.${key}`) }}</p>
         </div>
@@ -109,17 +110,21 @@ onMounted(() => {
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div class="rounded-md border border-border px-3 py-2">
           <p class="text-lg font-semibold tabular-nums text-right">{{ preview.matched }}</p>
-          <p class="text-xs text-muted-foreground text-right">{{ t('settings.readingServices.migration.previewMatched', { provider: providerLabel }) }}</p>
+          <p class="text-xs text-muted-foreground text-right">
+            {{ t('settings.readingServices.migration.previewMatched', { provider: providerLabel }) }}
+          </p>
         </div>
         <div class="rounded-md border border-border px-3 py-2">
           <p class="text-lg font-semibold tabular-nums text-right">{{ preview.toCreate }}</p>
-          <p class="text-xs text-muted-foreground text-right">{{ t('settings.readingServices.migration.previewToCreate', { provider: providerLabel }) }}</p>
+          <p class="text-xs text-muted-foreground text-right">
+            {{ t('settings.readingServices.migration.previewToCreate', { provider: providerLabel }) }}
+          </p>
         </div>
         <div class="rounded-md border border-border px-3 py-2">
           <p class="text-lg font-semibold tabular-nums text-right">{{ preview.readwiseOnly }}</p>
-          <p class="text-xs text-muted-foreground text-right">{{
-            t('settings.readingServices.migration.previewReadwiseOnly', { provider: providerLabel })
-          }}</p>
+          <p class="text-xs text-muted-foreground text-right">
+            {{ t('settings.readingServices.migration.previewReadwiseOnly', { provider: providerLabel }) }}
+          </p>
         </div>
       </div>
       <p class="text-xs text-muted-foreground">{{ t('settings.readingServices.migration.previewNote', { provider: providerLabel }) }}</p>
