@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
+import { ReadingServiceSyncRunService } from '../reading-services/reading-service-sync-run.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import type { ReadwiseSession } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
@@ -42,14 +43,20 @@ export class ReadwiseSessionsReconcileService {
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly cache: ReadingServiceCacheService,
     private readonly sessionsRepo: ReadwiseSessionsLocalRepository,
+    private readonly syncRunService: ReadingServiceSyncRunService,
   ) {}
 
   /** Runs the reconcile pass once per user; a no-op on every later call. */
   async ensureReconciled(userId: number, token: string): Promise<void> {
     const done = await this.cache.get<boolean>(userId, 'readwise', READWISE_SESSIONS_RECONCILED_CACHE_KEY);
     if (done) return;
-    await this.reconcile(userId, token);
-    await this.cache.set(userId, 'readwise', READWISE_SESSIONS_RECONCILED_CACHE_KEY, true, READWISE_SESSIONS_RECONCILED_TTL_MS);
+    this.syncRunService.markReconciling(userId, 'readwise');
+    try {
+      await this.reconcile(userId, token);
+      await this.cache.set(userId, 'readwise', READWISE_SESSIONS_RECONCILED_CACHE_KEY, true, READWISE_SESSIONS_RECONCILED_TTL_MS);
+    } finally {
+      this.syncRunService.clearReconciling(userId, 'readwise');
+    }
   }
 
   private async reconcile(userId: number, token: string): Promise<void> {

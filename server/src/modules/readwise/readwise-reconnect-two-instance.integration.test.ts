@@ -552,7 +552,12 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     ownedElsewhereStub,
   );
 
-  const reconcileService = new ReadwiseSessionsReconcileService(booksClient, readwiseRepo, readingServicesRepo, cache, sessionsRepo);
+  const syncRunServiceStub = {
+    markReconciling: () => {},
+    clearReconciling: () => {},
+  } as unknown as import('../reading-services/reading-service-sync-run.service').ReadingServiceSyncRunService;
+
+  const reconcileService = new ReadwiseSessionsReconcileService(booksClient, readwiseRepo, readingServicesRepo, cache, sessionsRepo, syncRunServiceStub);
   const sessionsPushService = new ReadwiseSessionsPushService(
     booksClient,
     sessionsRepo,

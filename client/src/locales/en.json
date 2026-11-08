@@ -1894,6 +1894,7 @@
         "startingButton": "Starting…",
         "runningTitle": "Migration running",
         "runningDescription": "This can take a while for a large library. Leave this page open or come back later.",
+        "reconcilingDescription": "Checking what's already on {provider} before making any changes - this can take a minute on a first connect.",
         "cancelButton": "Cancel",
         "cancellingButton": "Cancelling…",
         "completedTitle": "Migration completed",

@@ -116,7 +116,19 @@ export type ReadingServiceSummary = {
   connected: boolean;
   capabilities: ReadingServiceCapabilities;
   features: Partial<Record<ReadingServiceFeature, boolean>>;
-  migration: { state: "never" | "running" | "done" | "failed"; runId: number | null; finishedAt: string | null };
+  migration: {
+    state: "never" | "running" | "done" | "failed";
+    runId: number | null;
+    finishedAt: string | null;
+    /**
+     * Sub-state of a "running" migration: set while the provider is reconciling against
+     * already-synced remote state before it starts creating/updating anything - the
+     * full-library index/matching pass on a first connect, or (Readwise) the one-time sessions
+     * reconcile pass that links existing remote sessions instead of recreating them. Undefined
+     * outside "running", or while running normal create/update work.
+     */
+    phase?: "reconciling" | null;
+  };
   lastPullAt: string | null;
   disabledReason: string | null;
   /**
@@ -163,6 +175,8 @@ export type SyncRunProgress = {
   startedAt: string;
   finishedAt: string | null;
   error: string | null;
+  /** See `ReadingServiceSummary['migration'].phase`. */
+  phase?: "reconciling" | null;
 };
 
 export type ReadingServiceRemoteOwnership = "owned" | "not_owned" | "unknown";

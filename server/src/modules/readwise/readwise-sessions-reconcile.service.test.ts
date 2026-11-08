@@ -10,6 +10,7 @@ const mockReadingServicesRepo = {
 };
 const mockCache = { get: vi.fn(), set: vi.fn() };
 const mockSessionsRepo = { findAllPushableSessions: vi.fn() };
+const mockSyncRunService = { markReconciling: vi.fn(), clearReconciling: vi.fn() };
 
 function makeService() {
   return new ReadwiseSessionsReconcileService(
@@ -18,6 +19,7 @@ function makeService() {
     mockReadingServicesRepo as any,
     mockCache as any,
     mockSessionsRepo as any,
+    mockSyncRunService as any,
   );
 }
 
@@ -45,6 +47,23 @@ describe('ReadwiseSessionsReconcileService', () => {
     mockCache.get.mockResolvedValueOnce(true);
     await makeService().ensureReconciled(1, 'tok');
     expect(mockReadingServicesRepo.findBookLinksForProvider).not.toHaveBeenCalled();
+    expect(mockSyncRunService.markReconciling).not.toHaveBeenCalled();
+  });
+
+  it('marks and clears the reconciling phase around the pass', async () => {
+    mockCache.get.mockResolvedValueOnce(undefined);
+    mockReadingServicesRepo.findBookLinksForProvider.mockResolvedValueOnce([]);
+    await makeService().ensureReconciled(7, 'tok');
+    expect(mockSyncRunService.markReconciling).toHaveBeenCalledWith(7, 'readwise');
+    expect(mockSyncRunService.clearReconciling).toHaveBeenCalledWith(7, 'readwise');
+  });
+
+  it('clears the reconciling phase even when the pass throws', async () => {
+    mockCache.get.mockResolvedValueOnce(undefined);
+    mockReadingServicesRepo.findBookLinksForProvider.mockRejectedValueOnce(new Error('boom'));
+    await expect(makeService().ensureReconciled(9, 'tok')).rejects.toThrow('boom');
+    expect(mockSyncRunService.markReconciling).toHaveBeenCalledWith(9, 'readwise');
+    expect(mockSyncRunService.clearReconciling).toHaveBeenCalledWith(9, 'readwise');
   });
 
   it('does nothing when the user has no linked books yet', async () => {

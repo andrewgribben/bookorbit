@@ -123,6 +123,13 @@ describe('ReadingServiceMigrationPanel', () => {
     expect(mocks.cancelMigration).toHaveBeenCalledTimes(1)
   })
 
+  it('shows a reconciling message instead of the normal running description while reconciling', () => {
+    run.value = makeRun({ status: 'running', phase: 'reconciling' })
+    const wrapper = mount(ReadingServiceMigrationPanel, { props: { provider: 'readwise', summary: baseSummary } })
+    expect(wrapper.text()).toContain("Checking what's already on Readwise")
+    expect(wrapper.text()).not.toContain('This can take a while for a large library')
+  })
+
   it('shows a completed summary with a run-again button', () => {
     run.value = makeRun({ status: 'completed', finishedAt: new Date().toISOString() })
     const wrapper = mount(ReadingServiceMigrationPanel, { props: { provider: 'readwise', summary: baseSummary } })

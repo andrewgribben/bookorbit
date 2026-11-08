@@ -264,6 +264,42 @@ describe('ReadingServiceSyncRunService', () => {
       state: 'done',
       runId: 9,
       finishedAt: finishedAt.toISOString(),
+      phase: null,
+    });
+  });
+
+  it('reports the "reconciling" phase while a migration run is still indexing the remote library', async () => {
+    const run = makeRun({ id: 11, status: 'running', cursor: { phase: 'index', next: null } });
+    const repo = { findLatestRun: vi.fn().mockResolvedValue(run) } as unknown as ReadingServicesRepository;
+    const service = new ReadingServiceSyncRunService(repo, new ReadingServiceRegistry());
+
+    await expect(service.getLatestMigrationSummary(1, 'readwise')).resolves.toEqual({
+      state: 'running',
+      runId: 11,
+      finishedAt: null,
+      phase: 'reconciling',
+    });
+  });
+
+  it('reports the "reconciling" phase while a provider-reported reconcile pass is marked active', async () => {
+    const run = makeRun({ id: 12, status: 'running', cursor: {} });
+    const repo = { findLatestRun: vi.fn().mockResolvedValue(run) } as unknown as ReadingServicesRepository;
+    const service = new ReadingServiceSyncRunService(repo, new ReadingServiceRegistry());
+
+    service.markReconciling(1, 'readwise');
+    await expect(service.getLatestMigrationSummary(1, 'readwise')).resolves.toEqual({
+      state: 'running',
+      runId: 12,
+      finishedAt: null,
+      phase: 'reconciling',
+    });
+
+    service.clearReconciling(1, 'readwise');
+    await expect(service.getLatestMigrationSummary(1, 'readwise')).resolves.toEqual({
+      state: 'running',
+      runId: 12,
+      finishedAt: null,
+      phase: null,
     });
   });
 
