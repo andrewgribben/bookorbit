@@ -1493,6 +1493,256 @@ instantiates each card - so the shell itself never mounts for
   has no UI copy anywhere calling that out; same note as above, now also
   true for the generic `ExternalShelf` renderer.
 
+## S9: Customize Dashboard shelf picker + server-side matching (2026-11-08)
+
+Resolved the "picker UI was not built" open question above per three owner
+decisions, on top of `fa8067f24` (commit `8e09d0f9d`, local only).
+
+### 1. External shelves picker
+
+Kept `ScrollerType`/`ScrollerConfig` untouched (no locale-key cost across
+the 25 catalogs) and added a parallel, separately-persisted list instead:
+`ExternalShelfConfig { provider, shelf, enabled, order }`
+(`packages/types/src/dashboard.ts`), stored as `externalShelves` on the same
+`dashboardShelfConfig` object (browser-local or synced, same as
+`scrollers`/`shelfLayout`). A shelf's title/description is never persisted -
+`useDashboardLabels.externalShelfTitle(provider, shelf)` composes it from
+two new `en.json` blocks (`dashboard.externalShelves.providerNames`,
+`dashboard.externalShelves.shelfNames`) at render time, so a locale change
+or a provider rename never needs a migration.
+
+- `client/src/features/dashboard/composables/useExternalShelvesConfig.ts`
+  (new): fetches `GET /reading-services/shelves/available` and `GET
+  /reading-services` once on mount, calls `useDashboardConfig().
+  ensureExternalShelf(provider, shelf, defaultEnabled)` for every available
+  shelf not yet in the persisted list (a no-op once it is), and exposes
+  `pickerShelves` (every available shelf + its toggle, for the sheet) and
+  `enabledExternalShelves` (enabled AND still connected, in order, for the
+  dashboard). Default: `owned-elsewhere` starts enabled only when its
+  provider is connected and `GET /reading-services`' `features.owned` is
+  not `false`; every other shelf starts off.
+- `DashboardSettingsSheet.vue`: new "External shelves" section on the
+  Shelves tab below "Add shelf", one toggle row per `pickerShelves` entry,
+  seeded into `externalShelvesDraft` on open and written back through
+  `saveShelfSettings(scrollers, shelfLayout, sync, externalShelves)` (the
+  function's new 4th, optional parameter - every existing call site that
+  omits it keeps today's behaviour unchanged). No reorder control was
+  built this stage (order is simply the API's available-shelves order);
+  flagged below.
+- `DashboardView.vue`: the single hardcoded `<ExternalShelf provider=
+  "readwise" shelf="owned-elsewhere">` was replaced by a
+  `v-for="entry in enabledExternalShelves"`. `ExternalShelf.vue` gained
+  optional `title`/`description` props (pre-resolved strings) alongside the
+  existing `titleKey`/`descriptionKey` (locale keys resolved inside the
+  component) - exactly one of each pair is expected per call site; the
+  dashboard view now passes the resolved pair, nothing else changed.
+- Tests: `useDashboardConfig.spec.ts` covers `externalShelves` normalizing/
+  round-tripping through storage; `DashboardSettingsSheet.spec.ts`/
+  `DashboardView.spec.ts` mock `useExternalShelvesConfig` (new mock in both
+  files) so the sheet's existing "api not called before Save" assertions
+  are unaffected by the picker's own mount-time fetch.
+
+### 2. Server-side matching for adapter shelf items
+
+A private adapter with no local DB access cannot resolve `bookId` itself.
+Added optional hints and a shared matcher so the server can try instead:
+
+- `ReadingServiceShelfItem` gained optional `isbn?: string | null` and
+  `asin?: string | null` (`packages/types/src/reading-services.ts`). `asin`
+  is accepted for forward compatibility only - the local book schema has no
+  ASIN column, so it is not used for matching yet.
+- `server/src/modules/reading-services/reading-service-match.repository.ts`
+  (new): `findCandidates(userId, isbn13s, titlesLower)`, a bounded query
+  against the user's accessible library (same shape as the old
+  Hardcover-only `hardcover-social-match.repository.ts`, which this
+  replaces and deletes - Hardcover's social service now injects this
+  shared repository instead). Bounded by the requested ISBN-13s/lowercased
+  titles rather than paging the whole library, same rationale as the
+  repository it replaced.
+- `reading-services.controller.ts`'s `getShelf` now calls
+  `resolveUnmatchedBookIds(userId, items)` after `adapter.getShelf`: items
+  with `bookId == null` and an `isbn`/`asin` or `title`+`authors` hint are
+  looked up via the shared matcher's `buildRemoteIndex`/`matchBook`
+  (reused from `book-matcher.ts`, unchanged); a hit fills in `bookId`.
+  Every item, matched or not, has `isbn`/`asin` stripped (`stripMatchHints`)
+  before the response leaves the server - a client never needs either
+  field, matched or not.
+- `GET /reading-services/shelves/available` and the private adapter's
+  `getShelf` are unaffected by this (hints are shelf-item-level, not
+  shelf-list-level).
+
+### 3. Private adapter contract alignment
+
+Inspected `C:/Users/grib/Development/readwise-accessibility-poc/
+bookorbit-adapter/{lib/contract.mjs,index.mjs}` (outside this repo, not
+committed here) against the final contract above: `provider:
+'readwise-social'`, `permission: 'readwise_sync'` (matches
+`Permission.ReadwiseSync`'s enum value exactly), `capabilities:
+{ friends_shelf: 'read' }` (object, not array), `getShelf(userId, shelf)`
+returning items with `friend: { displayName, avatarUrl, status, date }`
+and optional `isbn`/`asin` hints. **No changes were needed** - a prior
+pass had already written `toShelfItem` in `lib/contract.mjs` to this exact
+shape, isbn/asin included, with a comment explaining the loader only
+duck-types the adapter object itself (`provider`/`capabilities`/
+`isConnected`/`migratePage`/`pull`) so extra fields on shelf items are
+harmless whether or not the server reads them. Ran its own test suite
+(`node --test` in that folder - not part of this repo, allowed on this PC
+per the studio rules): **46 tests, 46 passed, 0 failed**.
+
+### Checks run (Unraid, this stage)
+
+- `pnpm install --frozen-lockfile`, `pnpm --filter @bookorbit/types build`,
+  `pnpm --filter @bookorbit/plugin-api build`.
+- `pnpm --filter server run type-check`: clean, exit 0.
+- `pnpm --filter client run type-check`: clean, exit 0 (`tsc` + `vue-tsc --build`).
+- `pnpm --filter client run validate:locales`: "Validated 25 locale
+  catalogs against 12219 English messages", no gaps.
+- `npx eslint` (from `server/` and `client/`) on every file this stage
+  touched: clean, 0 problems (after one `--fix` pass on a server test file
+  and one `--write` prettier pass on `DashboardSettingsSheet.vue`, both
+  copied back to the PC and folded into the commit with `git commit
+  --amend`, per the never-commit-on-Unraid rule).
+- `npx prettier --check` on every file this stage touched: clean after the
+  fix above.
+- `npx vitest run src/modules/reading-services src/modules/hardcover`
+  (server): **27 test files, 455 tests, all passed**.
+- `npx vitest run src/features/dashboard src/views/DashboardView.spec.ts`
+  (client): **16 test files, 184 tests, all passed**.
+- No schema changes in this diff, so the disposable-DB apply/`drift_check`
+  gate had nothing to run against.
+- Private adapter (outside this repo): `node --test` - **46 tests, 46
+  passed, 0 failed**.
+
+Commit `8e09d0f9d` "feat(dashboard): add provider shelf picker and
+server-side matching", local only on `feat-reading-services-integration`,
+not pushed.
+
+### Open questions for the next agent
+
+- **No manual reorder control for external shelves.** The picker only
+  toggles a shelf on/off; its position on the dashboard is whatever order
+  `GET /reading-services/shelves/available` returns providers/shelves in.
+  `ExternalShelfConfig.order` exists and is persisted (so a future drag
+  reorder has somewhere to write), but nothing in this stage's UI changes
+  it.
+- The friend-rendering branch in `ExternalShelf.vue` still has no live
+  Hardcover friends-shelf data to verify against (same caveat carried over
+  from the previous stage).
+- `recommendations_shelf`'s "most-added, minus already-linked" proxy still
+  has no UI copy calling that out, now also true for any provider shown
+  through the picker.
+
+## API for Android
+
+JSON shapes exported by this branch as of commit `8e09d0f9d`, exactly as
+the server sends them (field names, types, null-ability). All routes are
+under `/api/v1` and require the standard JWT auth; permission/feature
+gating per route is noted where it is not just "logged in".
+
+### `GET /reading-services/shelves/available`
+
+Requires the permission for each adapter whose shelves it lists (adapters
+the caller lacks permission for are omitted, not 403'd). Returns
+`ReadingServiceAvailableShelf[]`:
+
+```ts
+{
+  provider: "readwise" | "hardcover" | string; // string: a private adapter's own id
+  shelf: "friends-reading" | "friends-finished" | "trending" | "recommendations" | "owned-elsewhere";
+  connected: boolean; // whether the current user has this provider connected
+}
+```
+
+### `GET /reading-services/:provider/shelves/:shelf`
+
+404 if the provider does not declare the shelf's capability or has no
+`getShelf`; 400 for an unknown shelf name or unregistered provider; 403 if
+the caller lacks the provider's permission. Returns `ReadingServiceShelfItem[]`:
+
+```ts
+{
+  provider: string;
+  externalId: string;
+  title: string;
+  authors: string[];
+  coverUrl: string | null;
+  externalUrl: string | null;
+  bookId: number | null; // matched BookOrbit book id, resolved server-side if the adapter left it null
+  friend: { displayName: string; avatarUrl: string | null; status: string; date: string | null } | null; // only on friends-reading/friends-finished
+  // isbn/asin are never present here - the server strips them from every item before responding.
+}
+```
+
+### `GET /dashboard/widgets/reading-recap`
+
+Requires the `recap_widget` feature on at least one connected provider.
+Returns `ReadingRecapWidget | null` (`null` when no provider is connected
+and opted in - the widget hides entirely rather than rendering empty):
+
+```ts
+{
+  provider: "readwise" | "hardcover";
+  year: number;
+  booksFinished: number;
+  sessions: number;
+  totalSeconds: number;
+  readingDays: number;
+  goal: number | null;
+  byMonth: ReadingRecapMonthData[]; // see packages/types/src/reading-services.ts for this shape
+}
+```
+
+### `GET /reading-services/:provider` (summary - part of the list below)
+
+See the next entry; there is no single-provider summary route, only the
+list one filtered client-side if needed.
+
+### `GET /reading-services` (list)
+
+Returns `ReadingServiceSummary[]`, one entry per adapter the caller has
+permission for:
+
+```ts
+{
+  provider: "readwise" | "hardcover" | string;
+  connected: boolean;
+  capabilities: Partial<Record<ReadingServiceFeature, "both" | "push" | "pull" | "read">>;
+  features: Partial<Record<ReadingServiceFeature, boolean>>; // per-feature opt-in/out, e.g. features.owned
+  migration: { state: "never" | "running" | "done" | "failed"; runId: number | null; finishedAt: string | null };
+  lastPullAt: string | null;
+  disabledReason: string | null;
+}
+```
+
+### `PATCH /books/:id/review`
+
+Requires `Permission.LibraryEditMetadata`. Body:
+
+```ts
+{ review?: string | null } // UpdateReviewDto. Omitted key leaves the review alone; null clears it; max length 10000.
+```
+
+Returns the full `BookDetailDto` (not just the review fields) - same
+omitted-key-vs-null contract as `PATCH /books/:id/personal-note`. Writing
+a non-undefined `review` raises a `book.review-changed` event for the
+Readwise push listener.
+
+### Book detail review fields
+
+On `BookDetailDto` (`GET /books/:id` and the two PATCH routes above):
+
+```ts
+{
+  rating: number | null;              // star rating, separate field from review
+  personalNote: string | null;
+  personalNoteUpdatedAt: string | null;
+  review?: string | null;             // absent on servers that predate this field; present (possibly null) otherwise
+  reviewUpdatedAt?: string | null;
+  communityRatings: BookCommunityRating[];
+  // ...plus every other BookDetailDto field (cover, metadata, files, etc.), unchanged by this stage.
+}
+```
+
 ## First commands for a successor agent
 
 ```bash
