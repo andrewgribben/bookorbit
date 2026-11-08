@@ -31,7 +31,9 @@ function session(partial: Partial<{ id: number; bookId: number; startedAt: Date;
 }
 
 describe('ReadwiseSessionsReconcileService', () => {
-  beforeEach(() => vi.clearAllMocks());
+  // resetAllMocks (not clearAllMocks): leftover queued mockResolvedValueOnce values from a
+  // prior test's unconsumed page must not bleed into the next test's call sequence.
+  beforeEach(() => vi.resetAllMocks());
 
   it('is a no-op once already reconciled', async () => {
     mockCache.get.mockResolvedValueOnce(true);
