@@ -1451,7 +1451,7 @@ export class BookRequestService {
     const response = error.getResponse();
     if (typeof response === 'string') return response;
     const message = (response as { message?: string | string[] })?.message;
-    return Array.isArray(message) ? message[0] ?? error.message : message ?? error.message;
+    return Array.isArray(message) ? (message[0] ?? error.message) : (message ?? error.message);
   }
 
   getSummary(user: RequestUser): Promise<BookRequestSummary> {

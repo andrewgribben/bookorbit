@@ -1880,7 +1880,11 @@ describe('BookRequestService.bulkSubmitFromMetadata', () => {
 
   it('counts an item the dedupe check already knows about as skipped, not created', async () => {
     const { service, dedupe } = makeService({
-      dedupe: { checkAvailability: vi.fn().mockResolvedValue([{ ownedBookId: null, existingRequestId: 99, existingRequestStatus: 'pending', alreadySubscribed: false }]) },
+      dedupe: {
+        checkAvailability: vi
+          .fn()
+          .mockResolvedValue([{ ownedBookId: null, existingRequestId: 99, existingRequestStatus: 'pending', alreadySubscribed: false }]),
+      },
     });
     const result = await service.bulkSubmitFromMetadata([{ externalId: 'rw-2', title: 'Dune', authors: ['Frank Herbert'] }], user());
 
