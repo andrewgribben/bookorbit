@@ -44,7 +44,23 @@ function makeService() {
   const localBooks = { findPage: vi.fn() } as unknown as ReadwiseBooksLocalBooksRepository;
   const readwiseRepo = { upsertSettings: vi.fn(), findSettings: vi.fn() } as unknown as ReadwiseRepository;
   const readwiseSettings = { getToken: vi.fn().mockResolvedValue('tok') } as unknown as ReadwiseSettingsService;
-  const readingServicesRepo = { upsertBookLink: vi.fn() } as unknown as ReadingServicesRepository;
+  // Stateful book-links store so a test can persist a link in one migratePage call and have a
+  // later call (simulating a re-run) see it, same as the real DB-backed repository would.
+  const bookLinksStore = new Map<string, { bookId: number; externalBookId: string; matchMethod: string; remoteDeleted: boolean }>();
+  const readingServicesRepo = {
+    upsertBookLink: vi.fn((userId: number, provider: string, bookId: number, data: { externalBookId: string; matchMethod: string }) => {
+      bookLinksStore.set(`${userId}:${provider}:${bookId}`, {
+        bookId,
+        externalBookId: data.externalBookId,
+        matchMethod: data.matchMethod,
+        remoteDeleted: false,
+      });
+      return Promise.resolve();
+    }),
+    findBookLinksForProvider: vi.fn((userId: number, provider: string) =>
+      Promise.resolve([...bookLinksStore.entries()].filter(([key]) => key.startsWith(`${userId}:${provider}:`)).map(([, link]) => link)),
+    ),
+  } as unknown as ReadingServicesRepository;
   const pullService = { pullForUser: vi.fn() } as unknown as ReadwiseBooksPullService;
 
   const service = new ReadwiseBooksMigrationService(
@@ -282,6 +298,32 @@ describe('ReadwiseBooksMigrationService', () => {
       expect(page.total).toBe(1);
     });
 
+    it('does not re-list a book from an earlier run as readwise-only when this run cannot match it', async () => {
+      const { service, client, localBooks } = makeService();
+
+      // Run 1: the local book matches the remote book by isbn and gets linked via an update.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: { isbn: '9780306406157' } }], next: null });
+      let indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read' })]).mockResolvedValueOnce([]);
+      (client.updateBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'existing' }]);
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      // Run 2: the same remote book now comes back with no product metadata and no creation
+      // origin (e.g. Readwise has not finished enriching an API-created book yet), so this run's
+      // isbn/title matcher cannot recognise it and the push phase ends up creating a second
+      // remote book for the still-unmatched local book.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: null, creation_origin: null }], next: null });
+      indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read' })]).mockResolvedValueOnce([]);
+      (client.createBooks as any).mockResolvedValueOnce([{ id: 'x', status: 'created', book_id: 'r1-dup' }]);
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      // The original 'r1' must not show up as a Readwise-only "unknown" book: BookOrbit already
+      // has a link to it from run 1, even though run 2's live matching missed it.
+      const page = await service.listRemoteOnlyBooks(1, 0, 50);
+      expect(page.total).toBe(0);
+    });
+
     it('retries a 400 update batch item by item and keeps the run from aborting', async () => {
       const { service, client, localBooks } = makeService();
       (client.listBooks as any).mockResolvedValueOnce({
@@ -455,6 +497,24 @@ describe('ReadwiseBooksMigrationService', () => {
       const { service, readwiseSettings } = makeService();
       (readwiseSettings.getToken as any).mockResolvedValueOnce(null);
       await expect(service.previewMigration(1)).resolves.toEqual({ matched: 0, toCreate: 0, readwiseOnly: 0 });
+    });
+
+    it('does not count an already-linked remote book as readwise-only when preview cannot match it live', async () => {
+      const { service, client, localBooks } = makeService();
+
+      // An earlier migration run already linked bookId 10 to remote book 'r1'.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: { isbn: '9780306406157' } }], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read' })]).mockResolvedValueOnce([]);
+      (client.updateBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'existing' }]);
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      // Preview runs again; this time the remote product metadata is gone, so live matching misses it.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: null }], next: null });
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read' })]).mockResolvedValueOnce([]);
+
+      const result = await service.previewMigration(1);
+      expect(result.readwiseOnly).toBe(0);
     });
   });
 
