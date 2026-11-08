@@ -1756,6 +1756,102 @@
         "noReadwiseBooks": "Your Readwise account doesn't have access to the Books API, so sync is paused."
       }
     },
+    "readingServices": {
+      "whatSyncs": {
+        "title": "What syncs",
+        "subtitle": "Generated from what the provider actually supports. Direction is fixed per item, not user-chosen.",
+        "directionBoth": "Both ways",
+        "directionPush": "To {provider}",
+        "directionPull": "From {provider}",
+        "directionRead": "From {provider}",
+        "directionUnavailable": "Unavailable"
+      },
+      "features": {
+        "status": {
+          "label": "Reading status",
+          "hint": "Want to read, reading, read and abandoned map to the provider's shelves."
+        },
+        "rating": {
+          "label": "Rating",
+          "hint": "Your 1-5 stars."
+        },
+        "review": {
+          "label": "Review",
+          "hint": "Your written review, synced alongside the rating.",
+          "unavailable": "Reviews aren't synced yet."
+        },
+        "dates": {
+          "label": "Started / finished dates",
+          "hint": "One date pair per book."
+        },
+        "sessions": {
+          "label": "Reading sessions",
+          "hint": "Sessions over 60 seconds. Pulled sessions count towards stats only.",
+          "unavailable": "Session sync isn't available yet."
+        },
+        "publish_sessions": {
+          "label": "Publish sessions to my feed",
+          "hint": "Off by default. Only your own feed.",
+          "unavailable": "Needs session sync first."
+        },
+        "highlights": {
+          "label": "Highlights",
+          "hint": "New highlights, edits and deletes, both directions.",
+          "unavailable": "Highlights sync through a separate connection for now."
+        },
+        "owned": {
+          "label": "Owned books",
+          "hint": "Marks which of the provider's books you own. The shelf that uses this is coming soon."
+        },
+        "recap_widget": {
+          "label": "Reading recap widget",
+          "hint": "Year stats on your dashboard.",
+          "unavailable": "The recap widget isn't available yet."
+        },
+        "friends_shelf": {
+          "label": "Friends' reading activity",
+          "hint": "Shelves and widgets built from a follow graph.",
+          "unavailable": "Needs a provider follow graph, coming later."
+        },
+        "discover_shelf": {
+          "label": "Discover shelf",
+          "hint": "Trending and recommended titles from the provider.",
+          "unavailable": "Not available yet."
+        }
+      },
+      "migration": {
+        "title": "Migration",
+        "subtitle": "Your library is pushed to {provider} once. Changes then sync both ways where supported.",
+        "neverRunTitle": "Migration",
+        "neverRunDescription": "Preview what would move before anything changes in {provider}.",
+        "previewButton": "Preview migration",
+        "previewAgainButton": "Preview again",
+        "previewingButton": "Previewing…",
+        "previewTitle": "Migration preview",
+        "previewMatched": "Already matched in {provider}",
+        "previewToCreate": "Will be created in {provider}",
+        "previewReadwiseOnly": "{provider}-only, not in your library",
+        "previewNote": "Your library's status, rating and dates overwrite the matched books in {provider}. This can't be previewed field by field.",
+        "startButton": "Start migration",
+        "startingButton": "Starting…",
+        "runningTitle": "Migration running",
+        "runningDescription": "This can take a while for a large library. Leave this page open or come back later.",
+        "cancelButton": "Cancel",
+        "cancellingButton": "Cancelling…",
+        "completedTitle": "Migration completed",
+        "completedDescription": "Finished.",
+        "runAgainButton": "Run again",
+        "failedTitle": "Migration failed",
+        "retryButton": "Retry migration",
+        "counters": {
+          "updated": "Updated",
+          "created": "Created",
+          "skipped": "Skipped",
+          "failed": "Failed"
+        },
+        "error": "{message}"
+      }
+    },
     "metadata": {
       "title": "Metadata",
       "subtitle": "Configure metadata providers, matching rules, automation, and author enrichment.",

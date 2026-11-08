@@ -6,9 +6,13 @@ import { Link, Save, CheckCircle2, AlertCircle, Info, Loader2 } from '@lucide/vu
 import { toast } from 'vue-sonner'
 import type { ReadwiseSyncDisabledReason, ReadwiseTokenValidationResult } from '@bookorbit/types'
 import SettingsPageHeader from '@/features/settings/SettingsPageHeader.vue'
+import SettingsSection from '@/features/settings/components/SettingsSection.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { SECRET_INPUT_ATTRS } from '@/lib/secret-input'
 import { useReadwiseSettings } from '../composables/useReadwiseSettings'
+import ReadingServiceFeatureList from '@/features/reading-services/components/ReadingServiceFeatureList.vue'
+import ReadingServiceMigrationPanel from '@/features/reading-services/components/ReadingServiceMigrationPanel.vue'
+import { useReadingServices } from '@/features/reading-services/composables/useReadingServices'
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
   embedded: false,
@@ -16,6 +20,8 @@ const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
 const { t } = useI18n()
 
 const { settings, saving, validating, error, fetchSettings, saveSettings, validateToken } = useReadwiseSettings()
+const { fetchSummaries, getSummary } = useReadingServices()
+const readingServiceSummary = getSummary('readwise')
 
 const tokenInput = ref('')
 const tokenVisible = ref(false)
@@ -35,7 +41,7 @@ const disabledReasonMessages: Record<ReadwiseSyncDisabledReason, string> = {
 }
 
 onMounted(async () => {
-  await fetchSettings()
+  await Promise.all([fetchSettings(), fetchSummaries()])
   form.enabled = settings.value?.enabled ?? false
 })
 
@@ -156,5 +162,15 @@ function toggleTokenVisible() {
         </Button>
       </div>
     </div>
+
+    <SettingsSection
+      v-if="readingServiceSummary"
+      :title="t('settings.readingServices.whatSyncs.title')"
+      :brief="t('settings.readingServices.whatSyncs.subtitle')"
+    >
+      <ReadingServiceFeatureList provider="readwise" :summary="readingServiceSummary" />
+    </SettingsSection>
+
+    <ReadingServiceMigrationPanel v-if="readingServiceSummary" provider="readwise" :summary="readingServiceSummary" />
   </div>
 </template>
