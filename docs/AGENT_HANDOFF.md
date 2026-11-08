@@ -2588,6 +2588,50 @@ not run against any real database.**
 
 ---
 
+## Readwise-only to Book Requests (2026-11-08)
+
+Branch `feat-readwise-only-requests`, from `feat-reading-services-release` @ `f758cfcd8`.
+Plan before implementing:
+
+1. **Fields mapped from Readwise**: `title`, `author` (single string on `ReadingServiceRemoteOnlyBook`,
+   sent as `authors: [author]`), `coverImageUrl` -> `coverUrl`. No ISBN/ASIN is available: the cached
+   migration classification never parsed one, so dedupe falls back to the module's existing
+   title+author key, same as a free-text submission.
+2. **Format**: always `ebook`. `ReadingServiceRemoteOnlyBook` carries no audiobook signal from the
+   Readwise Books API, so there is nothing to branch on; documented as a known gap rather than guessed.
+3. **Dedupe**: reused as-is via `POST /api/v1/book-requests/availability` (existing endpoint) to
+   annotate rows before showing a button, and via `BookRequestService.submit()`'s own dedupe-on-insert
+   for the actual write. No new dedupe logic and no direct table access.
+4. **Permission**: every Request control (row button, Request all, shelf-card menu item) is hidden,
+   not merely disabled, without `Permission.BookRequestAccess` (`usePermissions().hasPermission`).
+5. **Auto-download**: confirmed `BookRequestService.afterCreate` calls `automation.considerRequest`
+   when a request auto-approves or is self-served. A plain request can trigger a live tracker search
+   immediately. "Request all" therefore shows the exact count and requires an explicit confirm
+   (`ConfirmDialog`) before firing, and is capped at `BOOK_REQUEST_BULK_LIMIT` (100) per batch.
+6. **Reuse, not reinvention**: per-row single Request calls the existing `POST /api/v1/book-requests`
+   directly (same pattern as `useMissingFormatRequest.ts`); only "Request all" gets a new server
+   endpoint, because looping 100+ individual HTTP calls client-side for one user action is worse than
+   one call that reuses `submit()` internally and returns aggregate counts.
+7. New endpoint: **`POST /api/v1/book-requests/bulk-submit`** (`BulkSubmitBookRequestsDto`, max
+   `BOOK_REQUEST_BULK_LIMIT` items, title+authors+coverUrl only) -> `BookRequestService.bulkSubmitFromMetadata`,
+   which loops `checkAvailability` + `submit()` per item (never writes to `book_requests` directly) and
+   returns `{ created, skipped, errors, results[] }`. Not `@Auditable` as one event, same reasoning as
+   `dismissMany`: the audit trail does not log one entry per batch today, and each created row's own
+   `afterCreate` log line still records it.
+8. **Client surfaces**: the Readwise-only list panel (`ReadingServiceMigrationPanel.vue`, already
+   fetches `GET .../migration/readwise-only`) gets a per-row Request button plus a header-level
+   "Request all" button; the "Owned elsewhere" dashboard shelf (`ExternalShelf.vue`, shared by every
+   `ReadingServiceShelf`) gets a per-card dropdown menu item, shown only when `shelf === 'owned-elsewhere'`.
+9. **States**: `idle` (never checked) -> `checking` -> `requestable` / `already-requested` / `owned`
+   (has a copy in the library; request hidden, not offered) -> on click, `requesting` -> `requested`
+   or `error` (with the server's refusal text where classified, same `submitFailureText` helper the
+   rest of the module uses).
+10. Tests: server (`bulkSubmitFromMetadata` created/skipped/error counts, permission-gated via the
+    existing controller guard), client (row states, hidden without permission, confirm dialog blocks
+    submission, shelf menu item gated on shelf type).
+
+---
+
 ## First commands for a successor agent
 
 ```bash
