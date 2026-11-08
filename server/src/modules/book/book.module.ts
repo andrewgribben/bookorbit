@@ -14,6 +14,7 @@ import { MetadataFetchModule } from '../metadata-fetch/metadata-fetch.module';
 import { MetadataScoreModule } from '../metadata-score/metadata-score.module';
 import { NarratorModule } from '../narrator/narrator.module';
 import { UserBookNoteModule } from '../user-book-note/user-book-note.module';
+import { UserBookReviewModule } from '../user-book-review/user-book-review.module';
 import { PositionConverterModule } from '../position-converter/position-converter.module';
 import { UserBookStatusModule } from '../user-book-status/user-book-status.module';
 import { AudiobookEbookProgressSyncService } from './audiobook-ebook-progress-sync.service';
@@ -50,6 +51,7 @@ import { ReadingProgressService } from './reading-progress.service';
     MetadataScoreModule,
     NarratorModule,
     UserBookNoteModule,
+    UserBookReviewModule,
     UserBookStatusModule,
     AchievementModule,
     PositionConverterModule,

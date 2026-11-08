@@ -65,6 +65,9 @@ export class BookDetailDto {
   rating: number | null;
   personalNote: string | null;
   personalNoteUpdatedAt: Date | null;
+  /** Synced both ways with Readwise's `review` field when that toggle is on (plan §9a D2). */
+  review: string | null;
+  reviewUpdatedAt: Date | null;
   communityRatings: BookCommunityRating[];
   coverSource: 'extracted' | 'custom' | null;
   coverMedia: CoverMedium[];

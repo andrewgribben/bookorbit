@@ -12,6 +12,7 @@ export const ACHIEVEMENT_EVENT_ACHIEVEMENT_AWARDED = 'achievement.awarded';
 export const ACHIEVEMENT_EVENT_BOOK_RATING_CHANGED = 'book.rating-changed';
 export const ACHIEVEMENT_EVENT_BOOK_PROGRESS_CHANGED = 'book.progress-changed';
 export const ACHIEVEMENT_EVENT_BOOK_HARDCOVER_EDITION_CHANGED = 'book.hardcover-edition-changed';
+export const ACHIEVEMENT_EVENT_BOOK_REVIEW_CHANGED = 'book.review-changed';
 
 export interface ReadingSessionSavedPayload {
   userId: number;
@@ -69,6 +70,12 @@ export interface BookHardcoverEditionChangedPayload {
   hardcoverEditionId: string;
 }
 
+export interface BookReviewChangedPayload {
+  userId: number;
+  bookId: number;
+  review: string | null;
+}
+
 export type AchievementEventPayload =
   | ReadingSessionSavedPayload
   | BookStatusChangedPayload
@@ -77,7 +84,8 @@ export type AchievementEventPayload =
   | LibraryCatalogChangedPayload
   | BookRatingChangedPayload
   | BookProgressChangedPayload
-  | BookHardcoverEditionChangedPayload;
+  | BookHardcoverEditionChangedPayload
+  | BookReviewChangedPayload;
 
 @Injectable()
 export class AchievementEventsService extends EventEmitter {}
