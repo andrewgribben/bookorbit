@@ -40,6 +40,10 @@ const saveShelfApi = vi.fn<typeof api>()
 
 vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: shelfUser }) }))
 vi.mock('@/lib/api', () => ({ api: (...args: Parameters<typeof api>) => saveShelfApi(...args) }))
+// Shelf labels look up provider display names; keep that fetch out of the save-call assertions.
+vi.mock('@/features/reading-services/composables/useReadingServices', () => ({
+  useReadingServices: () => ({ summaries: { value: [] }, getSummary: () => ({ value: null }), fetchSummaries: vi.fn() }),
+}))
 
 vi.mock('@/components/ui/sheet', () => {
   const passthrough = { template: '<div><slot /></div>' }

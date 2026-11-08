@@ -34,7 +34,7 @@ const { scrollers, shelfLayout, syncAcrossSessions, saveShelfSettings, MAX_SCROL
 const { widgets, libraryIds, saveWidgets, saveLibraryScope, DEFAULT_WIDGETS } = useDashboardWidgets()
 const { smartScopes, fetchSmartScopes } = useSmartScopes()
 const { libraries, fetchLibraries } = useLibraries()
-const { widgetName, shelfTypeName, externalShelfTitle, externalShelfDescription } = useDashboardLabels()
+const { widgetName, shelfTypeName, externalShelfTitle, externalShelfProviderName } = useDashboardLabels()
 const { pickerShelves: externalShelfPickerShelves, loaded: externalShelvesLoaded } = useExternalShelvesConfig()
 
 // Which providers are already connected, so the picker description can link unconnected ones
@@ -569,12 +569,15 @@ function handleCancel() {
               <div
                 v-for="entry in externalShelvesDraft"
                 :key="`${entry.provider}-${entry.shelf}`"
-                class="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+                class="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
               >
                 <button
                   type="button"
-                  class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none"
+                  class="relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   :class="entry.enabled ? 'bg-primary' : 'bg-muted'"
+                  role="switch"
+                  :aria-checked="entry.enabled"
+                  :aria-label="externalShelfTitle(entry.provider, entry.shelf)"
                   @click="toggleExternalShelf(entry)"
                 >
                   <span
@@ -582,20 +585,15 @@ function handleCancel() {
                     :class="entry.enabled ? 'translate-x-4' : 'translate-x-0'"
                   />
                 </button>
-                <div class="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{{
-                    externalShelfTitle(entry.provider, entry.shelf)
-                  }}</span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium leading-snug text-foreground">{{ externalShelfTitle(entry.provider, entry.shelf) }}</p>
                   <RouterLink
                     v-if="!connectedProviders.has(entry.provider)"
                     :to="providerSettingsRoute(entry.provider)"
-                    class="max-w-[45%] shrink-0 truncate text-right text-xs text-primary underline-offset-2 hover:underline"
+                    class="mt-0.5 inline-block text-xs text-primary underline-offset-2 hover:underline"
                   >
-                    {{ externalShelfDescription(entry.provider) }}
+                    {{ t('dashboard.settings.externalShelvesPicker.signInToShow', { provider: externalShelfProviderName(entry.provider) }) }}
                   </RouterLink>
-                  <span v-else class="max-w-[45%] shrink-0 truncate text-right text-xs text-muted-foreground">
-                    {{ externalShelfDescription(entry.provider) }}
-                  </span>
                 </div>
               </div>
             </div>
