@@ -11,6 +11,7 @@ import { CheckAvailabilityDto } from './dto/check-availability.dto';
 import { CreateBookRequestDto } from './dto/create-book-request.dto';
 import { CreateBookRequestPairDto } from './dto/create-book-request-pair.dto';
 import { BulkBookRequestsDto } from './dto/bulk-book-requests.dto';
+import { BulkSubmitBookRequestsDto } from './dto/bulk-submit-book-requests.dto';
 import { ListBookRequestsDto } from './dto/list-book-requests.dto';
 import { UpdateBookRequestLanguageDto } from './dto/update-book-request-language.dto';
 
@@ -91,6 +92,19 @@ export class BookRequestController {
   @HttpCode(HttpStatus.OK)
   checkAvailability(@Body() dto: CheckAvailabilityDto, @CurrentUser() user: RequestUser) {
     return this.service.checkAvailability(dto.items, user);
+  }
+
+  /**
+   * "Request all" from a list this module never populated (the Readwise-only migration list, the
+   * owned-elsewhere shelf). One `submit()` per item, same dedupe and automation as a single
+   * request; see `BookRequestService.bulkSubmitFromMetadata`. Not audited as one event, for the
+   * same reason `dismissMany` is not: there is no one resource id for a batch, and every row that
+   * is actually created still logs its own `[book_request.create]` line.
+   */
+  @Post('bulk-submit')
+  @HttpCode(HttpStatus.OK)
+  bulkSubmit(@Body() dto: BulkSubmitBookRequestsDto, @CurrentUser() user: RequestUser) {
+    return this.service.bulkSubmitFromMetadata(dto.items, user);
   }
 
   @Get(':id')

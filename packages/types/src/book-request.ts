@@ -651,3 +651,37 @@ export interface BookRequestBulkResult {
   updated: BookRequestItem[];
   failed: BookRequestBulkFailure[];
 }
+
+/**
+ * One item of a "request all" batch submitted from outside the request form itself (today, the
+ * Readwise-only list and the owned-elsewhere shelf): just enough to name the work, no destination
+ * or media choice, because the caller never asked the requester either. `externalId` is round-tripped
+ * so the client can match a result back to the row it came from without relying on title equality.
+ */
+export interface BulkSubmitBookRequestItem {
+  externalId: string;
+  title: string;
+  authors?: string[];
+  coverUrl?: string | null;
+}
+
+export interface BulkSubmitBookRequestsPayload {
+  items: BulkSubmitBookRequestItem[];
+}
+
+export type BulkSubmitBookRequestStatus = "created" | "skipped" | "error";
+
+export interface BulkSubmitBookRequestItemResult {
+  externalId: string;
+  status: BulkSubmitBookRequestStatus;
+  requestId?: number;
+  /** Set only for "error": the server's refusal text, already resolved from an error code where it had one. */
+  message?: string;
+}
+
+export interface BulkSubmitBookRequestsResult {
+  created: number;
+  skipped: number;
+  errors: number;
+  results: BulkSubmitBookRequestItemResult[];
+}

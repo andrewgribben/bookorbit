@@ -1869,6 +1869,68 @@ describe('BookRequestService.checkAvailability', () => {
   });
 });
 
+describe('BookRequestService.bulkSubmitFromMetadata', () => {
+  it('creates a new request for an item with no owned copy or active request', async () => {
+    const { service, repo } = makeService();
+    const result = await service.bulkSubmitFromMetadata([{ externalId: 'rw-1', title: 'Dune', authors: ['Frank Herbert'] }], user());
+
+    expect(result).toEqual({ created: 1, skipped: 0, errors: 0, results: [{ externalId: 'rw-1', status: 'created', requestId: 10 }] });
+    expect(repo.create).toHaveBeenCalledOnce();
+  });
+
+  it('counts an item the dedupe check already knows about as skipped, not created', async () => {
+    const { service, dedupe } = makeService({
+      dedupe: { checkAvailability: vi.fn().mockResolvedValue([{ ownedBookId: null, existingRequestId: 99, existingRequestStatus: 'pending', alreadySubscribed: false }]) },
+    });
+    const result = await service.bulkSubmitFromMetadata([{ externalId: 'rw-2', title: 'Dune', authors: ['Frank Herbert'] }], user());
+
+    expect(dedupe.checkAvailability).toHaveBeenCalled();
+    expect(result.created).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(result.results[0]).toMatchObject({ externalId: 'rw-2', status: 'skipped' });
+  });
+
+  it('reports a blank title as an error without submitting anything', async () => {
+    const { service, repo } = makeService();
+    const result = await service.bulkSubmitFromMetadata([{ externalId: 'rw-3', title: '   ' }], user());
+
+    expect(result).toEqual({ created: 0, skipped: 0, errors: 1, results: [{ externalId: 'rw-3', status: 'error', message: 'Title is required' }] });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('reports a submission refusal as an error with the server message', async () => {
+    const { service } = makeService({ repo: { create: vi.fn().mockRejectedValue(new BadRequestException('Nope')) } });
+    const result = await service.bulkSubmitFromMetadata([{ externalId: 'rw-4', title: 'Dune' }], user());
+
+    expect(result.errors).toBe(1);
+    expect(result.results[0]).toMatchObject({ externalId: 'rw-4', status: 'error', message: 'Nope' });
+  });
+
+  it('tallies created, skipped and error counts across a mixed batch', async () => {
+    const { service } = makeService({
+      dedupe: {
+        checkAvailability: vi
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([{ ownedBookId: 5, existingRequestId: null, existingRequestStatus: null, alreadySubscribed: false }]),
+      },
+    });
+    const result = await service.bulkSubmitFromMetadata(
+      [
+        { externalId: 'rw-5', title: 'Dune' },
+        { externalId: 'rw-6', title: 'Dune Messiah' },
+        { externalId: 'rw-7', title: '' },
+      ],
+      user(),
+    );
+
+    expect(result.created).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.errors).toBe(1);
+    expect(result.results.map((r) => r.externalId)).toEqual(['rw-5', 'rw-6', 'rw-7']);
+  });
+});
+
 describe('BookRequestService.getSummary', () => {
   it('leaves the approver counts at zero for a plain requester', async () => {
     const countForUser = vi.fn().mockResolvedValueOnce(4).mockResolvedValueOnce(9);
