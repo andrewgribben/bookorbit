@@ -2086,6 +2086,30 @@ require-await fixes", "feat(db): migration 0144".
     cleared from the DOM input synchronously on submit, connected collapse,
     `needsReconnect`, confirm-before-disconnect), `usePrivateAdapterNavItems.spec.ts`
     (nav lists only adapters with `authMethods`, built-ins absent, label fallback).
+  - **Gates this continuation** (all on Unraid, commits
+    `77d4ee1e8`..`1324056fa` on top of `a87486a4a`): server + client `type-check`
+    exit 0 both; client vitest for `reading-services`/`readwise`/`hardcover`/`settings`
+    (the full targeted run, not just the new files, since the collapse treatment
+    touches Readwise/Hardcover's existing specs): 101/101 files, 1203/1203 tests;
+    server vitest `reading-services`: 15/15 files, 140/140 tests (includes the
+    password-throttle guard test); `validate-locales.mjs`: "Validated 25 locale
+    catalogs against 12252 English messages"; changed-file `eslint`/`prettier`:
+    clean (one real finding fixed - the device-code copy button now goes through
+    `copyToClipboard` instead of `navigator.clipboard` directly, per the
+    HTTP/self-hosted-origin eslint guard); `design-taste-frontend`'s `lint.mjs` on
+    every new `.vue` file: 0 FAIL (one WARN, `outlined-box` on the Sign-in card's
+    border - the same pattern Readwise/Hardcover's own cards already use, kept for
+    consistency with the existing design system). Boot gate: build succeeded (1558
+    files via swc); against the already-migrated disposable DB
+    (`bookorbit-disposable-db`, `127.0.0.1:55452`, migration 144 applied), `node
+    dist/main.js` logged "Nest application successfully started" exactly once and
+    zero `"level":50` lines.
+  - Three pre-existing Readwise/Hardcover specs needed a one-line "click Switch
+    account first" fix each (they'd assumed the form was always visible); the
+    Hardcover spec's `disconnect` mock was also changed to set `settings.value =
+    null`, matching what the real `useHardcoverSettings.disconnect()` actually does
+    - without that the mock left `tokenConfigured` true after disconnecting and the
+    card would incorrectly re-collapse to "Connected".
 
 ### Auth method contract (packages/types)
 
