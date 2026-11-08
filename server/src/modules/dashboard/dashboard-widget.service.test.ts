@@ -52,8 +52,9 @@ function makeService() {
   };
 
   const events = new ReadingAttemptEventsService();
-  const service = new DashboardWidgetService(widgetRepo as never, libraryService as never, events);
-  return { service, widgetRepo, libraryService, events };
+  const readwiseRecapService = { getRecap: vi.fn().mockResolvedValue(null) };
+  const service = new DashboardWidgetService(widgetRepo as never, libraryService as never, events, readwiseRecapService as never);
+  return { service, widgetRepo, libraryService, events, readwiseRecapService };
 }
 
 describe('DashboardWidgetService', () => {
@@ -878,6 +879,24 @@ describe('DashboardWidgetService', () => {
       await service.getReadingDna(denver());
 
       expect(widgetRepo.getReadingDnaData).toHaveBeenCalledWith(42, [1], expect.any(Date), 'America/Denver', EMPTY_CONTENT_FILTER_RULES);
+    });
+  });
+
+  describe('getReadingRecap', () => {
+    it('delegates to ReadwiseRecapService with the reader-local year', async () => {
+      const { service, readwiseRecapService } = makeService();
+      const recap = { provider: 'readwise', year: 2026, booksFinished: 1, sessions: 1, totalSeconds: 1, readingDays: 1, goal: null, byMonth: [] };
+      readwiseRecapService.getRecap.mockResolvedValue(recap);
+
+      await expect(service.getReadingRecap(makeUser())).resolves.toEqual(recap);
+      expect(readwiseRecapService.getRecap).toHaveBeenCalledWith(42, expect.any(Number));
+    });
+
+    it('returns null when Readwise is not connected', async () => {
+      const { service, readwiseRecapService } = makeService();
+      readwiseRecapService.getRecap.mockResolvedValue(null);
+
+      await expect(service.getReadingRecap(makeUser())).resolves.toBeNull();
     });
   });
 

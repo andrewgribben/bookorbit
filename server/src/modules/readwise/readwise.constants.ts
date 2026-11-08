@@ -87,3 +87,14 @@ export const READWISE_SESSIONS_PULL_INTERVAL_MS = READWISE_BOOKS_PULL_INTERVAL_M
 export const READWISE_SESSIONS_PULL_USER_CONCURRENCY = READWISE_BOOKS_PULL_USER_CONCURRENCY;
 export const READWISE_SESSIONS_PULL_CURSOR_CACHE_KEY = 'sessions-pull-cursor';
 export const READWISE_SESSIONS_PULL_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+
+// S7 dashboard recap widget: cache key and TTL (plan §5.5/§7, "sensible TTL e.g. 1h").
+export const READWISE_RECAP_CACHE_KEY_PREFIX = 'recap';
+export const READWISE_RECAP_CACHE_TTL_MS = 60 * 60_000;
+
+// S7 "Owned elsewhere" shelf: Readwise-only books classified as owned (readwise-book-ownership.ts),
+// excluding anything already linked to a BookOrbit book. Cached longer than the recap widget
+// since it needs a full remote-library page plus a full local-library page to build.
+export const READWISE_OWNED_ELSEWHERE_CACHE_KEY = 'owned-elsewhere';
+export const READWISE_OWNED_ELSEWHERE_CACHE_TTL_MS = 6 * 60 * 60_000;
+export const READWISE_OWNED_ELSEWHERE_LOCAL_PAGE_SIZE = 500;
