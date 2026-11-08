@@ -1,4 +1,5 @@
 import type { BookCard } from "./book";
+import type { ExternalBookCard, ReadingRecapWidget } from "./reading-services";
 
 export const SCROLLER_TYPE = {
   RECENTLY_ADDED: "recently-added",
@@ -103,6 +104,7 @@ export const WIDGET_TYPE = {
   LIBRARY_OVERVIEW: "library-overview",
   YEAR_PROJECTION: "year-projection",
   LONG_WAIT: "long-wait",
+  READING_RECAP: "reading-recap",
 } as const;
 
 export type WidgetType = (typeof WIDGET_TYPE)[keyof typeof WIDGET_TYPE];
@@ -280,6 +282,17 @@ export interface WidgetDataByType {
   "library-overview": LibraryOverviewWidgetData;
   "year-projection": YearProjectionWidgetData;
   "long-wait": LongWaitWidgetData | null;
+  "reading-recap": ReadingRecapWidget | null;
+}
+
+/**
+ * The "Owned elsewhere" dashboard shelf (S7, D1 in the reading-services plan). Not a BookCard
+ * scroller: Readwise-only books can't be hydrated into a full library card, so this is its own
+ * response shape rendered by its own component rather than the generic DashboardScroller.
+ */
+export interface ExternalBookShelfResponse {
+  books: ExternalBookCard[];
+  total: number | null;
 }
 
 export const DASHBOARD_WIDGET_BATCH_MAX = WIDGET_TYPES.length;
