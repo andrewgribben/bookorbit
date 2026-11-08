@@ -389,7 +389,7 @@ describe('ReadingServicesController', () => {
 
     const result = await controller.getShelf(user, 'private-service', 'trending');
 
-    expect(matchRepository.findCandidates).toHaveBeenCalledWith(1, ['9780441013593'], ['dune']);
+    expect(matchRepository.findCandidates).toHaveBeenCalledWith(1, 'private-service', ['9780441013593'], ['dune']);
     expect(result).toEqual([
       { provider: 'private-service', externalId: 'ext1', title: 'Dune', authors: ['Frank Herbert'], bookId: 42, friend: null },
     ]);
@@ -460,7 +460,15 @@ describe('ReadingServicesController', () => {
 
   describe('library scope endpoints', () => {
     it('updates a library setting through PUT and returns the stored effective values', async () => {
-      const { controller, libraryScopeService } = makeController();
+      const { controller, registry, libraryScopeService } = makeController();
+      registry.register({
+        provider: 'readwise',
+        permission: Permission.ReadwiseSync,
+        capabilities: {},
+        isConnected: () => Promise.resolve(true),
+        migratePage: () => Promise.resolve(null),
+        pull: () => Promise.resolve(undefined),
+      });
       const user = makeUser([Permission.ReadwiseSync]);
       vi.mocked(libraryScopeService.setLibrarySetting).mockResolvedValue({ libraryId: 2, enabled: false, features: {} });
 
@@ -471,14 +479,30 @@ describe('ReadingServicesController', () => {
     });
 
     it('rejects a PUT for a provider the user lacks permission for', async () => {
-      const { controller } = makeController();
+      const { controller, registry } = makeController();
+      registry.register({
+        provider: 'readwise',
+        permission: Permission.ReadwiseSync,
+        capabilities: {},
+        isConnected: () => Promise.resolve(true),
+        migratePage: () => Promise.resolve(null),
+        pull: () => Promise.resolve(undefined),
+      });
       const user = makeUser([]);
 
       await expect(controller.updateLibrary(user, 'readwise', 2, { enabled: false })).rejects.toThrow(ForbiddenException);
     });
 
     it('resets a library setting through DELETE', async () => {
-      const { controller, libraryScopeService } = makeController();
+      const { controller, registry, libraryScopeService } = makeController();
+      registry.register({
+        provider: 'hardcover',
+        permission: Permission.HardcoverSync,
+        capabilities: {},
+        isConnected: () => Promise.resolve(true),
+        migratePage: () => Promise.resolve(null),
+        pull: () => Promise.resolve(undefined),
+      });
       const user = makeUser([Permission.HardcoverSync]);
 
       const result = await controller.resetLibrary(user, 'hardcover', 3);
@@ -488,7 +512,15 @@ describe('ReadingServicesController', () => {
     });
 
     it('includes the libraries array from the scope service in the provider summary', async () => {
-      const { controller, libraryScopeService } = makeController();
+      const { controller, registry, libraryScopeService } = makeController();
+      registry.register({
+        provider: 'readwise',
+        permission: Permission.ReadwiseSync,
+        capabilities: {},
+        isConnected: () => Promise.resolve(true),
+        migratePage: () => Promise.resolve(null),
+        pull: () => Promise.resolve(undefined),
+      });
       const user = makeUser([Permission.ReadwiseSync]);
       vi.mocked(libraryScopeService.getLibrarySummaries).mockResolvedValue([{ libraryId: 1, enabled: true, features: {} }]);
 
