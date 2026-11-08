@@ -30,6 +30,42 @@ Hard requirements:
 
 ---
 
+## S2: Readwise Books migration (2026-11-08)
+
+Branch `feat-readwise-books-migration`, stacked on `feat-reading-services-core` @ `d0532d3d`. Worktrees: PC `D:/Development/bookorbit-worktrees/feat-readwise-books-migration`, Unraid `/mnt/user/data/Development/bookorbit-worktrees/feat-readwise-books-migration`. Final hash **`2b87bc0d33258eb0769e2ca873346952391f0b15`**, local only, not pushed.
+
+All edits were made on the PC worktree and committed there; every install, build, lint, typecheck and test run happened over SSH on Unraid, per the task's PC/Unraid split. Commits were moved to Unraid with `git bundle` + `scp` into a scratch ref, then fast-forwarded (or, once, reset after an amend) into the Unraid worktree. No schema change was needed: S1 already created `reading_service_book_links` et al. in migration 0139, so no `db:generate` or disposable Postgres run was required for this stage.
+
+What was built (plan section "S2 tasks: Readwise migration"):
+
+1. **`readwise-books-client.service.ts`** - Books API v1 client (`listBooks`, `getBooksByIsbns`, `createBooks`, `updateBooks`, `listSessions`, `createSessions`, `deleteSessions`, `statsSummary`, `sessionsByDay`). Reuses `ReadwiseQueueService`'s per-user throttle, honours `Retry-After` on 429, and raises a dedicated `ReadwiseBooksForbiddenError` on 403.
+2. **`book-matcher.ts`** (shared `reading-services` core, not Readwise-specific) - pure `matchBook`/`buildRemoteIndex`, isbn13 then isbn10-converted then normalized-title-author, with edition collapse and `product:null` cases covered.
+3. **`readwise-books-migration.service.ts`** - implements `ReadingServiceProviderAdapter.migratePage`: an index phase pages the full remote library into the shared `reading_service_cache` (TTL 1h), then a push phase walks local books 200 at a time (`readwise-books-local-books.repository.ts`), matches, and calls `updateBooks` for matches or `createBooks` for unmatched non-`unread` books. Every push writes a `reading_service_book_links` snapshot before the cursor advances, so a crash mid-run resumes from the last persisted page rather than resending. Registers itself with `ReadingServiceRegistry` in `onModuleInit`.
+4. **Migration preview** - `previewMigration` on the adapter (added as an optional method on `ReadingServiceProviderAdapter`, since not every provider has one yet) does a read-only dry run and the controller's `/migration/preview` endpoint now calls it instead of returning a hardcoded zero.
+5. **D1 ownership classification** - `readwise-book-ownership.ts` classifies a Readwise-only book's `creation_origin` as `owned`, `not_owned`, or explicitly `unknown` when the origin is missing or unrecognised; it never assumes ownership it cannot support. Readwise-only books are counted in the run's `skipped` counter and the classified list is cached under `reading_service_cache` key `migration-readwise-only` for a future UI to read (no UI was built in this stage, as instructed).
+6. **Status mapping** - `readwise-books-status-mapping.ts` implements both directions of the section 4.1 table (push is wired into the migration; pull is only unit-tested now, ready for stage S3).
+7. **403 handling** - any Books API call that returns 403 sets `readwise_user_settings.disabled_reason = 'no_readwise_books'` and disables the connection, via a small `callReadwise` wrapper in the migration service.
+
+Deliberate scope cut from the plan's task 5: the plan asked for an e2e test against the disposable Postgres on 55436. Given the "focused checks only, full/e2e suites deferred to PR" instruction already in force for this whole feature, I wrote `readwise-books-migration.service.test.ts` as a NestJS-service-level test with fake repositories and a mocked `fetch`-backed client instead of a real-Postgres e2e spec (seeds the same 3-book matched/created/skip scenario from the plan). No real or disposable database was touched by this stage. Flag this if the eventual PR review wants a true DB-backed e2e added before merge.
+
+No live Readwise calls, no writes to the production `bookorbit-db`, and nothing in this stage touches the private Readwise POC (not referenced, not imported).
+
+**Verified on Unraid** (worktree above, after `pnpm install --frozen-lockfile`, `pnpm --filter @bookorbit/types build`, `pnpm --filter @bookorbit/plugin-api build`):
+
+- Targeted `npx vitest run` across the new/changed files (`book-matcher`, `readwise-book-ownership`, `readwise-books-status-mapping`, `readwise-books-client.service`, `readwise-books-migration.service`, `reading-services.controller`, plus the untouched-but-adjacent `readwise-client.service`, `readwise.repository`, `three-way-merge`): **9 files, 97 tests, all passed.**
+- `npx eslint src/modules/reading-services src/modules/readwise`: clean, 0 problems.
+- `npx prettier --check src/modules/reading-services src/modules/readwise`: all matched files use Prettier style.
+- `npx tsc -p tsconfig.build.json --noEmit` (full server typecheck): clean. (Needed `pnpm --filter @bookorbit/plugin-api build` first; that workspace package's `dist` wasn't present in the fresh worktree, unrelated to this stage's changes - confirmed by the same tsc run being clean on the untouched `feat-reading-services-core` worktree once its `dist` existed too.)
+- Full repo-wide `pnpm run lint:check`, client typecheck, and the full/e2e test suites were **not** run, per the "focused checks only" instruction; defer to PR preparation.
+
+Unresolved / notes for the next agent:
+
+- `ReadwiseBooksMigrationService.previewMigration` and the index-build phase both page the whole remote library with no cap; fine for a personal library, but should get a progress callback or a hard cap if this is ever exposed for very large libraries before S3/S6.
+- Sessions, highlights-via-this-adapter and the recap widget pieces of the plan's task 1 method list (`listSessions`/`createSessions`/`deleteSessions`/`statsSummary`/`sessionsByDay`) are implemented in the client but not yet wired to anything; that lands in S4/S7.
+- No UI was touched, as instructed; `migration-readwise-only` cache entries are ready for S6a's mockup to consume.
+
+---
+
 ## Merge: upstream 2026-11-08 into feat-reading-services-core (2026-11-08)
 
 Worktree: `/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-core` (PC mirror: `D:/Development/bookorbit-worktrees/feat-reading-services-core`).
