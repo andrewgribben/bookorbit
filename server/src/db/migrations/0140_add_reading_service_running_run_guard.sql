@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "rs_runs_user_provider_kind_running_uidx" ON "reading_service_runs" USING btree ("user_id","provider","kind") WHERE "reading_service_runs"."status" = 'running';
