@@ -465,9 +465,15 @@ describe('ReadwiseBooksMigrationService', () => {
   });
 
   describe('isConnected', () => {
-    it('is false when settings are disabled', async () => {
+    it('is true with a saved token even when highlight sync is switched off', async () => {
       const { service, readwiseRepo } = makeService();
       (readwiseRepo.findSettings as any).mockResolvedValueOnce({ enabled: false, disabledReason: null });
+      await expect(service.isConnected(1)).resolves.toBe(true);
+    });
+
+    it('is false when Readwise rejected the token', async () => {
+      const { service, readwiseRepo } = makeService();
+      (readwiseRepo.findSettings as any).mockResolvedValueOnce({ enabled: true, disabledReason: 'invalid_token' });
       await expect(service.isConnected(1)).resolves.toBe(false);
     });
 

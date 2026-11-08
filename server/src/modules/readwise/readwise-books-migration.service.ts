@@ -147,8 +147,10 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   }
 
   async isConnected(userId: number): Promise<boolean> {
+    // `enabled` is the highlights-sync toggle, not the connection: a saved token is the connection,
+    // unless Readwise has rejected it or the account has no Readwise Books access.
     const settings = await this.readwiseRepo.findSettings(userId);
-    if (!settings?.enabled || settings.disabledReason) return false;
+    if (settings?.disabledReason === 'invalid_token' || settings?.disabledReason === 'no_readwise_books') return false;
     const token = await this.readwiseSettings.getToken(userId);
     return token !== null;
   }
