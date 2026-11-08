@@ -39,6 +39,7 @@ export * from './koreader';
 export * from './achievements';
 export * from './hardcover';
 export * from './readwise';
+export * from './reading-services';
 export * from './read-aloud';
 export * from './storygraph';
 export * from './shared-reading-insights';

@@ -9,7 +9,10 @@ export const hardcoverUserSettings = pgTable('hardcover_user_settings', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' })
     .unique(),
-  apiToken: varchar('api_token', { length: 2048 }).notNull(),
+  // Nullable so the lazy token-encryption migration can null it out once the value is
+  // re-encrypted into `apiTokenEncrypted` (see ReadingServiceTokenService).
+  apiToken: varchar('api_token', { length: 2048 }),
+  apiTokenEncrypted: text('api_token_encrypted'),
   enabled: boolean('enabled').notNull().default(true),
   bookSyncMode: varchar('book_sync_mode', { length: 20 }).notNull().default('all_eligible'),
   autoSyncOnStatusChange: boolean('auto_sync_on_status_change').notNull().default(true),
