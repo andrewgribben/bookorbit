@@ -10638,7 +10638,8 @@
         "title": "External shelves",
         "description": "Shelves from your connected reading services. Turn one on to show it on the dashboard.",
         "empty": "Connect Readwise or Hardcover to see shelves here.",
-        "notConnected": "Not connected"
+        "notConnected": "Not connected",
+        "signInToShow": "Sign in to {provider} to show this"
       }
     },
     "welcome": {

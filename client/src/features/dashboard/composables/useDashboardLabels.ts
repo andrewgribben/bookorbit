@@ -1,7 +1,9 @@
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ReadingServiceProvider, ReadingServiceShelf, ScrollerConfig, ScrollerType, WidgetType } from '@bookorbit/types'
 import type { MessageSchema } from '@/i18n'
+import { useReadingServices } from '@/features/reading-services/composables/useReadingServices'
 
 type WidgetNameKey = keyof MessageSchema['dashboard']['settings']['widgetNames']
 type ShelfNameKey = keyof MessageSchema['dashboard']['settings']['shelfNames']
@@ -51,6 +53,15 @@ const EXTERNAL_SHELF_PROVIDER_KEYS: Record<ReadingServiceProvider, ExternalShelf
 
 export function useDashboardLabels() {
   const { t } = useI18n()
+  const { getSummary, fetchSummaries } = useReadingServices()
+
+  // Needed only for externalShelfProviderName's unknown-provider fallback (a private adapter's
+  // displayName). Harmless no-op network call for the common case where every shelf is
+  // built-in, and consistent with how every other reading-services consumer refreshes this
+  // shared state (see ReadingServiceSettings.vue, usePrivateAdapterNavItems).
+  onMounted(() => {
+    void fetchSummaries()
+  })
 
   function widgetName(type: WidgetType): string {
     return t(`dashboard.settings.widgetNames.${WIDGET_NAME_KEYS[type]}`)
@@ -69,8 +80,16 @@ export function useDashboardLabels() {
     return smartScopeName || shelfTypeName('smart-scope')
   }
 
-  function externalShelfProviderName(provider: ReadingServiceProvider): string {
-    return t(`dashboard.externalShelves.providerNames.${EXTERNAL_SHELF_PROVIDER_KEYS[provider]}`)
+  // `provider` is widened to `string`: built-in providers (readwise, hardcover) match a known
+  // translation key, but private adapters (e.g. a friends/social adapter) report their own id
+  // and are never in `EXTERNAL_SHELF_PROVIDER_KEYS` -- falling through to `t()` with an
+  // `undefined` key previously rendered the raw key path verbatim (owner bug report). Fall back
+  // to the provider's own summary `displayName`, then its bare id, same precedence as
+  // `usePrivateAdapterNavItems`.
+  function externalShelfProviderName(provider: string): string {
+    const key = EXTERNAL_SHELF_PROVIDER_KEYS[provider as ReadingServiceProvider]
+    if (key) return t(`dashboard.externalShelves.providerNames.${key}`)
+    return getSummary(provider as ReadingServiceProvider).value?.displayName || provider
   }
 
   function externalShelfName(shelf: ReadingServiceShelf): string {
@@ -78,11 +97,11 @@ export function useDashboardLabels() {
   }
 
   /** Composed title for a generic provider shelf, e.g. "Hardcover: Trending", used by both the dashboard and the picker. */
-  function externalShelfTitle(provider: ReadingServiceProvider, shelf: ReadingServiceShelf): string {
+  function externalShelfTitle(provider: string, shelf: ReadingServiceShelf): string {
     return t('dashboard.externalShelves.title', { provider: externalShelfProviderName(provider), shelf: externalShelfName(shelf) })
   }
 
-  function externalShelfDescription(provider: ReadingServiceProvider): string {
+  function externalShelfDescription(provider: string): string {
     return t('dashboard.externalShelves.description', { provider: externalShelfProviderName(provider) })
   }
 
