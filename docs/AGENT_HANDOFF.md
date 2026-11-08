@@ -2003,18 +2003,72 @@ Documented here per the task, since code is not a complete guard: **two BookOrbi
 - `readwise-books-migration.service.test.ts` - added two tests: an exact-match book links silently with no `updateBooks` call, and a differing book still pushes and still writes the link (overwrite-logging path).
 - **Not added in this stage**: the task's stateful in-memory fake-remote instance-A/instance-B integration test per provider, and unit tests for a Hardcover matcher (none was needed, see audit above). Flag for the next agent/PR review - this is the largest deferred item from the task list; see "Deferred / risks" below.
 
-### Verified on Unraid
+### Addendum: the deferred A/B integration tests (follow-up stage)
 
+The single biggest deferred item above - the stateful in-memory fake-remote instance-A/instance-B
+integration test per provider - was built as a follow-up stage on this same branch:
+
+- `server/src/modules/readwise/readwise-reconnect-two-instance.integration.test.ts` (new, 2 tests).
+- `server/src/modules/hardcover/hardcover-reconnect-two-instance.integration.test.ts` (new, 2 tests).
+
+Harness choice: a real Postgres-backed two-database harness (one DB per "instance") does not exist
+in this repo - `server/test/e2e/app-harness.ts` wires one NestJS app onto one already-migrated
+database, not two independent instances sharing nothing but a fake external account. Building that
+is out of scope for a change confined to `server/src/modules/readwise` and
+`server/src/modules/hardcover`. Per the task's documented fallback, both files construct the real
+service classes directly (the same pattern every other `*.test.ts` file in these modules already
+uses) against hand-rolled but fully stateful in-memory fakes: one call-counted fake remote shared by
+both instances, and one fake local-DB layer scoped by `userId` (so "instance A" and "instance B" are
+two different `userId`s acting on the same book/session/highlight/user_book rows a snapshot restore
+would otherwise duplicate across two physical databases). This does not exercise real Drizzle/SQL -
+repository query correctness remains covered by each repository's own unit tests.
+
+Scenarios covered (each provider): instance A syncs first from a snapshot, Readwise/Hardcover-side
+changes are then made independently of BookOrbit (a rating edit, a session logged in the Readwise
+app), then instance B (same snapshot's book plus its own local rating/status/session/highlight
+changes, empty ledger) connects and runs two full cycles; a third test is a never-synced instance's
+first migration. All of the task's duplicate/precedence/idempotency assertions pass:
+- no duplicate remote book/session/highlight/user_book/read for the shared natural key (checked by
+  count per ISBN / per Hardcover `book_id`);
+- instance B's local values win on the remote (rating, status) over both A's earlier push and the
+  simulated app-side edit;
+- A's remote-side session addition imports into B exactly once (reconciled-into-link or pulled-as-new,
+  never both);
+- pulled Readwise sessions carry no progress/position fields (`endProgress`/`progressDelta` are
+  `null` on the inserted row);
+- the second cycle for instance B makes zero additional mutating remote calls for both providers.
+
+**No bug was found or fixed in either module.** Both integration tests passed on the first run
+against the already-existing `readwise-sessions-reconcile.service.ts`,
+`readwise-books-migration.service.ts` and `hardcover-sync.service.ts` logic - this is a positive
+result that *confirms* the reconnect-safety behaviour already documented above (the ISBN-first-match
+book lookup, the sessions reconcile-before-push pass, and Hardcover's `book_id`-keyed
+insert-or-find) actually holds end-to-end across two instances, not just in each service's own unit
+tests. No code change to `server/src/modules/readwise` or `server/src/modules/hardcover` was
+required for this stage.
+
+Verified on Unraid for this addendum:
 - `pnpm run typecheck:server` - clean, exit 0.
-- `pnpm run typecheck:client` - clean, exit 0.
-- Focused `pnpm vitest run src/modules/readwise src/modules/hardcover src/modules/reading-services`: **55 test files, 728 tests, all passed.**
-- `pnpm exec eslint` on every changed file: clean, 0 problems (one round trip needed: `--fix` reformatted 4 files on Unraid; those exact formatting diffs were copied back to the PC worktree with `patch` and folded into the commit with `git commit --amend`, matching the documented PC-edits/Unraid-checks split).
-- No schema changes in this stage, so no `db:generate`/migration/drift-check gate applied.
-- Boot gate (`pnpm --filter server run build` then `node dist/main.js` against the disposable Postgres): see result below.
+- Focused `pnpm vitest run src/modules/readwise src/modules/hardcover`: **45 test files, 622 tests,
+  all passed** (includes both new integration test files, 4 tests total).
+- Changed-file `npx prettier --check` and `eslint` on both new test files: clean, 0 problems (one
+  `eslint --fix` round trip for formatting, then manual fixes for `@typescript-eslint/require-await`
+  via a file-level disable comment - the fakes deliberately implement real async interfaces
+  synchronously - and for a handful of unused constructor/method parameters).
+- BOOT GATE: `pnpm --filter server run build` then, against a disposable
+  `pgvector/pgvector:pg18` container on `127.0.0.1:55458` (migrated with `pnpm db:migrate`, removed
+  afterwards), `timeout 90 node dist/main.js` logged `"Nest application successfully started"`
+  exactly once and `grep -c '"level":50'` was `0`.
+
+Remaining risk (carried forward, unchanged by this addendum): the "two concurrent instances must
+never sync the same account at the same time" risk documented above is still a process control, not
+a code control - this addendum's tests run A and B sequentially, as the task described, and cannot
+exercise or rule out a true concurrent-write race.
 
 ### Deferred / risks for the owner's staging-then-live plan
 
-1. **No stateful in-memory fake-remote integration test was written.** This is the task's strongest piece of end-to-end evidence ("instance A syncs, instance B with the same snapshot + local changes reconciles against the same fake remote, assert zero duplicates") and it was not built in this stage - unit-level coverage of each matcher exists, but nothing exercises the full A-then-B flow together. Recommend this be the first thing added before this branch is considered mergeable.
+1. ~~**No stateful in-memory fake-remote integration test was written.**~~ Resolved by the addendum
+   above - both providers now have a two-instance integration test, no bug found.
 2. **The "reconciling" phase is not exposed in sync-run status** (see above) - functional behaviour is in place for sessions, but the owner/UI has no visibility into it beyond logs until the sibling branch's sync-run status work lands and this is wired in.
 3. **Books migration's reconcile-before-create was already in place pre-stage** (full-library index phase) but review/rating/date overwrite-logging is new and unverified against a real reconnect scenario - only unit-tested with fakes.
 4. **Concurrent-instance race is a process control, not a code control** (see above) - there is nothing stopping the owner from running staging and live sync at the same time today beyond this document.
