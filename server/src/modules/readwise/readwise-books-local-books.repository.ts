@@ -5,8 +5,8 @@ import type { ReadStatus } from '@bookorbit/types';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import { LibraryService } from '../library/library.service';
 import type { RequestUser } from '../../common/types/request-user';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -31,13 +31,20 @@ function toIsoMidnight(dateOnly: string | null): string | null {
 export class ReadwiseBooksLocalBooksRepository {
   constructor(
     @Inject(DB) private readonly db: Db,
-    private readonly libraryService: LibraryService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
   ) {}
 
-  /** Resolves the accessible libraries for a user from only their id, for adapters that only get a userId. */
+  /**
+   * Resolves the accessible libraries for a user from only their id, intersected with the
+   * Readwise library scope (owner decision: push/pull/migration/owned-elsewhere all read through
+   * `findOne`/`findPage` below, so scoping it here is the one change that gates all of them).
+   * Enabled-only (no specific feature): status/rating/review/dates push as one bundle today, so
+   * a per-library per-feature override on one of those fields isn't honoured at this level yet
+   * (see docs/AGENT_HANDOFF.md's open-questions note).
+   */
   private async accessibleLibraryIds(userId: number): Promise<number[]> {
     const pseudoUser = await this.resolveUser(userId);
-    return this.libraryService.findAccessibleLibraryIds(pseudoUser);
+    return this.libraryScopeService.getEffectiveLibraryIds(pseudoUser, 'readwise', null);
   }
 
   /**

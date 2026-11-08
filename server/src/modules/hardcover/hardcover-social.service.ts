@@ -257,7 +257,7 @@ export class HardcoverSocialService {
     const isbn13s = books.map((book) => bookIsbns(book).isbn13).filter((isbn): isbn is string => Boolean(isbn));
     const titlesLower = books.map((book) => book.title?.toLowerCase()).filter((title): title is string => Boolean(title));
 
-    const candidates = await this.matchRepo.findCandidates(userId, isbn13s, titlesLower);
+    const candidates = await this.matchRepo.findCandidates(userId, 'hardcover', isbn13s, titlesLower);
     if (candidates.length === 0) return new Map();
 
     const index = buildRemoteIndex(candidates);

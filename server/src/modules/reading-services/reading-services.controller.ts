@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 
@@ -30,8 +31,9 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PermissionService } from '../../common/services/permission.service';
 import type { RequestUser } from '../../common/types/request-user';
 import { buildRemoteIndex, isbn10ToIsbn13, matchBook } from './book-matcher';
-import { UpdateReadingServiceFeaturesDto } from './dto';
+import { UpdateReadingServiceFeaturesDto, UpdateReadingServiceLibraryDto } from './dto';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 import { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import type { ReadingServiceProviderAdapter } from './reading-service-provider';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
@@ -65,6 +67,7 @@ export class ReadingServicesController {
   constructor(
     private readonly registry: ReadingServiceRegistry,
     private readonly featuresService: ReadingServiceFeaturesService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
     private readonly syncRunService: ReadingServiceSyncRunService,
     private readonly permissionService: PermissionService,
     private readonly matchRepository: ReadingServiceMatchRepository,
@@ -76,10 +79,11 @@ export class ReadingServicesController {
     for (const adapter of this.registry.list()) {
       if (!this.permissionService.userHas(user, this.permissionFor(adapter))) continue;
 
-      const [connected, features, migration] = await Promise.all([
+      const [connected, features, migration, libraries] = await Promise.all([
         adapter.isConnected(user.id),
         this.featuresService.getFeatures(user.id, adapter.provider),
         this.syncRunService.getLatestMigrationSummary(user.id, adapter.provider),
+        this.libraryScopeService.getLibrarySummaries(user, adapter.provider as ReadingServiceProvider),
       ]);
 
       summaries.push({
@@ -90,6 +94,7 @@ export class ReadingServicesController {
         migration,
         lastPullAt: null,
         disabledReason: null,
+        libraries,
       });
     }
     return summaries;
@@ -121,6 +126,34 @@ export class ReadingServicesController {
     const typedProvider = this.assertProviderAccess(user, provider) as ReadingServiceProvider;
     await this.featuresService.setFeatures(user.id, typedProvider, dto.features);
     return this.featuresService.getFeatures(user.id, typedProvider);
+  }
+
+  /**
+   * Per-library sync settings for this provider (owner decision: scoping is per library AND per
+   * feature). Both body fields are optional. Returns the full effective setting after the
+   * update (inherited defaults filled in).
+   */
+  @Put(':provider/libraries/:libraryId')
+  async updateLibrary(
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Param('libraryId', ParseIntPipe) libraryId: number,
+    @Body() dto: UpdateReadingServiceLibraryDto,
+  ): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }> {
+    const typedProvider = this.assertProviderAccess(user, provider) as ReadingServiceProvider;
+    return this.libraryScopeService.setLibrarySetting(user, typedProvider, libraryId, dto);
+  }
+
+  /** Resets a library back to "inherit" (library enabled, every feature follows the provider toggle). */
+  @Delete(':provider/libraries/:libraryId')
+  async resetLibrary(
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Param('libraryId', ParseIntPipe) libraryId: number,
+  ): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }> {
+    const typedProvider = this.assertProviderAccess(user, provider) as ReadingServiceProvider;
+    await this.libraryScopeService.resetLibrarySetting(user, typedProvider, libraryId);
+    return { libraryId, enabled: true, features: {} };
   }
 
   @Post(':provider/migration/preview')
@@ -201,7 +234,7 @@ export class ReadingServicesController {
     }
 
     const items = await adapter.getShelf(user.id, typedShelf);
-    return this.resolveUnmatchedBookIds(user.id, items);
+    return this.resolveUnmatchedBookIds(user.id, typedProvider as ReadingServiceProvider, items);
   }
 
   /**
@@ -213,7 +246,11 @@ export class ReadingServicesController {
    * item before the response leaves the server - a client never needs either field (see
    * `ReadingServiceShelfItem`'s doc comment in @bookorbit/types).
    */
-  private async resolveUnmatchedBookIds(userId: number, items: ReadingServiceShelfItem[]): Promise<ReadingServiceShelfItem[]> {
+  private async resolveUnmatchedBookIds(
+    userId: number,
+    provider: ReadingServiceProvider,
+    items: ReadingServiceShelfItem[],
+  ): Promise<ReadingServiceShelfItem[]> {
     const unmatched = items.filter((item) => item.bookId == null && (item.isbn || (item.title && item.authors.length > 0)));
 
     if (unmatched.length === 0) return items.map((item) => this.stripMatchHints(item));
@@ -226,7 +263,7 @@ export class ReadingServicesController {
       if (item.title) titlesLower.add(item.title.toLowerCase());
     }
 
-    const candidates = await this.matchRepository.findCandidates(userId, [...isbn13s], [...titlesLower]);
+    const candidates = await this.matchRepository.findCandidates(userId, provider, [...isbn13s], [...titlesLower]);
     if (candidates.length === 0) return items.map((item) => this.stripMatchHints(item));
 
     const index = buildRemoteIndex(candidates);

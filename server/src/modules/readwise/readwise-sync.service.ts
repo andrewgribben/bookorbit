@@ -20,6 +20,7 @@ import {
 import { ReadwiseRepository, type NewHighlightRow } from './readwise.repository';
 import { ReadwiseTokenService } from './readwise-token.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 
 const SYNC_EVENT = 'readwise.sync';
 
@@ -45,6 +46,7 @@ export class ReadwiseSyncService {
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly cache: ReadingServiceCacheService,
     private readonly ledgerBackfill: ReadwiseHighlightsLedgerBackfillService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
     @Inject(appConfig.KEY) private readonly appConfiguration: ConfigType<typeof appConfig>,
   ) {}
 
@@ -57,11 +59,18 @@ export class ReadwiseSyncService {
     const token = await this.tokens.getToken(userId);
     if (!token) return;
 
+    const libraryIds = await this.resolveScopedLibraryIds(userId);
+    if (libraryIds.length === 0) {
+      this.logger.log(`[${SYNC_EVENT}] [skip] userId=${userId} - no library allows Readwise highlights, skipping push`);
+      await this.repo.upsertSettings(userId, { lastSyncedAt: new Date() });
+      return;
+    }
+
     this.logger.log(`[${SYNC_EVENT}] [start] userId=${userId} - Readwise highlights push started`);
     try {
       await this.ensureLedgerBackfilled(userId, token);
-      const created = await this.pushCreates(userId, token);
-      const updated = await this.pushUpdates(userId, token);
+      const created = await this.pushCreates(userId, token, libraryIds);
+      const updated = await this.pushUpdates(userId, token, libraryIds);
       const deleted = await this.pushDeletes(userId, token);
       await this.repo.upsertSettings(userId, { lastSyncedAt: new Date() });
       this.logger.log(
@@ -84,6 +93,12 @@ export class ReadwiseSyncService {
     }
   }
 
+  /** Library ids where the `highlights` feature is effectively allowed; intersected with access. */
+  private async resolveScopedLibraryIds(userId: number): Promise<number[]> {
+    const pseudoUser = { id: userId, isSuperuser: false } as import('../../common/types/request-user').RequestUser;
+    return this.libraryScopeService.getEffectiveLibraryIds(pseudoUser, 'readwise', 'highlights');
+  }
+
   /** Runs the export-based ledger backfill once per user; a no-op on every later flush. */
   private async ensureLedgerBackfilled(userId: number, token: string): Promise<void> {
     const done = await this.cache.get<boolean>(userId, 'readwise', READWISE_HIGHLIGHTS_LEDGER_BACKFILLED_CACHE_KEY);
@@ -92,10 +107,10 @@ export class ReadwiseSyncService {
     await this.cache.set(userId, 'readwise', READWISE_HIGHLIGHTS_LEDGER_BACKFILLED_CACHE_KEY, true, READWISE_HIGHLIGHTS_LEDGER_BACKFILLED_TTL_MS);
   }
 
-  private async pushCreates(userId: number, token: string): Promise<number> {
+  private async pushCreates(userId: number, token: string, libraryIds: number[] | null): Promise<number> {
     let created = 0;
     for (;;) {
-      const rows = await this.repo.findPushableHighlights(userId, READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE);
+      const rows = await this.repo.findPushableHighlights(userId, READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE, libraryIds);
       if (rows.length === 0) break;
       const payload = rows.map((r) => this.toHighlight(userId, r));
       const createdIds = await this.client.createHighlights(userId, token, payload);
@@ -120,11 +135,11 @@ export class ReadwiseSyncService {
     return created;
   }
 
-  private async pushUpdates(userId: number, token: string): Promise<number> {
+  private async pushUpdates(userId: number, token: string, libraryIds: number[] | null): Promise<number> {
     let updated = 0;
     let afterAnnotationId = 0;
     for (;;) {
-      const rows = await this.repo.findChangedLinkedHighlights(userId, afterAnnotationId, READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE);
+      const rows = await this.repo.findChangedLinkedHighlights(userId, afterAnnotationId, READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE, libraryIds);
       if (rows.length === 0) break;
       const changed = rows.filter((r) => r.contentHash !== readwiseHighlightContentHash(r.text, r.note));
       for (const row of changed) {

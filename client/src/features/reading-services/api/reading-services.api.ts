@@ -35,6 +35,16 @@ export async function updateReadingServiceFeatures(
   return res.json()
 }
 
+export async function updateReadingServiceLibraries(provider: ReadingServiceProvider, libraryIds: number[] | null): Promise<{ libraryIds: number[] | null }> {
+  const res = await api(`${BASE}/${provider}/libraries`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ libraryIds }),
+  })
+  if (!res.ok) throw new Error(await errorMessage(res, 'Failed to update synced libraries'))
+  return res.json()
+}
+
 export async function previewReadingServiceMigration(provider: ReadingServiceProvider): Promise<MigrationPreview> {
   const res = await api(`${BASE}/${provider}/migration/preview`, { method: 'POST' })
   if (!res.ok) throw new Error(await errorMessage(res, 'Failed to preview migration'))

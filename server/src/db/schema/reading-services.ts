@@ -5,6 +5,7 @@ import type { SyncRunProgressCounters } from '@bookorbit/types';
 
 import { users } from './auth';
 import { books } from './books';
+import { libraries } from './libraries';
 
 export const readingServiceFeatures = pgTable(
   'reading_service_features',
@@ -110,6 +111,31 @@ export const readingServiceCache = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.provider, t.key] })],
 );
 
+/**
+ * Per-user, per-provider, per-library sync settings - generic across Readwise/Hardcover/future
+ * providers (StoryGraph etc). A missing row means "inherit": the library is enabled and every
+ * feature follows the provider-level toggle. `enabled: false` excludes the library entirely;
+ * `features` only ever narrows a provider-level feature that's already on (e.g. Comics can turn
+ * `owned` off for Hardcover while status/rating keep syncing) - it can never turn on a feature
+ * the provider toggle has off.
+ */
+export const readingServiceLibrarySettings = pgTable(
+  'reading_service_library_settings',
+  {
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    libraryId: integer('library_id')
+      .notNull()
+      .references(() => libraries.id, { onDelete: 'cascade' }),
+    enabled: boolean('enabled').notNull().default(true),
+    features: jsonb('features').$type<Partial<Record<string, boolean>>>().notNull().default({}),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.provider, t.libraryId] })],
+);
+
 export type ReadingServiceFeatureRow = typeof readingServiceFeatures.$inferSelect;
 export type NewReadingServiceFeatureRow = typeof readingServiceFeatures.$inferInsert;
 export type ReadingServiceBookLink = typeof readingServiceBookLinks.$inferSelect;
@@ -120,3 +146,5 @@ export type ReadingServiceRun = typeof readingServiceRuns.$inferSelect;
 export type NewReadingServiceRun = typeof readingServiceRuns.$inferInsert;
 export type ReadingServiceCacheRow = typeof readingServiceCache.$inferSelect;
 export type NewReadingServiceCacheRow = typeof readingServiceCache.$inferInsert;
+export type ReadingServiceLibrarySettingRow = typeof readingServiceLibrarySettings.$inferSelect;
+export type NewReadingServiceLibrarySettingRow = typeof readingServiceLibrarySettings.$inferInsert;

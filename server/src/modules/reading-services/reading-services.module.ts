@@ -4,6 +4,7 @@ import { CommonModule } from '../../common/common.module';
 import { LibraryModule } from '../library/library.module';
 import { ReadingServiceCacheService } from './reading-service-cache.service';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 import { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import { ReadingServicePrivateAdapterLoaderService } from './reading-service-private-adapter-loader.service';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
@@ -24,6 +25,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceSyncRunService,
     ReadingServicePrivateAdapterLoaderService,
     ReadingServiceMatchRepository,
+    ReadingServiceLibraryScopeService,
   ],
   exports: [
     ReadingServicesRepository,
@@ -33,6 +35,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceSyncRunService,
     ReadingServiceFeaturesService,
     ReadingServiceMatchRepository,
+    ReadingServiceLibraryScopeService,
   ],
 })
 export class ReadingServicesModule {}

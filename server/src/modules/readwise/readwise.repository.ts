@@ -107,7 +107,7 @@ export class ReadwiseRepository {
    * (kind='highlight'), replacing the watermark (`lastSyncedAnnotationId`) this used to read.
    * The watermark column is kept on the schema for upstream compatibility but is no longer read.
    */
-  async findPushableHighlights(userId: number, limit: number): Promise<NewHighlightRow[]> {
+  async findPushableHighlights(userId: number, limit: number, libraryIds: readonly number[] | null = null): Promise<NewHighlightRow[]> {
     const linked = this.db
       .select({ localId: schema.readingServiceItemLinks.localId })
       .from(schema.readingServiceItemLinks)
@@ -118,7 +118,7 @@ export class ReadwiseRepository {
           eq(schema.readingServiceItemLinks.kind, 'highlight'),
         ),
       );
-    const rows = await this.selectHighlightRows(notInArray(schema.annotations.id, linked), userId, limit);
+    const rows = await this.selectHighlightRows(notInArray(schema.annotations.id, linked), userId, limit, libraryIds);
     return rows.map((r) => this.toHighlightRow(r));
   }
 
@@ -126,7 +126,12 @@ export class ReadwiseRepository {
    * Linked highlights whose current text/note no longer matches the content hash recorded at
    * last sync - a local edit the push side needs to PATCH to Readwise.
    */
-  async findChangedLinkedHighlights(userId: number, afterAnnotationId: number, limit: number): Promise<LinkedHighlightRow[]> {
+  async findChangedLinkedHighlights(
+    userId: number,
+    afterAnnotationId: number,
+    limit: number,
+    libraryIds: readonly number[] | null = null,
+  ): Promise<LinkedHighlightRow[]> {
     const rows = await this.db
       .select({
         annotationId: schema.annotations.id,
@@ -154,6 +159,7 @@ export class ReadwiseRepository {
           isNull(schema.readingServiceItemLinks.deletedAt),
           isNull(schema.annotations.deletedAt),
           gt(schema.annotations.id, afterAnnotationId),
+          libraryIds === null ? undefined : inArray(schema.annotations.bookId, this.bookIdsInLibraries(libraryIds)),
         ),
       )
       .groupBy(
@@ -205,7 +211,11 @@ export class ReadwiseRepository {
       .where(and(eq(schema.annotations.userId, userId), inArray(schema.annotations.id, annotationIds)));
   }
 
-  private selectHighlightRows(extraWhere: ReturnType<typeof and>, userId: number, limit: number) {
+  private bookIdsInLibraries(libraryIds: readonly number[]) {
+    return this.db.select({ id: schema.books.id }).from(schema.books).where(inArray(schema.books.libraryId, [...libraryIds]));
+  }
+
+  private selectHighlightRows(extraWhere: ReturnType<typeof and>, userId: number, limit: number, libraryIds: readonly number[] | null = null) {
     return this.db
       .select({
         annotationId: schema.annotations.id,
@@ -222,7 +232,15 @@ export class ReadwiseRepository {
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.annotations.bookId))
       .leftJoin(schema.bookAuthors, eq(schema.bookAuthors.bookId, schema.annotations.bookId))
       .leftJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
-      .where(and(eq(schema.annotations.userId, userId), ne(schema.annotations.text, ''), isNull(schema.annotations.deletedAt), extraWhere))
+      .where(
+        and(
+          eq(schema.annotations.userId, userId),
+          ne(schema.annotations.text, ''),
+          isNull(schema.annotations.deletedAt),
+          extraWhere,
+          libraryIds === null ? undefined : inArray(schema.annotations.bookId, this.bookIdsInLibraries(libraryIds)),
+        ),
+      )
       .groupBy(
         schema.annotations.id,
         schema.annotations.bookId,

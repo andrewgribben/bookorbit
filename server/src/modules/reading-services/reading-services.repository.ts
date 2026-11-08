@@ -13,6 +13,7 @@ import type {
   ReadingServiceBookLink,
   ReadingServiceCacheRow,
   ReadingServiceItemLink,
+  ReadingServiceLibrarySettingRow,
   ReadingServiceRun,
 } from '../../db/schema';
 
@@ -43,6 +44,47 @@ export class ReadingServicesRepository {
         target: [schema.readingServiceFeatures.userId, schema.readingServiceFeatures.provider, schema.readingServiceFeatures.feature],
         set: { enabled, updatedAt: new Date() },
       });
+  }
+
+  // ---- Library settings ----
+
+  /** Only rows that override the "inherit" default; the service layer fills in defaults for the rest. */
+  async findLibrarySettings(userId: number, provider: ReadingServiceProvider): Promise<ReadingServiceLibrarySettingRow[]> {
+    return this.db.query.readingServiceLibrarySettings.findMany({
+      where: and(eq(schema.readingServiceLibrarySettings.userId, userId), eq(schema.readingServiceLibrarySettings.provider, provider)),
+    });
+  }
+
+  async setLibrarySetting(
+    userId: number,
+    provider: ReadingServiceProvider,
+    libraryId: number,
+    settings: { enabled: boolean; features: Partial<Record<string, boolean>> },
+  ): Promise<void> {
+    await this.db
+      .insert(schema.readingServiceLibrarySettings)
+      .values({ userId, provider, libraryId, enabled: settings.enabled, features: settings.features })
+      .onConflictDoUpdate({
+        target: [
+          schema.readingServiceLibrarySettings.userId,
+          schema.readingServiceLibrarySettings.provider,
+          schema.readingServiceLibrarySettings.libraryId,
+        ],
+        set: { enabled: settings.enabled, features: settings.features, updatedAt: new Date() },
+      });
+  }
+
+  /** Reverts a library back to "inherit" by deleting its override row. */
+  async deleteLibrarySetting(userId: number, provider: ReadingServiceProvider, libraryId: number): Promise<void> {
+    await this.db
+      .delete(schema.readingServiceLibrarySettings)
+      .where(
+        and(
+          eq(schema.readingServiceLibrarySettings.userId, userId),
+          eq(schema.readingServiceLibrarySettings.provider, provider),
+          eq(schema.readingServiceLibrarySettings.libraryId, libraryId),
+        ),
+      );
   }
 
   // ---- Cache ----

@@ -68,6 +68,12 @@ export type ReadingServiceShelfItem = {
   asin?: string | null;
 };
 
+export type ReadingServiceLibrarySetting = {
+  libraryId: number;
+  enabled: boolean;
+  features: Partial<Record<ReadingServiceFeature, boolean>>;
+};
+
 export type ReadingServiceSummary = {
   provider: ReadingServiceProvider;
   connected: boolean;
@@ -76,6 +82,16 @@ export type ReadingServiceSummary = {
   migration: { state: "never" | "running" | "done" | "failed"; runId: number | null; finishedAt: string | null };
   lastPullAt: string | null;
   disabledReason: string | null;
+  /**
+   * Per-library sync settings for this provider, one entry per library the user can currently
+   * access (owner decision). A missing feature key or a missing library entirely means
+   * "inherit": the library is enabled and every feature follows `features` above. A library
+   * override can only narrow an already-on provider feature, never enable one that's off.
+   * Scope gates everything for the provider: push, pull, the initial migration, owned
+   * classification and social-shelf local matching. Changing it never deletes anything remote -
+   * items already synced for a library that drops out of scope simply stop syncing.
+   */
+  libraries: ReadingServiceLibrarySetting[];
 };
 
 export type SyncRunProgressCounters = {
