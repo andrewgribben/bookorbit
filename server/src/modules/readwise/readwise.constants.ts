@@ -36,3 +36,21 @@ export function openLibraryCoverUrl(isbn: string): string {
 
 // How many highlights to send per POST (Readwise accepts large batches; keep bounded).
 export const READWISE_BATCH_SIZE = 100;
+
+// Readwise Books API (shelves, ratings, sessions, stats). Separate experimental v1 surface,
+// distinct from the highlights v2 API above.
+export const READWISE_BOOKS_BASE_URL = 'https://readwise.io/books/api/v1';
+export const READWISE_BOOKS_URL = `${READWISE_BOOKS_BASE_URL}/books`;
+export const READWISE_SESSIONS_URL = `${READWISE_BOOKS_BASE_URL}/sessions`;
+export const READWISE_STATS_SUMMARY_URL = `${READWISE_BOOKS_BASE_URL}/stats/summary`;
+export const READWISE_SESSIONS_BY_DAY_URL = `${READWISE_BOOKS_BASE_URL}/stats/sessions-by-day`;
+
+// Batch and page sizes from the Books API docs (readwise.io/books_api).
+export const READWISE_BOOKS_LIST_LIMIT = 1000;
+export const READWISE_BOOKS_ISBN_BATCH = 100;
+export const READWISE_BOOKS_CREATE_BATCH = 10;
+export const READWISE_BOOKS_UPDATE_BATCH = 100;
+export const READWISE_SESSIONS_CREATE_BATCH = 10;
+
+// How many local books the migration push phase handles per run page.
+export const READWISE_MIGRATION_PUSH_PAGE_SIZE = 200;

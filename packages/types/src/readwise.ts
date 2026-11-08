@@ -1,4 +1,4 @@
-export type ReadwiseSyncDisabledReason = "permission_denied" | "missing_token" | "user_disabled" | "invalid_token";
+export type ReadwiseSyncDisabledReason = "permission_denied" | "missing_token" | "user_disabled" | "invalid_token" | "no_readwise_books";
 
 export interface ReadwiseSettings {
   tokenConfigured: boolean;
