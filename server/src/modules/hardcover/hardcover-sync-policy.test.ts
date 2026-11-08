@@ -136,4 +136,37 @@ describe('hardcover-sync-policy', () => {
       }),
     ).toEqual({ syncEnabled: true, effectiveReason: null });
   });
+
+  it('library exclusion wins over a per-book included override (owner decision)', () => {
+    expect(
+      resolveHardcoverBookSyncDecision({
+        settings: { ...baseSettings, bookSyncMode: 'selected_only' },
+        status: 'reading',
+        syncOverride: 'included',
+        libraryExcluded: true,
+      }),
+    ).toEqual({ syncEnabled: false, effectiveReason: 'library_excluded' });
+  });
+
+  it('library exclusion is checked after the enabled check: a globally-disabled provider still reports its own reason', () => {
+    expect(
+      resolveHardcoverBookSyncDecision({
+        settings: { effectiveEnabled: false, disabledReason: 'missing_token', bookSyncMode: 'all_eligible' },
+        status: 'reading',
+        syncOverride: null,
+        libraryExcluded: true,
+      }),
+    ).toEqual({ syncEnabled: false, effectiveReason: 'missing_token' });
+  });
+
+  it('a library excluded=false (or absent) does not affect the decision', () => {
+    expect(
+      resolveHardcoverBookSyncDecision({
+        settings: baseSettings,
+        status: 'reading',
+        syncOverride: null,
+        libraryExcluded: false,
+      }),
+    ).toEqual({ syncEnabled: true, effectiveReason: null });
+  });
 });

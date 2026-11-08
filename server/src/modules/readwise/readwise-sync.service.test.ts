@@ -39,6 +39,10 @@ const mockLedgerBackfill = {
   backfill: vi.fn(),
 };
 
+const mockLibraryScopeService = {
+  getEffectiveLibraryIds: vi.fn().mockResolvedValue(null),
+};
+
 function makeService() {
   return new ReadwiseSyncService(
     mockRepo as any,
@@ -47,6 +51,7 @@ function makeService() {
     mockReadingServicesRepo as any,
     mockCache as any,
     mockLedgerBackfill as any,
+    mockLibraryScopeService as any,
     { appUrl: 'https://bookorbit.example/' } as any,
   );
 }
@@ -113,6 +118,15 @@ describe('ReadwiseSyncService', () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
       mockRepo.userHasReadwiseSyncPermission.mockResolvedValue(false);
       await makeService().flush(1);
+      expect(mockClient.createHighlights).not.toHaveBeenCalled();
+      expect(mockRepo.findPushableHighlights).not.toHaveBeenCalled();
+    });
+
+    it('skips the push entirely when the highlights feature is scoped out of every accessible library', async () => {
+      mockRepo.findSettings.mockResolvedValue(enabledSettings());
+      mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValueOnce([]);
+      await makeService().flush(1);
+      expect(mockLibraryScopeService.getEffectiveLibraryIds).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 'readwise', 'highlights');
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
       expect(mockRepo.findPushableHighlights).not.toHaveBeenCalled();
     });
