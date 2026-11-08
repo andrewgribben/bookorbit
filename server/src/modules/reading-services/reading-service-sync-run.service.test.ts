@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Permission } from '@bookorbit/types';
 
 import type { ReadingServiceProviderAdapter } from './reading-service-provider';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
