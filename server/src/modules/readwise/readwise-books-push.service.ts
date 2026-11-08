@@ -15,7 +15,7 @@ import { ReadwiseSettingsService } from './readwise-settings.service';
 
 const EVENT = 'readwise.books_push';
 
-type BookSnapshot = { status?: string; rating?: number | null; startedAt?: string | null; finishedAt?: string | null };
+type BookSnapshot = { status?: string; rating?: number | null; review?: string | null; startedAt?: string | null; finishedAt?: string | null };
 
 function isFeatureEnabled(features: Partial<Record<ReadingServiceFeature, boolean>>, feature: ReadingServiceFeature): boolean {
   // Missing means "not toggled yet"; capabilities are opt-out, not opt-in, so default to on.
@@ -90,15 +90,17 @@ export class ReadwiseBooksPushService {
 
     const statusChanged = isFeatureEnabled(features, 'status') && local.status !== snapshot.status;
     const ratingChanged = isFeatureEnabled(features, 'rating') && local.rating !== (snapshot.rating ?? null);
+    const reviewChanged = isFeatureEnabled(features, 'review') && local.review !== (snapshot.review ?? null);
     const datesChanged =
       isFeatureEnabled(features, 'dates') && (local.startedAt !== (snapshot.startedAt ?? null) || local.finishedAt !== (snapshot.finishedAt ?? null));
 
-    if (!statusChanged && !ratingChanged && !datesChanged) return 'skipped';
+    if (!statusChanged && !ratingChanged && !reviewChanged && !datesChanged) return 'skipped';
 
     const pushStatus = mapBookOrbitStatusToReadwise(local.status);
     const nextSnapshot: BookSnapshot = {
       status: statusChanged ? local.status : snapshot.status,
       rating: ratingChanged ? local.rating : (snapshot.rating ?? null),
+      review: reviewChanged ? local.review : (snapshot.review ?? null),
       startedAt: datesChanged ? local.startedAt : (snapshot.startedAt ?? null),
       finishedAt: datesChanged ? local.finishedAt : (snapshot.finishedAt ?? null),
     };
@@ -140,6 +142,7 @@ export class ReadwiseBooksPushService {
       started_reading_at: book.startedAt,
       finished_reading_at: book.finishedAt,
       rating: book.rating,
+      review: book.review,
     };
   }
 
@@ -154,6 +157,7 @@ export class ReadwiseBooksPushService {
       started_reading_at: book.startedAt,
       finished_reading_at: book.finishedAt,
       rating: book.rating,
+      review: book.review,
     };
   }
 }

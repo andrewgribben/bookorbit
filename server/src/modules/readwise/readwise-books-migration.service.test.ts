@@ -18,6 +18,7 @@ function book(partial: Partial<LocalBookForMigration> & { bookId: number }): Loc
     author: null,
     status: 'reading',
     rating: null,
+    review: null,
     startedAt: null,
     finishedAt: null,
     ...partial,

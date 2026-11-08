@@ -4,6 +4,7 @@ import { BookService } from '../book/book.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
+import { UserBookReviewService } from '../user-book-review/user-book-review.service';
 import { UserBookStatusService } from '../user-book-status/user-book-status.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, type ReadwiseBook } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
@@ -32,6 +33,7 @@ function localBook(partial: Partial<LocalBookForMigration> & { bookId: number })
     author: null,
     status: 'reading',
     rating: null,
+    review: null,
     startedAt: null,
     finishedAt: null,
     ...partial,
@@ -67,6 +69,7 @@ function makeService() {
     resolveUser: vi.fn().mockResolvedValue({ id: 1, isSuperuser: false }),
   } as unknown as ReadwiseBooksLocalBooksRepository;
   const userBookStatusService = { updateManual: vi.fn() } as unknown as UserBookStatusService;
+  const userBookReviewService = { setReview: vi.fn() } as unknown as UserBookReviewService;
   const bookService = { bulkSetRating: vi.fn() } as unknown as BookService;
 
   const service = new ReadwiseBooksPullService(
@@ -78,6 +81,7 @@ function makeService() {
     cache,
     localBooks,
     userBookStatusService,
+    userBookReviewService,
     bookService,
   );
   return {
@@ -90,6 +94,7 @@ function makeService() {
     featuresService,
     localBooks,
     userBookStatusService,
+    userBookReviewService,
     bookService,
   };
 }
@@ -227,6 +232,35 @@ describe('ReadwiseBooksPullService', () => {
     await service.pullForUser(1);
 
     expect(readingServicesRepo.markRemoteDeleted).toHaveBeenCalledWith(1, 'readwise', 10);
+  });
+
+  it('pulls a review when the local value is null', async () => {
+    const { service, client, readingServicesRepo, localBooks, userBookReviewService } = makeService();
+    client.listBooks = vi.fn().mockResolvedValueOnce({
+      results: [remoteBook({ id: 'r1', status: 'reading' as any, review: 'Loved it.' })],
+      next: null,
+    }) as any;
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(link({ bookId: 10, externalBookId: 'r1' }));
+    (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, status: 'reading', review: null }));
+
+    await service.pullForUser(1);
+
+    expect(userBookReviewService.setReview).toHaveBeenCalledWith(1, 10, 'Loved it.');
+  });
+
+  it('review conflict: BookOrbit wins when both sides changed review since the snapshot', async () => {
+    const { service, client, readingServicesRepo, localBooks, userBookReviewService } = makeService();
+    client.listBooks = vi
+      .fn()
+      .mockResolvedValueOnce({ results: [remoteBook({ id: 'r1', status: 'reading' as any, review: 'Remote text' })], next: null }) as any;
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(
+      link({ bookId: 10, externalBookId: 'r1', snapshot: { review: 'Original' } }),
+    );
+    (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, status: 'reading', review: 'Local text' }));
+
+    await service.pullForUser(1);
+
+    expect(userBookReviewService.setReview).not.toHaveBeenCalled();
   });
 
   it('runs an incremental pass (not a full pass) when the 6-hour window has not elapsed', async () => {

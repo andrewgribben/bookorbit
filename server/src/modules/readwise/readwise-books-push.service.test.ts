@@ -16,6 +16,7 @@ function book(partial: Partial<LocalBookForMigration> & { bookId: number }): Loc
     author: null,
     status: 'reading',
     rating: null,
+    review: null,
     startedAt: null,
     finishedAt: null,
     ...partial,
@@ -107,6 +108,27 @@ describe('ReadwiseBooksPushService', () => {
 
     expect(client.updateBooks).not.toHaveBeenCalled();
     expect(readingServicesRepo.upsertBookLink).not.toHaveBeenCalled();
+  });
+
+  it('pushes a changed review and merges it into the next snapshot', async () => {
+    const { service, client, localBooks, readingServicesRepo } = makeService();
+    (localBooks.findOne as any).mockResolvedValueOnce(book({ bookId: 18, status: 'reading', rating: 4, review: 'New review text' }));
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({
+      externalBookId: 'r7',
+      matchMethod: 'isbn13',
+      remoteDeleted: false,
+      snapshot: { status: 'reading', rating: 4, review: null, startedAt: null, finishedAt: null },
+    });
+
+    await service.flushUser(1, [18]);
+
+    expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ id: 'r7', review: 'New review text' })]);
+    expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(
+      1,
+      'readwise',
+      18,
+      expect.objectContaining({ snapshot: expect.objectContaining({ review: 'New review text' }) }),
+    );
   });
 
   it('respects a disabled rating feature toggle', async () => {

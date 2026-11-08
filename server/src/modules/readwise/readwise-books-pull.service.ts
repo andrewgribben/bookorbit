@@ -8,6 +8,7 @@ import { BookService } from '../book/book.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
+import { UserBookReviewService } from '../user-book-review/user-book-review.service';
 import { UserBookStatusService } from '../user-book-status/user-book-status.service';
 import { mergeField } from '../reading-services/three-way-merge';
 import type { ReadwiseBook } from './readwise-books-client.service';
@@ -32,7 +33,7 @@ interface PullCursor {
   lastFullPassAt: string | null;
 }
 
-type BookSnapshot = { status?: string; rating?: number | null; startedAt?: string | null; finishedAt?: string | null };
+type BookSnapshot = { status?: string; rating?: number | null; review?: string | null; startedAt?: string | null; finishedAt?: string | null };
 
 function roundReadwiseRating(rating: number | null): number | null {
   // Readwise ratings step by 0.25; BookOrbit's are integers. Half rounds up (section 4.2).
@@ -59,6 +60,7 @@ export class ReadwiseBooksPullService {
     private readonly cache: ReadingServiceCacheService,
     private readonly localBooks: ReadwiseBooksLocalBooksRepository,
     private readonly userBookStatusService: UserBookStatusService,
+    private readonly userBookReviewService: UserBookReviewService,
     private readonly bookService: BookService,
   ) {}
 
@@ -168,6 +170,7 @@ export class ReadwiseBooksPullService {
 
     let newStatus: ReadStatus | undefined;
     let newRating: number | null | undefined;
+    let newReview: string | null | undefined;
     let newStartedAt: string | null | undefined;
     let newFinishedAt: string | null | undefined;
 
@@ -191,6 +194,15 @@ export class ReadwiseBooksPullService {
       }
     }
 
+    if (features.review !== false) {
+      const remoteReview = book.review ?? null;
+      const action = mergeField(local.review, remoteReview, snapshot.review === undefined ? undefined : (snapshot.review ?? null));
+      if (action.action === 'pull' && remoteReview !== local.review) {
+        newReview = remoteReview;
+        nextSnapshot.review = remoteReview;
+      }
+    }
+
     if (features.dates !== false) {
       const startedAction = this.mergeDateField(local.startedAt, book.started_reading_at ?? null, snapshot.startedAt);
       if (startedAction.action === 'pull' && startedAction.value !== local.startedAt) {
@@ -204,7 +216,7 @@ export class ReadwiseBooksPullService {
       }
     }
 
-    if (newStatus === undefined && newRating === undefined && newStartedAt === undefined && newFinishedAt === undefined) {
+    if (newStatus === undefined && newRating === undefined && newReview === undefined && newStartedAt === undefined && newFinishedAt === undefined) {
       return false;
     }
 
@@ -226,6 +238,9 @@ export class ReadwiseBooksPullService {
     if (newRating !== undefined) {
       const user = await this.localBooks.resolveUser(userId);
       await this.bookService.bulkSetRating([link.bookId], newRating, user);
+    }
+    if (newReview !== undefined) {
+      await this.userBookReviewService.setReview(userId, link.bookId, newReview);
     }
 
     this.logger.log(

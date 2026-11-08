@@ -4,6 +4,7 @@ import { AchievementModule } from '../achievement/achievement.module';
 import { BookModule } from '../book/book.module';
 import { LibraryModule } from '../library/library.module';
 import { ReadingServicesModule } from '../reading-services/reading-services.module';
+import { UserBookReviewModule } from '../user-book-review/user-book-review.module';
 import { UserBookStatusModule } from '../user-book-status/user-book-status.module';
 import { ReadwiseController } from './readwise.controller';
 import { ReadwiseAutoSyncSchedulerService } from './readwise-auto-sync-scheduler.service';
@@ -27,7 +28,7 @@ import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
 
 @Module({
-  imports: [AchievementModule, ReadingServicesModule, LibraryModule, BookModule, UserBookStatusModule],
+  imports: [AchievementModule, ReadingServicesModule, LibraryModule, BookModule, UserBookStatusModule, UserBookReviewModule],
   controllers: [ReadwiseController],
   providers: [
     ReadwiseQueueService,

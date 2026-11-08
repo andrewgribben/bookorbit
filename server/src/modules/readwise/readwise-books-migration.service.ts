@@ -56,6 +56,7 @@ function toCreateItem(book: LocalBookForMigration, status: NonNullable<ReturnTyp
     started_reading_at: book.startedAt,
     finished_reading_at: book.finishedAt,
     rating: book.rating,
+    review: book.review,
   };
 }
 
@@ -70,6 +71,7 @@ function toUpdateItem(
     started_reading_at: book.startedAt,
     finished_reading_at: book.finishedAt,
     rating: book.rating,
+    review: book.review,
   };
 }
 
@@ -86,6 +88,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   readonly capabilities: ReadingServiceCapabilities = {
     status: 'both',
     rating: 'both',
+    review: 'both',
     dates: 'both',
     owned: 'read',
     sessions: 'both',
@@ -239,7 +242,13 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
           await this.readingServicesRepo.upsertBookLink(userId, this.provider, u.book.bookId, {
             externalBookId: u.externalId,
             matchMethod: u.matchMethod,
-            snapshot: { status: u.book.status, rating: u.book.rating, startedAt: u.book.startedAt, finishedAt: u.book.finishedAt },
+            snapshot: {
+              status: u.book.status,
+              rating: u.book.rating,
+              review: u.book.review,
+              startedAt: u.book.startedAt,
+              finishedAt: u.book.finishedAt,
+            },
           });
         }
         counters.updated += updateItems.length;
@@ -263,7 +272,13 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
           await this.readingServicesRepo.upsertBookLink(userId, this.provider, entry.book.bookId, {
             externalBookId: created.book_id,
             matchMethod: 'created',
-            snapshot: { status: entry.book.status, rating: entry.book.rating, startedAt: entry.book.startedAt, finishedAt: entry.book.finishedAt },
+            snapshot: {
+              status: entry.book.status,
+              rating: entry.book.rating,
+              review: entry.book.review,
+              startedAt: entry.book.startedAt,
+              finishedAt: entry.book.finishedAt,
+            },
           });
         }
         counters.created += createItems.length - createItems.filter((_, i) => !results[i] || results[i]!.status === 'error').length;

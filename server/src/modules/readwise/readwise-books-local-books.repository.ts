@@ -18,6 +18,7 @@ export interface LocalBookForMigration {
   author: string | null;
   status: ReadStatus;
   rating: number | null;
+  review: string | null;
   startedAt: string | null; // ISO datetime, from the latest reading attempt
   finishedAt: string | null; // ISO datetime, from the latest reading attempt
 }
@@ -61,12 +62,14 @@ export class ReadwiseBooksLocalBooksRepository {
         title: schema.bookMetadata.title,
         status: schema.userBookStatus.status,
         rating: schema.userBookRatings.rating,
+        review: schema.userBookReviews.review,
         authorsCsv: sql<string>`coalesce(string_agg(${schema.authors.name}, '||' order by ${schema.bookAuthors.displayOrder}, ${schema.bookAuthors.authorId}), '')`,
       })
       .from(schema.books)
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
       .leftJoin(schema.userBookStatus, and(eq(schema.userBookStatus.bookId, schema.books.id), eq(schema.userBookStatus.userId, userId)))
       .leftJoin(schema.userBookRatings, and(eq(schema.userBookRatings.bookId, schema.books.id), eq(schema.userBookRatings.userId, userId)))
+      .leftJoin(schema.userBookReviews, and(eq(schema.userBookReviews.bookId, schema.books.id), eq(schema.userBookReviews.userId, userId)))
       .leftJoin(schema.bookAuthors, eq(schema.bookAuthors.bookId, schema.books.id))
       .leftJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
       .where(and(inArray(schema.books.libraryId, libraryIds), eq(schema.books.id, bookId)))
@@ -77,6 +80,7 @@ export class ReadwiseBooksLocalBooksRepository {
         schema.bookMetadata.title,
         schema.userBookStatus.status,
         schema.userBookRatings.rating,
+        schema.userBookReviews.review,
       )
       .limit(1);
 
@@ -102,6 +106,7 @@ export class ReadwiseBooksLocalBooksRepository {
         : null,
       status: (row.status as ReadStatus) ?? 'unread',
       rating: row.rating ?? null,
+      review: row.review ?? null,
       startedAt: toIsoMidnight(attempt?.startedOn ?? null),
       finishedAt: toIsoMidnight(attempt?.endedOn ?? null),
     };
@@ -119,12 +124,14 @@ export class ReadwiseBooksLocalBooksRepository {
         title: schema.bookMetadata.title,
         status: schema.userBookStatus.status,
         rating: schema.userBookRatings.rating,
+        review: schema.userBookReviews.review,
         authorsCsv: sql<string>`coalesce(string_agg(${schema.authors.name}, '||' order by ${schema.bookAuthors.displayOrder}, ${schema.bookAuthors.authorId}), '')`,
       })
       .from(schema.books)
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
       .leftJoin(schema.userBookStatus, and(eq(schema.userBookStatus.bookId, schema.books.id), eq(schema.userBookStatus.userId, userId)))
       .leftJoin(schema.userBookRatings, and(eq(schema.userBookRatings.bookId, schema.books.id), eq(schema.userBookRatings.userId, userId)))
+      .leftJoin(schema.userBookReviews, and(eq(schema.userBookReviews.bookId, schema.books.id), eq(schema.userBookReviews.userId, userId)))
       .leftJoin(schema.bookAuthors, eq(schema.bookAuthors.bookId, schema.books.id))
       .leftJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
       .where(and(inArray(schema.books.libraryId, libraryIds), gt(schema.books.id, afterBookId)))
@@ -135,6 +142,7 @@ export class ReadwiseBooksLocalBooksRepository {
         schema.bookMetadata.title,
         schema.userBookStatus.status,
         schema.userBookRatings.rating,
+        schema.userBookReviews.review,
       )
       .orderBy(asc(schema.books.id))
       .limit(limit);
@@ -171,6 +179,7 @@ export class ReadwiseBooksLocalBooksRepository {
           : null,
         status: (r.status as ReadStatus) ?? 'unread',
         rating: r.rating ?? null,
+        review: r.review ?? null,
         startedAt: toIsoMidnight(latest?.startedOn ?? null),
         finishedAt: toIsoMidnight(latest?.endedOn ?? null),
       };
