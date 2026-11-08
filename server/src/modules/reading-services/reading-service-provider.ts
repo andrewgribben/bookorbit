@@ -1,4 +1,4 @@
-import type { ReadingServiceCapabilities, ReadingServiceProvider, SyncRunProgressCounters } from '@bookorbit/types';
+import type { ReadingServiceCapabilities, ReadingServiceProvider, ReadingServiceShelf, ReadingServiceShelfItem, SyncRunProgressCounters } from '@bookorbit/types';
 
 export interface ReadingServiceProviderAdapter {
   readonly provider: ReadingServiceProvider;
@@ -21,4 +21,11 @@ export interface ReadingServiceProviderAdapter {
    * touched. Optional because not every stage of every provider implements it yet.
    */
   previewMigration?(userId: number): Promise<{ matched: number; toCreate: number; readwiseOnly: number }>;
+
+  /**
+   * Reads one generic shelf (friends' current/recent reads, trending, recommendations). Optional
+   * because most providers have no social graph; a provider that declares the matching capability
+   * in `capabilities` (e.g. `friends_shelf`) must implement this.
+   */
+  getShelf?(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]>;
 }

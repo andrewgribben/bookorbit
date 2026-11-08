@@ -1,9 +1,13 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, NotFoundException, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 
 import {
   READING_SERVICE_PROVIDERS,
+  READING_SERVICE_SHELVES,
   Permission,
+  type ReadingServiceFeature,
   type ReadingServiceProvider,
+  type ReadingServiceShelf,
+  type ReadingServiceShelfItem,
   type ReadingServiceSummary,
   type SyncRunProgress,
 } from '@bookorbit/types';
@@ -20,6 +24,14 @@ import { ReadingServiceSyncRunService } from './reading-service-sync-run.service
 const PROVIDER_PERMISSIONS: Record<ReadingServiceProvider, Permission> = {
   readwise: Permission.ReadwiseSync,
   hardcover: Permission.HardcoverSync,
+};
+
+/** The capability a shelf needs on the provider's `capabilities` map before it can be read. */
+const SHELF_FEATURES: Record<ReadingServiceShelf, ReadingServiceFeature> = {
+  'friends-reading': 'friends_shelf',
+  'friends-finished': 'friends_shelf',
+  trending: 'trending_shelf',
+  recommendations: 'recommendations_shelf',
 };
 
 @Controller('reading-services')
@@ -97,6 +109,32 @@ export class ReadingServicesController {
     const progress = await this.syncRunService.getRun(id, user.id);
     this.assertProviderAccess(user, progress.provider);
     return this.syncRunService.cancel(id, user.id);
+  }
+
+  /**
+   * Generic social/discover shelves, read-only. Coordinate shape changes with the widgets agent:
+   * each item carries its own `provider` field so one component can render shelves from more than
+   * one reading service (see `docs/AGENT_HANDOFF.md`).
+   */
+  @Get(':provider/shelves/:shelf')
+  async getShelf(
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Param('shelf') shelf: string,
+  ): Promise<ReadingServiceShelfItem[]> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    if (!READING_SERVICE_SHELVES.includes(shelf as ReadingServiceShelf)) {
+      throw new BadRequestException(`Unknown reading-service shelf: ${shelf}`);
+    }
+    const typedShelf = shelf as ReadingServiceShelf;
+
+    const adapter = this.registry.get(typedProvider);
+    const requiredFeature = SHELF_FEATURES[typedShelf];
+    if (!adapter?.getShelf || !adapter.capabilities[requiredFeature]) {
+      throw new NotFoundException(`${typedProvider} does not support the "${typedShelf}" shelf`);
+    }
+
+    return adapter.getShelf(user.id, typedShelf);
   }
 
   private assertProviderAccess(user: RequestUser, provider: string): ReadingServiceProvider {

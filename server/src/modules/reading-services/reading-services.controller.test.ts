@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
 
 import { PermissionService } from '../../common/services/permission.service';
@@ -125,5 +125,46 @@ describe('ReadingServicesController', () => {
 
     expect(syncRunService.cancel).toHaveBeenCalledWith(1, 1);
     expect(result).toEqual({ id: 1, provider: 'readwise', status: 'cancelled' });
+  });
+
+  it('rejects an unknown shelf with 400', async () => {
+    const { controller } = makeController();
+    const user = makeUser([Permission.HardcoverSync]);
+
+    await expect(controller.getShelf(user, 'hardcover', 'bogus-shelf')).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a shelf the registered adapter does not declare the capability for', async () => {
+    const { controller, registry } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf: vi.fn(),
+    });
+    const user = makeUser([Permission.HardcoverSync]);
+
+    await expect(controller.getShelf(user, 'hardcover', 'trending')).rejects.toThrow(NotFoundException);
+  });
+
+  it('reads a shelf from the adapter when the capability and getShelf are both present', async () => {
+    const { controller, registry } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([{ externalId: '1' }]);
+    registry.register({
+      provider: 'hardcover',
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+    const user = makeUser([Permission.HardcoverSync]);
+
+    const result = await controller.getShelf(user, 'hardcover', 'trending');
+
+    expect(getShelf).toHaveBeenCalledWith(1, 'trending');
+    expect(result).toEqual([{ externalId: '1' }]);
   });
 });

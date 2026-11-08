@@ -109,6 +109,11 @@ export const bookRequestConfig = registerAs('bookRequest', () => ({
  */
 export const readingServicesConfig = registerAs('readingServices', () => ({
   encryptionKey: process.env.READING_SERVICES_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
+  // Opt-in hook (plan phase 2 item 5): an operator-supplied extra provider module, loaded at
+  // runtime and never committed to this repo. Disabled (no loading attempted, nothing logged
+  // beyond "disabled") when unset. See reading-service-private-adapter-loader.service.ts for the
+  // security implications before setting this.
+  privateAdaptersDir: process.env.READING_SERVICES_PRIVATE_ADAPTERS_DIR?.trim() || null,
 }));
 
 export const oidcRuntimeConfig = registerAs('oidcRuntime', () => ({
