@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, CheckCircle2, Loader2, XCircle } from '@lucide/vue'
 import type { ReadingServiceProvider, ReadingServiceSummary } from '@bookorbit/types'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
+import { Permission } from '@bookorbit/types'
+import { useExternalBookRequests, type ExternalBookRequestCandidate } from '@/features/book-requests/composables/useExternalBookRequests'
 import { useReadingServiceMigration } from '../composables/useReadingServiceMigration'
 
 const props = defineProps<{
@@ -12,6 +16,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const { hasPermission } = usePermissions()
 const {
   preview,
   run,
@@ -32,6 +37,9 @@ const {
   loadReadwiseOnlyBooks,
 } = useReadingServiceMigration(props.provider)
 
+const canRequestBooks = computed(() => hasPermission(Permission.BookRequestAccess))
+const { stateFor, errorFor, checkMany, requestOne, requestAll } = useExternalBookRequests()
+
 const providerLabel = props.provider.charAt(0).toUpperCase() + props.provider.slice(1)
 
 function ownershipLabel(book: { ownership: 'owned' | 'not_owned' | 'unknown' }): string {
@@ -40,6 +48,40 @@ function ownershipLabel(book: { ownership: 'owned' | 'not_owned' | 'unknown' }):
 
 function handleLoadMoreReadwiseOnlyBooks(): void {
   void loadReadwiseOnlyBooks()
+}
+
+function candidateFor(book: { externalId: string; title: string | null; author: string | null; coverImageUrl: string | null }): ExternalBookRequestCandidate {
+  return { externalId: book.externalId, title: book.title, author: book.author, coverUrl: book.coverImageUrl }
+}
+
+watch(readwiseOnlyBooks, (books) => {
+  if (canRequestBooks.value && books.length > 0) void checkMany(books.map(candidateFor))
+})
+
+const requestAllOpen = ref(false)
+const requestingAll = ref(false)
+const requestAllOutcome = ref<string | null>(null)
+
+const requestableBooks = computed(() => readwiseOnlyBooks.value.filter((book) => stateFor(book.externalId) === 'requestable'))
+
+function openRequestAll(): void {
+  requestAllOutcome.value = null
+  requestAllOpen.value = true
+}
+
+async function confirmRequestAll(): Promise<void> {
+  requestingAll.value = true
+  try {
+    const result = await requestAll(requestableBooks.value.map(candidateFor))
+    requestAllOutcome.value = t('bookRequests.externalRequest.requestAllResult', {
+      created: result.created,
+      skipped: result.skipped,
+      errors: result.errors,
+    })
+  } finally {
+    requestingAll.value = false
+    requestAllOpen.value = false
+  }
 }
 
 onMounted(() => {
@@ -185,12 +227,25 @@ onMounted(() => {
 
     <!-- Readwise-only books list -->
     <div v-if="readwiseOnlyBooks.length > 0" class="pt-3 border-t border-border space-y-2">
-      <div>
-        <p class="font-medium text-sm">{{ t('settings.readingServices.migration.readwiseOnlyList.title', { provider: providerLabel }) }}</p>
-        <p class="text-xs text-muted-foreground mt-0.5">
-          {{ t('settings.readingServices.migration.readwiseOnlyList.subtitle', { provider: providerLabel }) }}
-        </p>
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="font-medium text-sm">{{ t('settings.readingServices.migration.readwiseOnlyList.title', { provider: providerLabel }) }}</p>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            {{ t('settings.readingServices.migration.readwiseOnlyList.subtitle', { provider: providerLabel }) }}
+          </p>
+        </div>
+        <Button
+          v-if="canRequestBooks && requestableBooks.length > 0"
+          variant="outline"
+          size="sm"
+          type="button"
+          :disabled="requestingAll"
+          @click="openRequestAll"
+        >
+          {{ t('bookRequests.externalRequest.requestAllButton') }}
+        </Button>
       </div>
+      <p v-if="requestAllOutcome" class="text-xs text-muted-foreground">{{ requestAllOutcome }}</p>
       <div class="divide-y divide-border rounded-md border border-border">
         <div v-for="book in readwiseOnlyBooks" :key="book.externalId" class="flex items-center gap-3 px-3 py-2">
           <span class="w-9 h-12 rounded-sm bg-muted overflow-hidden shrink-0 border border-border">
@@ -199,8 +254,33 @@ onMounted(() => {
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium truncate">{{ book.title ?? t('settings.readingServices.migration.readwiseOnlyList.untitled') }}</p>
             <p class="text-xs text-muted-foreground truncate">{{ book.author }}</p>
+            <p v-if="stateFor(book.externalId) === 'error'" class="text-xs text-destructive truncate">{{ errorFor(book.externalId) }}</p>
           </div>
           <span class="text-xs text-muted-foreground whitespace-nowrap">{{ ownershipLabel(book) }}</span>
+          <Button
+            v-if="canRequestBooks && stateFor(book.externalId) !== 'owned'"
+            variant="outline"
+            size="sm"
+            type="button"
+            :disabled="stateFor(book.externalId) === 'checking' || stateFor(book.externalId) === 'requesting' || stateFor(book.externalId) === 'requested' || stateFor(book.externalId) === 'already-requested'"
+            @click="requestOne(candidateFor(book))"
+          >
+            <Loader2 v-if="stateFor(book.externalId) === 'checking' || stateFor(book.externalId) === 'requesting'" class="size-3.5 animate-spin" />
+            <CheckCircle2 v-else-if="stateFor(book.externalId) === 'requested'" class="size-3.5" />
+            {{
+              stateFor(book.externalId) === 'checking'
+                ? t('bookRequests.externalRequest.checkingButton')
+                : stateFor(book.externalId) === 'requesting'
+                  ? t('bookRequests.externalRequest.requestingButton')
+                  : stateFor(book.externalId) === 'requested'
+                    ? t('bookRequests.externalRequest.requestedButton')
+                    : stateFor(book.externalId) === 'already-requested'
+                      ? t('bookRequests.externalRequest.alreadyRequestedButton')
+                      : stateFor(book.externalId) === 'error'
+                        ? t('bookRequests.externalRequest.errorButton')
+                        : t('bookRequests.externalRequest.requestButton')
+            }}
+          </Button>
         </div>
       </div>
       <div class="flex items-center justify-between">
@@ -221,4 +301,15 @@ onMounted(() => {
       </div>
     </div>
   </div>
+
+  <ConfirmDialog
+    :open="requestAllOpen"
+    :title="t('bookRequests.externalRequest.requestAllConfirmTitle', { count: requestableBooks.length })"
+    :description="t('bookRequests.externalRequest.requestAllConfirmDescription', { count: requestableBooks.length })"
+    :confirm-label="t('bookRequests.externalRequest.requestAllConfirmLabel', { count: requestableBooks.length })"
+    :busy="requestingAll"
+    :destructive="false"
+    @confirm="confirmRequestAll"
+    @cancel="requestAllOpen = false"
+  />
 </template>
