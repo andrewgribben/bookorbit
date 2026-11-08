@@ -16,7 +16,9 @@ import { SECRET_INPUT_ATTRS } from '@/lib/secret-input'
 import { useCountdown, useReadingServiceAuth } from '../composables/useReadingServiceAuth'
 
 const props = defineProps<{
-  provider: ReadingServiceProvider
+  /** Any provider id, including an arbitrary private-adapter one; narrowed only where the
+   * composable/API layer requires the built-in-only `ReadingServiceProvider` literal union. */
+  provider: string
   authMethods: ReadingServiceAuthMethod[]
   connected: boolean
   needsReconnect?: boolean
@@ -29,7 +31,7 @@ const emit = defineEmits<{ changed: [] }>()
 
 const { t } = useI18n()
 
-const auth = useReadingServiceAuth(props.provider)
+const auth = useReadingServiceAuth(props.provider as ReadingServiceProvider)
 
 const providerLabel = computed(() => props.displayName || props.provider.charAt(0).toUpperCase() + props.provider.slice(1))
 

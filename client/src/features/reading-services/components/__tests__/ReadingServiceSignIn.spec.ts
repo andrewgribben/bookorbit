@@ -135,7 +135,7 @@ describe('ReadingServiceSignIn', () => {
     await wrapper.get('[data-testid="reading-service-switch-account"]').trigger('click')
 
     expect(wrapper.find('[data-testid="reading-service-connected-row"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="reading-service-sign-in-methods"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reading-service-sign-in-methods"]').exists()).toBe(true)
   })
 
   it('opens a confirm dialog before disconnecting', async () => {
@@ -162,6 +162,6 @@ describe('ReadingServiceSignIn', () => {
 
     expect(wrapper.find('[data-testid="reading-service-needs-reconnect"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="reading-service-connected-row"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="reading-service-sign-in-methods"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reading-service-sign-in-methods"]').exists()).toBe(true)
   })
 })
