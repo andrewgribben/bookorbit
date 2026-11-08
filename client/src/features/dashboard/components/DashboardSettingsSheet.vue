@@ -553,7 +553,11 @@ function handleCancel() {
           </button>
 
           <!-- External (provider) shelves -->
-          <fieldset class="mt-6">
+          <!-- min-w-0: browsers give <fieldset> a default min-width: min-content, which lets its
+               content (the shelf rows below) force this fieldset wider than the drawer at narrow
+               viewports, overflowing the sheet horizontally. Override it so the fieldset shrinks
+               to the drawer's width like a normal block element. -->
+          <fieldset class="mt-6 min-w-0">
             <legend class="text-sm font-medium text-foreground">{{ t('dashboard.settings.externalShelvesPicker.title') }}</legend>
             <p class="mt-1 text-xs text-muted-foreground">{{ t('dashboard.settings.externalShelvesPicker.description') }}</p>
 
