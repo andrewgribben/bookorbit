@@ -288,6 +288,85 @@ Series folders check already done for `Supergirl (2025)`: new `folder_series` ru
 - Do not replace `bookorbit-db` or wipe `/mnt/user/appdata/bookorbit`
 - When fixing Unraid path mappings, always verify host -> container direction with `docker inspect`
 
+## S1 review fixes + merge into S2 (2026-11-08)
+
+Fixed six S1 review findings on `feat-reading-services-core` (final hash
+**`6033e7de7b`**), then merged that branch into `feat-readwise-books-migration`
+(final hash **`ffe3381ee8`**). Both local only, not pushed.
+
+Findings fixed, one commit each on `feat-reading-services-core`:
+
+1. `runLoop` re-checks `cancelled` after the final in-flight `migratePage`
+   resolves, so a cancel arriving while the last page is in flight is no
+   longer overwritten by a `completed` status write.
+2. `startMigration` now calls `findRunningRun` and returns the existing
+   `running` run for the same `(userId, provider, kind)` instead of starting
+   a duplicate. Chose a DB-level guard too: a partial unique index
+   `rs_runs_user_provider_kind_running_uidx` on `reading_service_runs` where
+   `status = 'running'`, generated via `pnpm db:generate` (migration 0140)
+   and verified on a disposable pg18 container (migrate + drift_check both
+   clean). This is the smallest correct option: an in-process check alone
+   cannot close the race between two concurrent requests both passing the
+   check before either insert commits, and a full lock service would be
+   overkill for one row per user/provider/kind.
+3. Controller `getRun`/`cancelRun` now re-check `assertProviderAccess` for
+   the fetched run's provider, not just userId ownership.
+4. `UpdateReadingServiceFeaturesDto.features` now uses a class-validator
+   constraint rejecting unknown feature keys or non-boolean values with a
+   clean 400 instead of a 500 deep in the service.
+5. Readwise and Hardcover `upsertSettings` now encrypt a freshly supplied
+   token immediately when `READING_SERVICES_ENCRYPTION_KEY` is configured
+   (plaintext column set to null), instead of waiting for the lazy
+   migrate-on-read path. Old plaintext rows still migrate lazily on read.
+   Also fixed `shouldSeedWatermark` (Readwise) and the token-required guard
+   (both services) to recognise an encrypted-only row as "token configured",
+   since a token no longer necessarily lands in the plaintext column at all.
+6. Removed the stray untracked `server/.env.example.theirs` from the PC
+   worktree.
+
+Not done: the stale sync-run cache reaper mentioned in the review is not
+addressed. No cron/cleanup job evicts finished run state from the
+in-memory cache map over long uptimes; worth a follow-up card if memory
+growth becomes a real issue in practice.
+
+Merge: `git merge --no-ff feat-reading-services-core` into
+`feat-readwise-books-migration` was conflict-free both times (once before
+the migration commit, once after); git's auto-merge resolved the
+controller/repository overlap with S2's preview work cleanly on its own.
+
+Verification on Unraid, both branches, after every sync:
+
+- `pnpm exec tsc --noEmit -p tsconfig.build.json` (server): clean on
+  `feat-readwise-books-migration`; `feat-reading-services-core` has the
+  same 10 pre-existing unrelated errors (request-locale decorator,
+  chapter-editor, dashboard.service, koreader catalog sort, path.service)
+  present since before this work (confirmed by typechecking commit
+  `d0532d3d` directly) and not touched by these fixes.
+- `eslint`/`prettier --check` on every changed file: clean on both
+  branches.
+- `vitest run src/modules/reading-services src/modules/readwise
+  src/modules/hardcover`: 30 files / 470 tests passed on
+  `feat-reading-services-core`, 35 files / 537 tests passed on
+  `feat-readwise-books-migration`, both after the migration merge.
+- Migration 0140 applied cleanly on a disposable
+  `pgvector/pgvector:pg18` container bound to 127.0.0.1:55442; a
+  follow-up `db:generate drift_check` reported "No schema changes,
+  nothing to migrate". Container removed afterwards.
+
+One hiccup worth recording: `hardcover-settings.service.ts` originally
+typed a local var as `Parameters<typeof this.repo.upsertSettings>[1]`.
+Removing an unrelated line in the same method (the forced
+`existing!.apiToken` carry-forward, replaced by letting
+`onConflictDoUpdate` leave the column untouched when no new token is
+given) made `tsc` fail with `TS2304: Cannot find name 'this'` on that
+type position, even though the literal text of the annotation did not
+change. Root cause not fully understood; fixed by switching to the
+`Parameters<HardcoverRepository['upsertSettings']>[1]` pattern already
+used in `readwise-settings.service.ts`, which sidesteps `this` in a type
+position entirely. If this resurfaces elsewhere, prefer the
+`SomeClass['method']` pattern over `typeof this.foo` in a local type
+annotation.
+
 ## First commands for a successor agent
 
 ```bash
