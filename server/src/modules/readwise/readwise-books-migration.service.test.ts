@@ -4,7 +4,7 @@ import { ReadingServiceCacheService } from '../reading-services/reading-service-
 import { ReadingServiceRegistry } from '../reading-services/reading-service-registry.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksMigrationService } from './readwise-books-migration.service';
-import { ReadwiseBooksClientService } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { ReadwiseBooksPullService } from './readwise-books-pull.service';
 import { ReadwiseRepository } from './readwise.repository';
@@ -202,6 +202,98 @@ describe('ReadwiseBooksMigrationService', () => {
         expect.objectContaining({ externalBookId: 'r9', matchMethod: 'created' }),
       );
       expect(counters).toMatchObject({ scanned: 1, created: 1 });
+    });
+
+    it('chunks updates and creates to the Readwise batch limits instead of sending one oversized call', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      // 150 brand-new books: one call of 150 would exceed Readwise's 1-10 create batch limit.
+      const localPage = Array.from({ length: 150 }, (_, i) => book({ bookId: i + 1, title: `Book ${i}`, status: 'want_to_read' }));
+      (localBooks.findPage as any).mockResolvedValueOnce(localPage).mockResolvedValueOnce([]);
+      (client.createBooks as any).mockImplementation((_userId: number, _tok: string, items: unknown[]) =>
+        Promise.resolve(items.map((_, i) => ({ id: `r${i}`, status: 'created', book_id: `created-${i}` }))),
+      );
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).toHaveBeenCalledTimes(15); // 150 / 10
+      for (const call of (client.createBooks as any).mock.calls) {
+        expect(call[2].length).toBeLessThanOrEqual(10);
+      }
+      expect(counters.created).toBe(150);
+    });
+
+    it('retries a 400 create batch item by item so one bad record does not drop the rest', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      const localPage = [
+        book({ bookId: 1, title: 'Good Book A', status: 'want_to_read' }),
+        book({ bookId: 2, title: 'Bad Book', status: 'want_to_read' }),
+        book({ bookId: 3, title: 'Good Book B', status: 'want_to_read' }),
+      ];
+      (localBooks.findPage as any).mockResolvedValueOnce(localPage).mockResolvedValueOnce([]);
+      (client.createBooks as any)
+        .mockRejectedValueOnce(new ReadwiseBooksHttpError('POST', '/books/api/v1/books', 400, 'bad request'))
+        .mockResolvedValueOnce([{ id: 'ra', status: 'created', book_id: 'ra' }])
+        .mockResolvedValueOnce([{ id: 'r-err', status: 'error', error: 'invalid title' }])
+        .mockResolvedValueOnce([{ id: 'rb', status: 'created', book_id: 'rb' }]);
+
+      const counters = emptyCounters();
+      const result = await service.migratePage(1, indexCursor!, counters);
+
+      // One batch call, then 3 single-item retries.
+      expect(client.createBooks).toHaveBeenCalledTimes(4);
+      expect(counters.created).toBe(2);
+      expect(counters.failed).toBe(1);
+      expect(result).toBeNull();
+    });
+
+    it('retries a 400 update batch item by item and keeps the run from aborting', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({
+        results: [
+          { id: 'r1', product: { isbn: '9780306406157' } },
+          { id: 'r2', product: { isbn: '9780306406164' } },
+        ],
+        next: null,
+      });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any)
+        .mockResolvedValueOnce([
+          book({ bookId: 10, isbn13: '9780306406157', status: 'read', rating: 4 }),
+          book({ bookId: 11, isbn13: '9780306406164', status: 'read', rating: 5 }),
+        ])
+        .mockResolvedValueOnce([]);
+      (client.updateBooks as any)
+        .mockRejectedValueOnce(new ReadwiseBooksHttpError('PATCH', '/books/api/v1/books', 400, 'bad request'))
+        .mockResolvedValueOnce([{ id: 'r1', status: 'existing' }])
+        .mockRejectedValueOnce(new ReadwiseBooksHttpError('PATCH', '/books/api/v1/books', 400, 'invalid rating'));
+
+      const counters = emptyCounters();
+      const result = await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.updateBooks).toHaveBeenCalledTimes(3);
+      expect(counters.updated).toBe(1);
+      expect(counters.failed).toBe(1);
+      expect(result).toBeNull();
+    });
+
+    it('still aborts the run on a 403 (account lost Readwise Books) rather than retrying item by item', async () => {
+      const { service, client, localBooks, readwiseRepo } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 1, title: 'A', status: 'want_to_read' })]).mockResolvedValueOnce([]);
+      (client.createBooks as any).mockRejectedValueOnce(new ReadwiseBooksForbiddenError());
+
+      await expect(service.migratePage(1, indexCursor!, emptyCounters())).rejects.toBeInstanceOf(ReadwiseBooksForbiddenError);
+      expect(readwiseRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'no_readwise_books', enabled: false });
     });
 
     it('skips an unmatched unread book without creating or updating anything', async () => {

@@ -140,6 +140,48 @@ export class ReadwiseBooksForbiddenError extends Error {
   }
 }
 
+/**
+ * Thrown for any non-2xx, non-401/403/429 Readwise Books response (chiefly 400s). Carries enough
+ * to diagnose a bad payload from logs alone: the method and path (no query string, so no token
+ * or other secret ever lands here), the status, and a sanitised, truncated response body. Never
+ * carries the Authorization header or token.
+ */
+export class ReadwiseBooksHttpError extends Error {
+  readonly status: number;
+  readonly method: string;
+  readonly path: string;
+  readonly responseBody: string;
+
+  constructor(method: string, path: string, status: number, responseBody: string) {
+    super(`Readwise Books API error: ${method} ${path} -> ${status}${responseBody ? ` body="${responseBody}"` : ''}`);
+    this.name = 'ReadwiseBooksHttpError';
+    this.status = status;
+    this.method = method;
+    this.path = path;
+    this.responseBody = responseBody;
+  }
+}
+
+const RESPONSE_BODY_LOG_MAX_LENGTH = 500;
+
+/** Strips the query string so a logged/thrown path can never carry a token or other secret. */
+function pathOnly(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url.split('?')[0]!;
+  }
+}
+
+async function readSanitizedBody(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    return sanitizeLogValue(text, RESPONSE_BODY_LOG_MAX_LENGTH);
+  } catch {
+    return '';
+  }
+}
+
 function toQueryString(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -255,7 +297,14 @@ export class ReadwiseBooksClientService {
     }
     if (res.status === 401) throw new ReadwiseUnauthorizedError();
     if (res.status === 403) throw new ReadwiseBooksForbiddenError();
-    if (!res.ok) throw new Error(`Readwise Books API error: ${res.status}`);
+    if (!res.ok) {
+      const path = pathOnly(url);
+      const body = await readSanitizedBody(res);
+      this.logger.error(
+        `[readwise.books_client] [fail] userId=${userId} method=${method} path=${path} status=${res.status} attempt=${attempt} durationMs=${Date.now() - startedAtMs} body="${body}" - Readwise Books API returned an error response`,
+      );
+      throw new ReadwiseBooksHttpError(method, path, res.status, body);
+    }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }

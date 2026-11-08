@@ -7,6 +7,7 @@ import { ReadingServiceFeaturesService } from '../reading-services/reading-servi
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
@@ -128,23 +129,63 @@ export class ReadwiseSessionsPushService {
     let pushedCount = 0;
     for (let i = 0; i < sessions.length; i += READWISE_SESSIONS_CREATE_BATCH) {
       const batch = sessions.slice(i, i + READWISE_SESSIONS_CREATE_BATCH);
-      const items = batch.map((session) => toCreateItem(session, link.externalBookId, timezone, publishToFeed));
-      const results = await this.client.createSessions(userId, token, items);
-
-      const ledgerItems = batch
-        .map((session, index) => ({ session, externalId: results[index]?.id }))
-        .filter((entry): entry is { session: PushableSession; externalId: string } => Boolean(entry.externalId))
-        .map(({ session, externalId }) => ({
-          userId,
-          provider: 'readwise' as const,
-          kind: 'session',
-          localId: session.id,
-          externalId,
-        }));
-
-      await this.readingServicesRepo.recordItemLinks(ledgerItems);
-      pushedCount += ledgerItems.length;
+      pushedCount += await this.pushSessionBatch(userId, token, bookId, link.externalBookId, batch, timezone, publishToFeed);
     }
     return pushedCount;
+  }
+
+  /**
+   * POSTs one batch of up to `READWISE_SESSIONS_CREATE_BATCH` sessions. If the whole batch call
+   * fails (e.g. a 400 from one malformed session), it is retried one session at a time so a
+   * single bad record doesn't drop every session in the batch; a session still failing after
+   * the retry is logged with its local id and the Readwise error and simply left unlinked (the
+   * next flush will pick it up again), rather than aborting the rest of the book's sessions.
+   */
+  private async pushSessionBatch(
+    userId: number,
+    token: string,
+    bookId: number,
+    externalBookId: string,
+    batch: PushableSession[],
+    timezone: string,
+    publishToFeed: boolean,
+  ): Promise<number> {
+    const items = batch.map((session) => toCreateItem(session, externalBookId, timezone, publishToFeed));
+    try {
+      const results = await this.client.createSessions(userId, token, items);
+      return this.recordSessionResults(userId, batch, results);
+    } catch (err) {
+      if (err instanceof ReadwiseUnauthorizedError || err instanceof ReadwiseBooksForbiddenError) throw err;
+      let pushed = 0;
+      for (const session of batch) {
+        try {
+          const singleResult = await this.client.createSessions(userId, token, [toCreateItem(session, externalBookId, timezone, publishToFeed)]);
+          pushed += await this.recordSessionResults(userId, [session], singleResult);
+        } catch (itemErr) {
+          if (itemErr instanceof ReadwiseUnauthorizedError || itemErr instanceof ReadwiseBooksForbiddenError) throw itemErr;
+          const errorClass = itemErr instanceof Error ? itemErr.constructor.name : 'UnknownError';
+          this.logger.error(
+            `[${EVENT}] [fail] userId=${userId} bookId=${bookId} sessionId=${session.id} errorClass=${errorClass} error="${sanitizeLogValue(itemErr instanceof Error ? itemErr.message : String(itemErr))}" - session push failed, run continues`,
+          );
+        }
+      }
+      return pushed;
+    }
+  }
+
+  private async recordSessionResults(userId: number, batch: PushableSession[], results: { id: string }[]): Promise<number> {
+    const ledgerItems = batch
+      .map((session, index) => ({ session, externalId: results[index]?.id }))
+      .filter((entry): entry is { session: PushableSession; externalId: string } => Boolean(entry.externalId))
+      .map(({ session, externalId }) => ({
+        userId,
+        provider: 'readwise' as const,
+        kind: 'session',
+        localId: session.id,
+        externalId,
+      }));
+
+    await this.readingServicesRepo.recordItemLinks(ledgerItems);
+    return ledgerItems.length;
   }
 }
