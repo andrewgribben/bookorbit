@@ -1958,7 +1958,158 @@ On `BookDetailDto` (`GET /books/:id` and the two PATCH routes above):
 }
 ```
 
-## First commands for a successor agent
+## Reading-services provider parity (this stage, feat-reading-services-provider-parity)
+
+Host-side support for private reading-service adapters reaching parity with the two
+built-in providers, plus three owner-reported UI bugs fixed. Commits on this branch
+(based on feat-reading-services-library-scope @ 3ff34e2d): "feat: host-side adapter
+contract v2", "fix: owner-reported parity bugs + password auth", "style: prettier +
+require-await fixes", "feat(db): migration 0144".
+
+### What changed, server
+
+- `reading-service-provider.ts`: the adapter contract gained optional `displayName`,
+  `description`, `iconUrl`, `authMethods`, `validateCredential`, `loginWithPassword`,
+  `startDeviceAuth`, `pollDeviceAuth`, `disconnect`. Built-in Readwise/Hardcover don't
+  set any of these; a private adapter sets `authMethods` plus whichever of the four
+  auth methods it implements.
+- `reading-service-private-adapter-bridge.ts`: wraps a contract-v2 module (ctx-based
+  calls: `{userId, credential, logger, fetch}`; `getShelf(ctx, shelfId) -> {items,
+  error?}`) into the host's `ReadingServiceProviderAdapter` shape. `auth_expired` from
+  `getShelf` flips the stored credential's `needsReconnect` instead of throwing.
+  `migratePage`/`pull` reject (no sync surface for a v2, read-only adapter).
+- `reading-service-private-adapter-loader.service.ts`: loads either a v1
+  (isConnected/migratePage/pull) or v2 (auth.methods/getShelf) default export from
+  `READING_SERVICES_PRIVATE_ADAPTERS_DIR`; rejects a built-in provider name, a
+  duplicate provider, or an invalid `permission`.
+- `reading-service-private-credential.service.ts` + table
+  `reading_service_private_credentials` (migration 0144): one encrypted credential row
+  per (userId, provider), reusing `ReadingServiceTokenService`'s AES-GCM key
+  (`READING_SERVICES_ENCRYPTION_KEY`). Never logged, never returned decrypted except
+  inside the bridge's `ctx.credential` for the one call that needs it.
+- New routes on `ReadingServicesController`, all behind `assertProviderAccess`
+  (adapter's declared permission):
+  - `POST /reading-services/:provider/auth/token` - body `{ credential: string }`.
+    Calls `validateCredential`, stores on success.
+  - `POST /reading-services/:provider/auth/password` - body
+    `{ username: string, password: string }`. Throttled 5/15min per user
+    (`@Throttle`). Calls `loginWithPassword`; stores the returned `credential` only -
+    the password itself is never stored, cached, or logged (already covered by the
+    global pino `req.body.password` redact path in `logger.config.ts`; `credential`
+    and `token` are redacted too now).
+  - `POST /reading-services/:provider/auth/device/start` /
+    `POST /reading-services/:provider/auth/device/poll` - the device-auth handle is
+    cached server-side (`ReadingServiceCacheService`) and never reaches the client.
+  - `DELETE /reading-services/:provider/auth` - deletes the stored credential.
+  - `GET /reading-services` summaries now include `displayName`, `description`,
+    `iconUrl`, `authMethods`, `needsReconnect`.
+- Audited every built-in adapter's declared `capabilities` against what it actually
+  implements: Readwise was missing `recap_widget` (the recap widget exists via
+  `ReadwiseRecapService`, just wasn't declared) - fixed. Hardcover's capabilities were
+  already accurate.
+
+### What changed, client
+
+- `ReadingServiceFeatureList.vue`: a feature the provider's `capabilities` doesn't
+  declare is no longer rendered at all (was a greyed "unavailable" row) - owner rule:
+  hide what the platform lacks, only grey for state. `publish_sessions` is still the
+  one legitimately dependency-gated row (needs `sessions` on first), with a
+  `dependencyHint` string instead of a stock "unavailable" copy key.
+- `ReadingServiceLibraries.vue`: now always renders its card frame once a summary
+  exists, with an honest empty-state sentence
+  (`settings.readingServices.libraries.empty`) instead of vanishing entirely when
+  there are zero libraries yet.
+- `HardcoverSettings.vue`: the Libraries section was gated on `tokenConfigured`
+  (connected), hiding it before the user connects; changed to match
+  `ReadwiseSettings.vue` (gated on the summary existing, not on connection state).
+- `en.json`: added `trending_shelf`/`recommendations_shelf` label+hint (an owner
+  screenshot caught these rendering as raw i18n keys - they'd been added to
+  `READING_SERVICE_FEATURES` without ever getting locale entries), removed stale
+  "coming soon"/"coming later"/`discover_shelf` copy and `unavailable` keys for
+  platform-unsupported features, added `libraries.empty`.
+- New test `reading-service-feature-locales.spec.ts`: fails if any
+  `READING_SERVICE_FEATURES` id ever ships without an en.json label+hint, or keeps a
+  stale `unavailable` key - regression guard for the raw-key bug above.
+- **Not built yet**: the generic `ReadingServiceSettings` page/section that lists a
+  private adapter in Settings next to Readwise/Hardcover, with a "Sign-in" method
+  picker (token / password / device-code) at the top collapsing to account label +
+  status + Switch account + Disconnect once connected. The server side (all three auth
+  routes, summaries, disconnect) is implemented and tested; a successor needs to
+  build the Vue component(s) following `design-taste-frontend`'s app-screen rules (see
+  that skill's "Page or app screen" + "component or single section" special case) -
+  write the device-code/password/token state design (idle, waiting with copyable code
+  + link + live polling + cancel + expiry, approved, expired/denied/error with retry)
+  into this file *before* implementing, then run the skill's `lint.mjs` on the new
+  `.vue` files and fix findings before handoff.
+
+### Auth method contract (packages/types)
+
+```ts
+type ReadingServiceAuthMethod =
+  | { kind: "token"; label: string; help?: string; placeholder?: string }
+  | { kind: "device_code"; label: string; help?: string }
+  | { kind: "password"; label: string; help?: string; fields: {
+      username: { label: string; placeholder?: string };
+      password: { label: string; placeholder?: string };
+    } };
+
+type ReadingServicePasswordLoginResult =
+  | { ok: true; accountLabel?: string | null }
+  | { ok: false; reason: "invalid" | "mfa_required" | "network" | "unsupported"; message?: string | null };
+```
+
+`GET /reading-services` summary gained: `displayName?`, `description?`, `iconUrl?`,
+`authMethods?`, `needsReconnect: boolean`. These are only populated for adapters that
+declare them (private adapters); built-ins leave them undefined/false.
+
+### Gates run this stage (all on Unraid, 192.168.5.3)
+
+- Server + client `type-check`: exit 0 both.
+- Server vitest (`reading-services` + `readwise`): 380/380 passed.
+- Client vitest (`reading-services` + `hardcover` + `readwise`): 155/155 passed.
+- `node ./scripts/validate-locales.mjs` (client): "Validated 25 locale catalogs
+  against 12221 English messages".
+- Changed-file `prettier --check` / `eslint`: clean after two fix rounds (long union
+  types needed reformatting; `migratePage`/`pull` on the bridge were `async` with no
+  `await` - now synchronously return `Promise.reject(...)`).
+- `pnpm db:generate add_reading_service_private_credentials` against the disposable
+  DB -> migration `0144_add_reading_service_private_credentials.sql`; applied with
+  `pnpm db:migrate`; a follow-up `pnpm db:generate drift_check` reported "No schema
+  changes, nothing to migrate".
+- Boot gate, both green, zero `"level":50` lines, both logged `Nest application
+  successfully started`:
+  - (a) no `READING_SERVICES_PRIVATE_ADAPTERS_DIR` set.
+  - (b) `READING_SERVICES_PRIVATE_ADAPTERS_DIR` pointing at a copy of the real
+    `readwise-social` adapter (from
+    `C:/Users/grib/Development/readwise-accessibility-poc/bookorbit-adapter/`,
+    `index.mjs` + `lib/`, no `test/`/`node_modules`); logged
+    `provider=readwise-social - adapter registered` and `loaded=1 scanned=1`.
+
+Note: the disposable DB is actually on `127.0.0.1:55452` (container
+`bookorbit-disposable-db`), not `:55453` as earlier docs say - port `:55453` was not
+listening when this stage ran; check `docker ps` if gates fail to connect.
+
+### Adapter-side: already matches, no changes needed
+
+The real adapter at `bookorbit-adapter/index.mjs` (outside this repo) has *already*
+been updated in parallel with `token` and `password` (`loginWithPassword`) methods
+alongside `device_code`, matching this stage's host contract exactly - confirmed by
+loading a copy of it in boot gate (b) above. No adapter-side changes are needed.
+
+### Not done this stage (for a successor)
+
+1. The generic Vue `ReadingServiceSettings`/Sign-in UI described above - this is the
+   main remaining piece for an operator to actually use a private adapter end to end.
+2. Android (`bookorbit-android`, `feat-reading-services-parity` @ 9deea1a): the
+   Integrations list showing adapter providers by `displayName` with status - not
+   started this stage. Relevant shape for that work is the `GET /reading-services`
+   summary fields documented above.
+3. Rate-limit test coverage for the `@Throttle` decorator on `/auth/password` itself
+   (the 5-per-15-min limit) - only the controller method's own logic (success/
+   invalid/mfa/unsupported/no-password-logged) is unit-tested; the throttle guard is
+   framework-level and wasn't separately exercised here.
+
+
 
 ```bash
 cd /mnt/user/data/Development/bookorbit
