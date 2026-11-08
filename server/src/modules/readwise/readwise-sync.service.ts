@@ -13,6 +13,7 @@ import {
 } from './readwise.constants';
 import { ReadwiseClientService, ReadwiseUnauthorizedError, type ReadwiseHighlight } from './readwise-client.service';
 import { ReadwiseRepository, type NewHighlightRow } from './readwise.repository';
+import { ReadwiseSettingsService } from './readwise-settings.service';
 
 const SYNC_EVENT = 'readwise.sync';
 
@@ -27,15 +28,18 @@ export class ReadwiseSyncService {
   constructor(
     private readonly repo: ReadwiseRepository,
     private readonly client: ReadwiseClientService,
+    private readonly settingsService: ReadwiseSettingsService,
     @Inject(appConfig.KEY) private readonly appConfiguration: ConfigType<typeof appConfig>,
   ) {}
 
   async flush(userId: number): Promise<void> {
     const startedAtMs = Date.now();
     const settings = await this.repo.findSettings(userId);
-    if (!settings?.apiToken || !settings.enabled) return;
+    if (!(settings?.apiToken || settings?.apiTokenEncrypted) || !settings.enabled) return;
     const hasPermission = await this.repo.userHasReadwiseSyncPermission(userId);
     if (!hasPermission) return;
+    const token = await this.settingsService.getToken(userId);
+    if (!token) return;
 
     let watermark = settings.lastSyncedAnnotationId;
     let syncedHighlights = 0;
@@ -49,7 +53,7 @@ export class ReadwiseSyncService {
       if (rows.length === 0) break;
       const payload = rows.map((r) => this.toHighlight(userId, r));
       try {
-        await this.client.createHighlights(userId, settings.apiToken, payload);
+        await this.client.createHighlights(userId, token, payload);
       } catch (err) {
         const durationMs = Date.now() - startedAtMs;
         const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';

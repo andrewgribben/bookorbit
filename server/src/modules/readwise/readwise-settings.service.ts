@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 
 import type { ReadwiseSettings, ReadwiseSyncDisabledReason, ReadwiseTokenValidationResult, UpsertReadwiseSettingsPayload } from '@bookorbit/types';
 
+import { ReadingServiceTokenService } from '../reading-services/reading-service-token.service';
 import type { ReadwiseUserSetting } from '../../db/schema';
 import { ReadwiseAutoSyncSchedulerService } from './readwise-auto-sync-scheduler.service';
 import { ReadwiseClientService } from './readwise-client.service';
@@ -13,11 +14,20 @@ export class ReadwiseSettingsService {
     private readonly repo: ReadwiseRepository,
     private readonly client: ReadwiseClientService,
     private readonly scheduler: ReadwiseAutoSyncSchedulerService,
+    private readonly tokenService: ReadingServiceTokenService,
   ) {}
+
+  /** The only path that should read a user's Readwise token; migrates legacy plaintext lazily. */
+  async getToken(userId: number): Promise<string | null> {
+    const row = await this.repo.findSettings(userId);
+    return this.tokenService.getToken(row, async (encrypted) => {
+      await this.repo.upsertSettings(userId, { apiToken: null, apiTokenEncrypted: encrypted });
+    });
+  }
 
   async getSettings(userId: number): Promise<ReadwiseSettings> {
     const [row, hasPermission] = await Promise.all([this.repo.findSettings(userId), this.repo.userHasReadwiseSyncPermission(userId)]);
-    const tokenConfigured = Boolean(row?.apiToken);
+    const tokenConfigured = Boolean(row?.apiToken || row?.apiTokenEncrypted);
     const enabled = row?.enabled ?? false;
 
     return {
@@ -58,7 +68,7 @@ export class ReadwiseSettingsService {
   }
 
   async validateToken(userId: number, token?: string): Promise<ReadwiseTokenValidationResult> {
-    const effective = token?.trim() || (await this.repo.findSettings(userId))?.apiToken;
+    const effective = token?.trim() || (await this.getToken(userId));
     if (!effective) return { valid: false };
     return { valid: await this.client.validateToken(userId, effective) };
   }

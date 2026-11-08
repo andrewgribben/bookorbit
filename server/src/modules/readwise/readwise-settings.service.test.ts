@@ -18,8 +18,12 @@ const mockScheduler = {
   requestSync: vi.fn(),
 };
 
+const mockTokenService = {
+  getToken: vi.fn().mockImplementation((row: { apiToken: string | null } | undefined) => Promise.resolve(row?.apiToken ?? null)),
+};
+
 function makeService() {
-  return new ReadwiseSettingsService(mockRepo as any, mockClient as any, mockScheduler as any);
+  return new ReadwiseSettingsService(mockRepo as any, mockClient as any, mockScheduler as any, mockTokenService as any);
 }
 
 describe('ReadwiseSettingsService', () => {

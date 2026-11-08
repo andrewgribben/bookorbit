@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AchievementModule } from '../achievement/achievement.module';
+import { ReadingServicesModule } from '../reading-services/reading-services.module';
 import { ReadwiseController } from './readwise.controller';
 import { ReadwiseAutoSyncSchedulerService } from './readwise-auto-sync-scheduler.service';
 import { ReadwiseClientService } from './readwise-client.service';
@@ -11,7 +12,7 @@ import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
 
 @Module({
-  imports: [AchievementModule],
+  imports: [AchievementModule, ReadingServicesModule],
   controllers: [ReadwiseController],
   providers: [
     ReadwiseQueueService,

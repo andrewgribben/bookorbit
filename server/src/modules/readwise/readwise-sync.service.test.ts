@@ -16,8 +16,12 @@ const mockClient = {
   createHighlights: vi.fn(),
 };
 
+const mockSettingsService = {
+  getToken: vi.fn(),
+};
+
 function makeService() {
-  return new ReadwiseSyncService(mockRepo as any, mockClient as any, { appUrl: 'https://bookorbit.example/' } as any);
+  return new ReadwiseSyncService(mockRepo as any, mockClient as any, mockSettingsService as any, { appUrl: 'https://bookorbit.example/' } as any);
 }
 
 function makeRow(overrides: Partial<NewHighlightRow> = {}): NewHighlightRow {
@@ -46,6 +50,7 @@ describe('ReadwiseSyncService', () => {
     mockRepo.userHasReadwiseSyncPermission.mockResolvedValue(true);
     mockClient.createHighlights.mockResolvedValue(undefined);
     mockRepo.upsertSettings.mockResolvedValue(undefined);
+    mockSettingsService.getToken.mockResolvedValue('tok');
   });
 
   describe('flush guards', () => {
@@ -58,6 +63,7 @@ describe('ReadwiseSyncService', () => {
 
     it('skips when token missing', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings({ apiToken: null }));
+      mockSettingsService.getToken.mockResolvedValue(null);
       await makeService().flush(1);
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
     });

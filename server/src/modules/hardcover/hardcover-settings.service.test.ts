@@ -14,8 +14,12 @@ const mockClient = {
   query: vi.fn(),
 };
 
+const mockTokenService = {
+  getToken: vi.fn().mockImplementation((row: { apiToken: string | null } | undefined) => Promise.resolve(row?.apiToken ?? null)),
+};
+
 function makeService() {
-  return new HardcoverSettingsService(mockRepo as any, mockClient as any);
+  return new HardcoverSettingsService(mockRepo as any, mockClient as any, mockTokenService as any);
 }
 
 describe('HardcoverSettingsService', () => {
