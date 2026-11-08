@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft, ChevronRight, Library, RefreshCw } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, Library, Loader2, MoreHorizontal, RefreshCw } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 
 import type { ReadingServiceProvider, ReadingServiceShelf, ReadingServiceShelfItem } from '@bookorbit/types'
+import { Permission } from '@bookorbit/types'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { usePermissions } from '@/features/auth/composables/usePermissions'
+import { useExternalBookRequests, type ExternalBookRequestCandidate } from '@/features/book-requests/composables/useExternalBookRequests'
 import { useExternalShelf } from '../composables/useExternalShelf'
 
 /**
@@ -25,6 +29,33 @@ const props = defineProps<{
 const { items, loading, error, refresh } = useExternalShelf(props.provider, props.shelf)
 const { t } = useI18n()
 const router = useRouter()
+const { hasPermission } = usePermissions()
+
+// A "Request" action only ever makes sense on the owned-elsewhere shelf: those are books this
+// provider says the reader owns somewhere that are not matched to a BookOrbit book yet. Every
+// other shelf (friends, trending, recommendations) names books by someone else's reading, not by
+// ownership, so there is nothing here for the request module to be asked about.
+const canRequest = computed(() => props.shelf === 'owned-elsewhere' && hasPermission(Permission.BookRequestAccess))
+const { stateFor, requestOne, checkMany } = useExternalBookRequests()
+const openMenuKey = ref<string | null>(null)
+
+function cardKey(item: ReadingServiceShelfItem): string {
+  return `${item.provider}:${item.externalId}`
+}
+
+function candidateFor(item: ReadingServiceShelfItem): ExternalBookRequestCandidate {
+  return { externalId: cardKey(item), title: item.title, author: item.authors[0] ?? null, coverUrl: item.coverUrl }
+}
+
+watch(
+  items,
+  (rows) => {
+    if (!canRequest.value) return
+    const unmatched = rows.filter((item) => item.bookId === null)
+    if (unmatched.length > 0) void checkMany(unmatched.map(candidateFor))
+  },
+  { immediate: true },
+)
 
 const scrollEl = ref<HTMLElement | null>(null)
 
@@ -47,6 +78,10 @@ function openCard(item: ReadingServiceShelfItem) {
   } else if (item.externalUrl) {
     window.open(item.externalUrl, '_blank', 'noopener')
   }
+}
+
+function handleRequest(item: ReadingServiceShelfItem) {
+  void requestOne(candidateFor(item))
 }
 </script>
 
@@ -101,34 +136,68 @@ function openCard(item: ReadingServiceShelfItem) {
 
     <div v-else ref="scrollEl" class="overflow-x-auto px-5 pb-5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div class="flex w-max gap-3">
-        <button
-          v-for="item in items"
-          :key="`${item.provider}:${item.externalId}`"
-          type="button"
-          class="w-[120px] shrink-0 text-left"
-          @click="openCard(item)"
-        >
-          <!-- Cover-missing cards share the exact aspect ratio of real covers: no taller fallback tile. -->
-          <div class="relative overflow-hidden rounded-lg bg-muted" style="aspect-ratio: 2/3">
-            <img v-if="item.coverUrl" :src="item.coverUrl" :alt="item.title" class="h-full w-full object-cover" />
-            <div v-else class="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
-              <span class="line-clamp-3 text-[11px] font-medium text-foreground">{{ item.title }}</span>
-              <span v-if="item.authors.length > 0" class="line-clamp-2 text-[10px] text-muted-foreground">{{ item.authors.join(', ') }}</span>
+        <div v-for="item in items" :key="`${item.provider}:${item.externalId}`" class="group/card relative w-[120px] shrink-0 text-left">
+          <button type="button" class="w-full text-left" @click="openCard(item)">
+            <!-- Cover-missing cards share the exact aspect ratio of real covers: no taller fallback tile. -->
+            <div class="relative overflow-hidden rounded-lg bg-muted" style="aspect-ratio: 2/3">
+              <img v-if="item.coverUrl" :src="item.coverUrl" :alt="item.title" class="h-full w-full object-cover" />
+              <div v-else class="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
+                <span class="line-clamp-3 text-[11px] font-medium text-foreground">{{ item.title }}</span>
+                <span v-if="item.authors.length > 0" class="line-clamp-2 text-[10px] text-muted-foreground">{{ item.authors.join(', ') }}</span>
+              </div>
+              <span
+                class="absolute left-1.5 top-1.5 rounded-full border border-border bg-background/80 px-1.5 py-0.5 text-[9px] font-medium capitalize text-foreground backdrop-blur-sm"
+              >
+                {{ item.provider }}
+              </span>
             </div>
-            <span
-              class="absolute left-1.5 top-1.5 rounded-full border border-border bg-background/80 px-1.5 py-0.5 text-[9px] font-medium capitalize text-foreground backdrop-blur-sm"
-            >
-              {{ item.provider }}
-            </span>
-          </div>
-          <p class="mt-1.5 truncate text-xs font-semibold leading-tight text-foreground">{{ item.title }}</p>
-          <p v-if="item.authors.length > 0" class="truncate text-[11px] text-muted-foreground">{{ item.authors.join(', ') }}</p>
-          <!-- Friends shelves (friends-reading/friends-finished): who is reading it and their status. -->
-          <div v-if="item.friend" class="mt-1 flex items-center gap-1">
-            <img v-if="item.friend.avatarUrl" :src="item.friend.avatarUrl" :alt="item.friend.displayName" class="h-4 w-4 rounded-full object-cover" />
-            <span class="truncate text-[10px] text-muted-foreground">{{ item.friend.displayName }} &middot; {{ item.friend.status }}</span>
-          </div>
-        </button>
+            <p class="mt-1.5 truncate text-xs font-semibold leading-tight text-foreground">{{ item.title }}</p>
+            <p v-if="item.authors.length > 0" class="truncate text-[11px] text-muted-foreground">{{ item.authors.join(', ') }}</p>
+            <!-- Friends shelves (friends-reading/friends-finished): who is reading it and their status. -->
+            <div v-if="item.friend" class="mt-1 flex items-center gap-1">
+              <img v-if="item.friend.avatarUrl" :src="item.friend.avatarUrl" :alt="item.friend.displayName" class="h-4 w-4 rounded-full object-cover" />
+              <span class="truncate text-[10px] text-muted-foreground">{{ item.friend.displayName }} &middot; {{ item.friend.status }}</span>
+            </div>
+          </button>
+
+          <DropdownMenu v-if="canRequest && !item.bookId" :open="openMenuKey === cardKey(item)" @update:open="(open) => (openMenuKey = open ? cardKey(item) : null)">
+            <DropdownMenuTrigger as-child>
+              <button
+                type="button"
+                class="absolute right-1.5 top-1.5 z-20 size-[22px] place-items-center rounded-md bg-black/45 text-white backdrop-blur-[2px] transition-colors hover:bg-black/65 focus-visible:grid group-focus-within/card:grid group-hover/card:grid"
+                :class="openMenuKey === cardKey(item) ? 'grid' : 'hidden'"
+                :aria-label="t('bookRequests.externalRequest.actionsFor', { title: item.title })"
+                @click.stop
+              >
+                <MoreHorizontal :size="12" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                :disabled="['checking', 'requesting', 'requested', 'already-requested'].includes(stateFor(cardKey(item)))"
+                @click="handleRequest(item)"
+              >
+                <Loader2
+                  v-if="['checking', 'requesting'].includes(stateFor(cardKey(item)))"
+                  class="mr-2 h-4 w-4 animate-spin"
+                />
+                {{
+                  stateFor(cardKey(item)) === 'checking'
+                    ? t('bookRequests.externalRequest.checkingButton')
+                    : stateFor(cardKey(item)) === 'requesting'
+                      ? t('bookRequests.externalRequest.requestingButton')
+                      : stateFor(cardKey(item)) === 'requested'
+                        ? t('bookRequests.externalRequest.requestedButton')
+                        : stateFor(cardKey(item)) === 'already-requested'
+                          ? t('bookRequests.externalRequest.alreadyRequestedButton')
+                          : stateFor(cardKey(item)) === 'error'
+                            ? t('bookRequests.externalRequest.errorButton')
+                            : t('bookRequests.externalRequest.requestButton')
+                }}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   </section>

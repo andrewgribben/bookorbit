@@ -26,19 +26,22 @@ import type {
   BookRequestAvailabilityQuery,
   BookRequestActionErrorCode,
   BookRequestFailureMeta,
-  BookRequestSubmitErrorCode,
-  BookRequestItem,
   BookRequestMediaKind,
   BookRequestMetadataSource,
   BookRequestPage,
   BookRequestPairSubmitResult,
   BookRequestRequesterOption,
   BookRequestStatus,
+  BookRequestSubmitErrorCode,
+  BookRequestItem,
   BookRequestSubmitResult,
   BookRequestBulkFailure,
   BookRequestBulkResult,
   BookRequestSourceStatus,
   BookRequestSummary,
+  BulkSubmitBookRequestItem,
+  BulkSubmitBookRequestItemResult,
+  BulkSubmitBookRequestsResult,
   LegacyBookRequestMediaKind,
   ResolvedRequestDestination,
   ResolvedRequestDestinations,
@@ -1382,6 +1385,73 @@ export class BookRequestService {
   async checkAvailability(queries: BookRequestAvailabilityQuery[], user: RequestUser): Promise<BookRequestAvailability[]> {
     const libraryIds = user.isSuperuser ? null : await this.libraryService.findAccessibleLibraryIds(user);
     return this.dedupe.checkAvailability(queries, user.id, libraryIds);
+  }
+
+  /**
+   * "Request all" from a list this module never populated itself (the Readwise-only migration
+   * list, the owned-elsewhere shelf): one request per row, always `ebook` because neither caller
+   * knows the work's format, run through the same `submit()` every single request goes through -
+   * same permission checks, same dedupe-on-insert, same automation trigger. Nothing here writes to
+   * `book_requests` directly.
+   *
+   * A row whose availability check already finds an owned copy or an active request still calls
+   * `submit()` (so a not-yet-subscribed caller is attached to the existing request), but is
+   * reported as `skipped` rather than `created`: nothing new was asked for. A row that fails -
+   * most often a blank title, since neither caller validates its own metadata - is reported
+   * `error` with the same text a single submission would have shown.
+   */
+  async bulkSubmitFromMetadata(items: BulkSubmitBookRequestItem[], actor: RequestUser): Promise<BulkSubmitBookRequestsResult> {
+    const results: BulkSubmitBookRequestItemResult[] = [];
+    let created = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const item of items) {
+      try {
+        const title = item.title.trim();
+        if (!title) {
+          errors++;
+          results.push({ externalId: item.externalId, status: 'error', message: 'Title is required' });
+          continue;
+        }
+
+        const author = item.authors?.[0];
+        const [availability] = await this.checkAvailability([{ title, author, mediaKind: 'ebook' }], actor);
+        const alreadyKnown = Boolean(availability?.ownedBookId || availability?.existingRequestId);
+
+        const result = await this.submit(
+          {
+            title,
+            mediaKind: 'ebook',
+            authors: item.authors,
+            coverUrl: item.coverUrl ?? undefined,
+          } as CreateBookRequestDto,
+          actor,
+        );
+
+        if (alreadyKnown) {
+          skipped++;
+          results.push({ externalId: item.externalId, status: 'skipped', requestId: result.request.id });
+        } else {
+          created++;
+          results.push({ externalId: item.externalId, status: 'created', requestId: result.request.id });
+        }
+      } catch (error: unknown) {
+        errors++;
+        const message = error instanceof HttpException ? this.httpExceptionMessage(error) : 'Failed to submit this request';
+        results.push({ externalId: item.externalId, status: 'error', message });
+      }
+    }
+
+    return { created, skipped, errors, results };
+  }
+
+  /** The sentence a refused submission carries, the same shape `submitFailure` reads client-side. */
+  private httpExceptionMessage(error: HttpException): string {
+    const response = error.getResponse();
+    if (typeof response === 'string') return response;
+    const message = (response as { message?: string | string[] })?.message;
+    return Array.isArray(message) ? (message[0] ?? error.message) : (message ?? error.message);
   }
 
   getSummary(user: RequestUser): Promise<BookRequestSummary> {
