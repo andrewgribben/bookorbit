@@ -51,7 +51,14 @@ const mockLibraryScopeService = {
 };
 
 function makeService() {
-  return new HardcoverSyncService(mockRepo as any, mockClient as any, mockMatchService as any, mockSettingsService as any, mockBookService as any, mockLibraryScopeService as any);
+  return new HardcoverSyncService(
+    mockRepo as any,
+    mockClient as any,
+    mockMatchService as any,
+    mockSettingsService as any,
+    mockBookService as any,
+    mockLibraryScopeService as any,
+  );
 }
 
 async function makeTestingService() {
