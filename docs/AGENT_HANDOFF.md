@@ -1283,6 +1283,216 @@ Unresolved / notes for the next agent:
   (plan §7.6); both remain for a later stage once the shelf endpoint above is
   confirmed against a live token.
 
+---
+
+## Integration: widgets + Hardcover social merged, generic shelves (2026-11-08)
+
+Merged `feat-reading-services-widgets` (`--no-ff`, `62462d047`) and
+`feat-hardcover-social` (`--no-ff`, `5bef7afad`) into this branch, both from
+`feat-book-review`. Followed by four small fix-up commits
+(`37e29db4d`, `789b0c9d2`, `718494126`, `d709ad20b`): a type-check error in
+the recap widget singleton, a prettier pass on one test file, a missing
+`Permission` import in a test fixture, and a pre-existing gap in the widget
+catalog spec (it never listed the new `reading-recap` type). No migrations
+were added by either branch, so there was no schema/drift work to do.
+
+### Generic provider shelves
+
+The widgets branch's "owned elsewhere" shelf and the Hardcover branch's
+friends/trending/recommendations shelves were two different HTTP surfaces
+with two different response shapes. They are now one surface:
+
+- `GET /api/v1/reading-services/:provider/shelves/:shelf` -> `ReadingServiceShelfItem[]`
+  (`packages/types/src/reading-services.ts`). `shelf` is one of
+  `READING_SERVICE_SHELVES`: `friends-reading`, `friends-finished`,
+  `trending`, `recommendations`, `owned-elsewhere`. Each item:
+  ```ts
+  {
+    provider: ReadingServiceProvider
+    externalId: string
+    title: string
+    authors: string[]
+    coverUrl: string | null
+    externalUrl: string | null
+    bookId: number | null          // matched BookOrbit book, if any
+    friend: { displayName: string; avatarUrl: string | null; status: string; date: string | null } | null
+  }
+  ```
+  404s if the adapter does not declare the matching capability
+  (`friends_shelf`/`trending_shelf`/`recommendations_shelf`/`owned`) or has
+  no `getShelf`; 400 for an unknown shelf name or unregistered provider;
+  403 if the caller lacks the provider's permission (see below).
+- `GET /api/v1/reading-services/shelves/available` ->
+  `{ provider, shelf, connected }[]` - every shelf a provider the caller has
+  permission for currently declares via `capabilities`, for a future
+  "Customize Dashboard" picker (see open question below; the picker UI was
+  not built this stage).
+- The old Readwise-only `GET /api/v1/dashboard/shelves/owned-elsewhere` was
+  **removed** (nothing besides the one dashboard component called it) in
+  favour of `GET /api/v1/reading-services/readwise/shelves/owned-elsewhere`.
+  `ReadwiseOwnedElsewhereService.getOwnedElsewhere` now returns
+  `ReadingServiceShelfItem[]` directly (was the Readwise-specific
+  `ExternalBookCard[]`); the `readwise` adapter's new `getShelf` delegates
+  to it for `owned-elsewhere` and returns `[]` for every other shelf (no
+  social graph).
+- Client: `OwnedElsewhereShelf.vue`/`useOwnedElsewhereShelf.ts` were
+  replaced by generic `ExternalShelf.vue` + `useExternalShelf(provider,
+  shelf)` (`client/src/features/dashboard/{components,composables}/`),
+  taking `provider`/`shelf` plus a `titleKey`/`descriptionKey` i18n pair so
+  each call site supplies its own copy (no new locale keys were added this
+  stage - `DashboardView.vue`'s one call site reuses the existing
+  `dashboard.ownedElsewhere.*` keys unchanged). The component renders a
+  friend's avatar/name/status under a card when `item.friend` is set.
+
+### Private adapters reachable over HTTP
+
+Previously `reading-services.controller.ts` gated every route with a fixed
+`PROVIDER_PERMISSIONS: Record<ReadingServiceProvider, Permission>` map
+covering only `readwise`/`hardcover`, so a private adapter (loaded by
+`ReadingServicePrivateAdapterLoaderService`) was registered and visible to
+the migration/sync machinery but **could never be reached over HTTP** -
+there was no entry for it in that map and no safe way to add one generically.
+
+Fixed by giving every adapter a `permission: Permission` field
+(`reading-service-provider.ts`), and having the controller fall back to the
+adapter's own declared permission for anything that is not one of the two
+built-in providers:
+```ts
+private permissionFor(adapter: ReadingServiceProviderAdapter): Permission {
+  return PROVIDER_PERMISSIONS[adapter.provider as ReadingServiceProvider] ?? adapter.permission;
+}
+```
+`PROVIDER_PERMISSIONS` still exists and still wins for `readwise`/`hardcover`
+(backward compatible, no behaviour change for the two built-in providers).
+`ReadingServicePrivateAdapterLoaderService.hasAdapterShape` now rejects a
+module whose `permission` is missing or is not an existing `Permission`
+enum member, so a private adapter can reuse an existing permission (e.g.
+`Permission.ReadwiseSync`) but can never invent a new one or typo its way
+into being unprotected. `ReadingServiceRegistry.get`/`has` now accept
+`string` instead of `ReadingServiceProvider` so a private adapter's
+arbitrary provider id can be looked up by the controller at all.
+
+**Private adapter module contract** (the shape a private adapter, loaded
+from `READING_SERVICES_PRIVATE_ADAPTERS_DIR`, must export as its default
+export - see `reading-service-private-adapter-loader.service.ts` for the
+loader and `reading-service-provider.ts` for the full interface):
+
+```ts
+export default {
+  // Must not be "readwise" or "hardcover" (rejected: "already a built-in
+  // provider"). Any other string is accepted as-is - it becomes the
+  // :provider path segment on every reading-services route.
+  provider: 'my-service',
+
+  // Must be an existing Permission enum member (packages/types). Gates
+  // every HTTP route for this provider; reuse an existing permission
+  // (Permission.ReadwiseSync, Permission.HardcoverSync, ...) rather than
+  // expecting a new one to be created for you.
+  permission: 'readwise_sync',
+
+  // Declares what this adapter supports. Only a capability with a truthy
+  // value unlocks the matching feature/shelf; see ReadingServiceCapabilities
+  // in packages/types/src/reading-services.ts for every recognised key
+  // (status, rating, review, ... friends_shelf, trending_shelf,
+  // recommendations_shelf, owned).
+  capabilities: { trending_shelf: 'read' },
+
+  // Required. Whether this user has the provider connected (token present,
+  // not disabled). Called before every route that needs provider access.
+  async isConnected(userId) { ... },
+
+  // Required by the interface but may be a no-op (`async () => null`) if
+  // this adapter does not support the migration/sync machinery at all -
+  // only the shelf surface and `capabilities` matter for a provider that
+  // exists purely to expose a shelf.
+  async migratePage(userId, cursor, counters) { ... },
+  async pull(userId) { ... },
+
+  // Optional. Required (and only called) when `capabilities[shelfFeature]`
+  // is truthy for a given shelf (friends_shelf -> friends-reading/
+  // friends-finished, trending_shelf -> trending, recommendations_shelf ->
+  // recommendations, owned -> owned-elsewhere). Returning an item with no
+  // local match must set bookId: null, not omit the field.
+  async getShelf(userId, shelf) {
+    return [
+      {
+        provider: 'my-service',
+        externalId: 'abc123',
+        title: 'Some Book',
+        authors: ['Some Author'],
+        coverUrl: null,
+        externalUrl: 'https://example.com/books/abc123',
+        bookId: null,
+        // Only meaningful on friends-reading/friends-finished; null otherwise.
+        friend: null,
+      },
+    ];
+  },
+} satisfies ReadingServiceProviderAdapter; // type only available inside this repo; shape it by hand externally
+```
+
+A module missing `provider`/`capabilities`/`isConnected`/`migratePage`/
+`pull`, or whose `permission` is absent/invalid, is rejected at load with a
+warning log and simply never registered (the loader does not throw or stop
+the app).
+
+### Recap widget empty-shell flash
+
+`ReadingRecapWidget.vue` already hid its own content with `v-if="loading ||
+hasRecap"`, but the fixed-size card shell one level up in
+`DashboardWidgetRow.vue` (`h-55`, border, shadow) rendered regardless, so a
+disconnected/opted-out user still saw an empty tile flash in on every
+dashboard load before the "not loading, no data" state collapsed it.
+Fixed at the row level: `useReadingRecapWidget()` became a module-level
+singleton (`client/src/features/dashboard/composables/
+useReadingRecapWidget.ts`) so `DashboardWidgetRow.vue` can read the same
+`data`/`loading` the widget itself uses, with no second fetch, and filters
+the widget list through a `widgetVisible` predicate before either the
+`v-if="visibleWidgets.length > 0"` section guard or the `v-for` that
+instantiates each card - so the shell itself never mounts for
+`reading-recap` while `!loading && data === null`. Covered by
+`DashboardWidgetRow.spec.ts` (new) plus the existing
+`ReadingRecapWidget.spec.ts`.
+
+### Checks run (Unraid, this stage)
+
+- `pnpm --filter server run type-check`: exit 0.
+- `pnpm --filter client run type-check`: exit 0 (after the singleton-type fix).
+- `pnpm exec eslint` on every file this stage touched (client + server): no errors.
+- `pnpm exec prettier --check` on every file this stage touched: one file
+  needed `--write` (`ExternalShelf.spec.ts`), applied and copied back to the
+  PC per the workflow rule (never commit on Unraid).
+- `pnpm --filter client run validate:locales`: **25 locale catalogs
+  validated against 12206 English messages**, no gaps.
+- `pnpm exec vitest run` server `src/modules/{reading-services,readwise,hardcover,dashboard}`:
+  **63 test files, 936 tests, all passed**.
+- `pnpm exec vitest run` client `src/features/dashboard`: **15 test files,
+  176 tests, all passed** (includes the two new specs and the
+  previously-failing `DashboardSettingsSheet.spec.ts` fixed this stage).
+- No new migrations in this diff, so the disposable-DB
+  apply/`drift_check` gate had nothing to run against.
+
+### Open questions for the next agent
+
+- **"Customize Dashboard" picker UI was not built.** The backend endpoint
+  (`GET /reading-services/shelves/available`) and the generic
+  `ExternalShelf`/`useExternalShelf` client pieces exist, but
+  `DashboardSettingsSheet.vue`'s persisted `ScrollerConfig`/`WidgetConfig`
+  systems are deeply locale-coupled (every `ScrollerType` needs a name in
+  every one of the 25 locale catalogs via `shelfTypeName`/`widgetName`).
+  Wiring friends/trending/recommendations shelves into that same picker
+  needs an owner decision on whether to extend `ScrollerType` (with the
+  locale-key cost that implies across 25 catalogs) or keep external shelves
+  as a separate, non-persisted-via-i18n config list the way
+  `readwise/owned-elsewhere` is wired into `DashboardView.vue` today (one
+  hardcoded `<ExternalShelf>` per shelf, not user-configurable yet).
+- The friend-rendering branch in `ExternalShelf.vue` has no live Hardcover
+  friends-shelf data to verify against (same UNVERIFIED GraphQL caveat as
+  the Hardcover social stage above).
+- `recommendations_shelf`'s "most-added, minus already-linked" proxy still
+  has no UI copy anywhere calling that out; same note as above, now also
+  true for the generic `ExternalShelf` renderer.
+
 ## First commands for a successor agent
 
 ```bash
