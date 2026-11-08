@@ -6,7 +6,8 @@ import { ArrowLeft } from '@lucide/vue'
 import SidebarSectionPopover from '@/components/sidebar/SidebarSectionPopover.vue'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useBookRequestVisibility } from '@/features/book-requests/composables/useBookRequestVisibility'
-import { visibleSettingsNav, type SettingsNavItem } from '../lib/settings-nav'
+import { usePrivateAdapterNavItems } from '@/features/reading-services/composables/usePrivateAdapterNavItems'
+import { mergeDynamicAccountItems, visibleSettingsNav, type SettingsNavItem } from '../lib/settings-nav'
 import SettingsNav from './SettingsNav.vue'
 
 withDefaults(defineProps<{ isRail?: boolean }>(), { isRail: false })
@@ -15,14 +16,18 @@ const { t } = useI18n()
 const route = useRoute()
 const { isSuperuser, userPermissions, isDemoRestrictedAccount } = usePermissions()
 const { showBookRequests } = useBookRequestVisibility()
+const { items: adapterNavItems } = usePrivateAdapterNavItems()
 
 const groups = computed(() =>
-  visibleSettingsNav({
-    isSuperuser: isSuperuser.value,
-    permissions: userPermissions.value,
-    isDemoRestricted: isDemoRestrictedAccount.value,
-    showBookRequests: showBookRequests.value,
-  }),
+  mergeDynamicAccountItems(
+    visibleSettingsNav({
+      isSuperuser: isSuperuser.value,
+      permissions: userPermissions.value,
+      isDemoRestricted: isDemoRestrictedAccount.value,
+      showBookRequests: showBookRequests.value,
+    }),
+    adapterNavItems.value,
+  ),
 )
 
 /** The rail is too narrow for the full tree, so each group opens as a popover instead. */
@@ -31,7 +36,9 @@ function leafItems(items: readonly SettingsNavItem[]): SettingsNavItem[] {
 }
 
 function isActive(item: SettingsNavItem): boolean {
-  return item.routeName === route.name
+  if (item.routeName !== route.name) return false
+  if (item.routeParams?.provider) return route.params.provider === item.routeParams.provider
+  return true
 }
 </script>
 
@@ -54,7 +61,7 @@ function isActive(item: SettingsNavItem): boolean {
         <RouterLink
           v-for="item in leafItems(group.items)"
           :key="item.id"
-          :to="{ name: item.routeName }"
+          :to="{ name: item.routeName, params: item.routeParams }"
           class="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden transition-colors duration-150 hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           :class="isActive(item) ? 'bg-sidebar-accent font-medium' : 'font-normal'"
           :aria-current="isActive(item) ? 'page' : undefined"

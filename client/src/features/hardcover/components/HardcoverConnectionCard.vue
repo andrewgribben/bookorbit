@@ -15,6 +15,8 @@ const { settings, saving, validating, error, fetchSettings, saveSettings, discon
 const tokenInput = ref('')
 const tokenVisible = ref(false)
 const validationResult = ref<{ valid: boolean; username?: string } | null>(null)
+/** Collapses the token form to an account-status row once connected, matching the generic private-adapter Sign-in section. */
+const switching = ref(false)
 
 const form = reactive({
   enabled: true,
@@ -58,6 +60,7 @@ async function handleSave() {
   })
   if (ok) {
     tokenInput.value = ''
+    switching.value = false
     toast.success(t('hardcover.connection.toast.saved'))
   } else {
     toast.error(error.value ?? t('hardcover.connection.toast.saveFailed'))
@@ -68,6 +71,7 @@ async function handleDisconnect() {
   await disconnect()
   tokenInput.value = ''
   validationResult.value = null
+  switching.value = false
   toast.success(t('hardcover.connection.toast.disconnected'))
 }
 
@@ -113,6 +117,18 @@ function selectBookSyncMode(mode: 'all_eligible' | 'selected_only') {
       </div>
     </div>
 
+    <div v-if="settings?.tokenConfigured && !switching" class="flex items-center justify-between" data-testid="hardcover-connected-row">
+      <p class="text-sm text-muted-foreground">{{ t('hardcover.connection.title') }}</p>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" size="sm" type="button" @click="switching = true">{{ t('settings.readingServices.signIn.connected.switchAccount') }}</Button>
+        <Button variant="destructive-ghost" size="sm" type="button" :disabled="saving" @click="handleDisconnect">
+          <Unlink class="size-3.5" />
+          {{ t('hardcover.connection.disconnect') }}
+        </Button>
+      </div>
+    </div>
+
+    <template v-else>
     <div class="space-y-2">
       <label class="text-xs font-medium text-muted-foreground uppercase tracking-wider"> {{ t('hardcover.connection.apiToken') }} </label>
       <div class="flex gap-2">
@@ -236,6 +252,7 @@ function selectBookSyncMode(mode: 'all_eligible' | 'selected_only') {
         <Unlink class="size-3.5" />
         {{ t('hardcover.connection.disconnect') }}
       </Button>
+      <Button v-if="settings?.tokenConfigured" variant="ghost" size="sm" type="button" @click="switching = false">{{ t('common.cancel') }}</Button>
       <div class="flex-1" />
       <Button size="sm" type="button" :disabled="saving" @click="handleSave">
         <Loader2 v-if="saving" class="size-3.5 animate-spin" />
@@ -243,5 +260,6 @@ function selectBookSyncMode(mode: 'all_eligible' | 'selected_only') {
         {{ t('common.save') }}
       </Button>
     </div>
+    </template>
   </div>
 </template>

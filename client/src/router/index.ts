@@ -45,6 +45,16 @@ function resolveEmailTitle(to: RouteLocationNormalizedLoaded): string {
   return `${t(`titles.email.${tab}`)} · ${t('titles.emailSuffix')}`
 }
 
+/**
+ * The provider's real `displayName` lives in a reading-service summary the nav already fetched,
+ * not in this route meta table, so this falls back to a capitalised provider id - good enough
+ * for a document title while the page itself shows the real name once loaded.
+ */
+function resolveReadingServiceProviderTitle(to: RouteLocationNormalizedLoaded): string {
+  const provider = typeof to.params.provider === 'string' ? to.params.provider : ''
+  return provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : t('settings.nav.title')
+}
+
 function resolveStatisticsTitle(): string {
   return t('titles.statistics')
 }
@@ -428,6 +438,12 @@ export const routes: RouteRecordRaw[] = [
             component: () => import('@/features/storygraph/components/StorygraphSettings.vue'),
             props: { embedded: true },
             meta: { maxWidth: 'max-w-3xl', title: () => t('settings.integrations.tabs.storygraph') },
+          },
+          {
+            path: 'integrations/:provider',
+            name: 'settings-reading-service',
+            component: () => import('@/features/reading-services/components/ReadingServiceSettingsPage.vue'),
+            meta: { maxWidth: 'max-w-3xl', title: resolveReadingServiceProviderTitle },
           },
           {
             path: 'tts',

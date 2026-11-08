@@ -2098,16 +2098,144 @@ loading a copy of it in boot gate (b) above. No adapter-side changes are needed.
 
 ### Not done this stage (for a successor)
 
-1. The generic Vue `ReadingServiceSettings`/Sign-in UI described above - this is the
-   main remaining piece for an operator to actually use a private adapter end to end.
+1. ~~The generic Vue `ReadingServiceSettings`/Sign-in UI described above~~ - built in
+   the next stage, see below.
 2. Android (`bookorbit-android`, `feat-reading-services-parity` @ 9deea1a): the
    Integrations list showing adapter providers by `displayName` with status - not
    started this stage. Relevant shape for that work is the `GET /reading-services`
    summary fields documented above.
-3. Rate-limit test coverage for the `@Throttle` decorator on `/auth/password` itself
-   (the 5-per-15-min limit) - only the controller method's own logic (success/
-   invalid/mfa/unsupported/no-password-logged) is unit-tested; the throttle guard is
-   framework-level and wasn't separately exercised here.
+3. ~~Rate-limit test coverage for the `@Throttle` decorator on `/auth/password`~~ -
+   added in the next stage.
+
+## Reading-services Sign-in UI + generic provider settings (web)
+
+Builds the web Sign-in section and generic private-adapter settings page the
+previous stage left undone, through `design-taste-frontend`'s app-screen rules
+("component or single section" special case - matches BookOrbit's existing
+settings design system rather than dealing a fresh direction).
+
+### Design note (written before implementation, per the skill)
+
+**States covered by `ReadingServiceSignIn.vue`** (one component, used at the top of
+every provider settings page):
+- **Disconnected, one method**: that method's form renders directly, no picker.
+- **Disconnected, 2+ methods**: a segmented control (radio-group semantics, one row,
+  sentence case, no icons) above the active method's form, order as the adapter
+  declared `authMethods`.
+- **Token method**: one labelled input (`type="password"`-styled via `SECRET_INPUT_ATTRS`
+  masking, not an actual BookOrbit credential field) with a reveal toggle, a Connect
+  button disabled while empty or pending, inline error on failure.
+- **Password method**: username (`autocomplete="username"`) + password
+  (`autocomplete="current-password"`, reveal toggle) - this *is* a real third-party
+  login form, so real autocomplete hints are correct and intentional, unlike the
+  BookOrbit-credential case `secret-input.ts` warns about. Submit disabled while
+  pending or either field empty. Component state for the password is cleared
+  immediately after every submit attempt (success or failure) - never retained.
+  Errors are per-reason: `invalid`, `mfa_required`, `network`, `unsupported`, and a
+  rate-limited state (429) showing a retry-after countdown sentence.
+- **Device-code method**, five states: `idle` (one primary "Connect" action) ->
+  `waiting` (the code in large tabular-figure type with a copy button, "Open
+  <verification link>" opening a new tab, a live countdown to `expiresAt`, Cancel,
+  polling the server every `pollIntervalSeconds`) -> one of `approved` (collapses to
+  Connected), `expired`/`denied`/`error` (a calm inline message + "Try again" that
+  goes back to `idle`).
+- **Connected** (no method UI at all): one row - account label (or the provider name
+  when the adapter gave no label), a quiet "Connected" status, "Switch account"
+  (reopens the method picker/form without disconnecting first) and "Disconnect"
+  behind `ConfirmDialog` (destructive, names the provider).
+- **`needsReconnect`**: a calm (not red/alarming) inline notice above the reopened
+  sign-in methods, same visual weight as the existing `settings-row` info notices
+  elsewhere in Settings (`border-border/70 bg-muted/40`), explaining the credential
+  needs refreshing - not a full-bleed banner, not styled as an error.
+
+**Layout and components reused, no new visual language**: the existing
+`border border-border rounded-lg bg-card` card shell (same as
+`ReadwiseSettings`/`HardcoverConnectionCard`), `SettingsRow`/`SettingsSection` for
+the generic page's feature list and libraries sections, `ToggleSwitch`,
+`ConfirmDialog`, `Button`, `SECRET_INPUT_ATTRS`. No icons in tinted squares, no
+gradients, sentence case throughout, no stock "coming soon" copy. The private
+adapter's icon (`iconUrl`, which may be a URL or a raw inline `<svg>` string) is
+rendered through `ReadingServiceAdapterIcon.vue`: never `v-html`, either as a plain
+`<img>` (http/data URL) or an `<img>` built from the inline SVG re-encoded as a
+`data:image/svg+xml` source - so no raw markup ever reaches the DOM unsanitised.
+
+**Generic `ReadingServiceSettings.vue`** (the page a private adapter gets, mounted
+at `/settings/integrations/:provider`, nav item generated from
+`GET /reading-services` summaries that carry `authMethods`): Sign-in section at the
+top, `ReadingServiceFeatureList` (already hides unsupported features - no changes
+needed there), `ReadingServiceLibraries`, and a closing note that the adapter's
+shelves can be added to the dashboard, linking to `/` where Customize Dashboard
+lives (there is no dedicated settings route for it - it's a sheet opened from the
+dashboard itself).
+
+**Readwise/Hardcover**: kept their dedicated token forms and extra settings
+(migration panel, sync-scope radios, privacy select) exactly as they were; adopted
+only the same collapse-when-connected shape (an account-status row with "Switch
+account" revealing the form again) so the three provider pages read as one family,
+per the card's "adopt where it fits without breaking their flows."
+
+### What changed, server
+
+- `reading-services.ts` (`@bookorbit/types`): `ReadingServiceSummary` gained
+  `accountLabel?: string | null`, populated for private adapters from the stored
+  credential's label (built-ins leave it undefined, same as the other
+  private-adapter-only fields).
+- `reading-services.controller.ts`: `list()` returns that `accountLabel` from the
+  credential it was already fetching for `needsReconnect`.
+- New `reading-services.controller.password-throttle.test.ts`: a behavioural test
+  against the real `SensitiveEndpointThrottlerGuard` + in-memory
+  `ThrottlerStorageService` (not a mock) driving `connectWithPassword`'s metadata six
+  times with the same fake request; asserts the first five resolve and the sixth
+  throws, proving the 5-per-15-minute guard the previous stage left untested.
+
+### What changed, client
+
+- New `features/reading-services/api/reading-service-auth.api.ts`: the four auth
+  routes (`token`, `password`, `device/start`, `device/poll`) plus `disconnect`.
+- New `features/reading-services/composables/useReadingServiceAuth.ts`: per-provider
+  auth state machine (method selection, pending/error state per method, the
+  device-code poll loop and countdown, disconnect). Clears the password field the
+  instant a password attempt is submitted, success or failure.
+- New `features/reading-services/components/ReadingServiceAdapterIcon.vue` and
+  `.../reading-service-adapter-icon.ts` (the nav-icon factory wrapping it for
+  `<component :is>` use).
+- New `features/reading-services/components/ReadingServiceSignIn.vue`: the Sign-in
+  section described above.
+- New `features/reading-services/components/ReadingServiceSettings.vue` +
+  `ReadingServiceSettingsPage.vue` (route-level wrapper reading `:provider` from the
+  route): the generic private-adapter settings page.
+- New `features/reading-services/composables/usePrivateAdapterNavItems.ts`: computed
+  `SettingsNavItem[]` from the current summaries, one per provider that declares
+  `authMethods` and isn't a built-in (readwise/hardcover/storygraph).
+- `features/settings/lib/settings-nav.ts`: `SettingsNavItem` gained optional
+  `routeParams`; new `mergeDynamicAccountItems()` appends the dynamic items into the
+  "accounts" group (or creates it) after `visibleSettingsNav()` runs. `labelKey` for
+  a dynamic item is the adapter's raw `displayName` - vue-i18n's missing-key fallback
+  returns the key itself, which is exactly the real-time, server-supplied label, with
+  no en.json entry needed (and nothing for `validate-locales.mjs` to flag, since it
+  is never a literal key in source).
+- `features/settings/components/SettingsNav.vue` and `SettingsSidebar.vue`: merge in
+  `usePrivateAdapterNavItems()`'s items, fetch summaries on mount, and compare
+  `routeParams.provider` (not just `routeName`) when deciding which row is active -
+  two private adapters would otherwise highlight together.
+- `router/index.ts`: new route `settings-reading-service` at
+  `integrations/:provider`.
+- `ReadwiseSettings.vue` / `HardcoverConnectionCard.vue`: collapse-when-connected
+  treatment (see design note).
+- `en.json`: new `settings.readingServices.signIn.*` and
+  `settings.readingServices.generic.*` keys for the Sign-in section and the generic
+  page; nothing added for dynamic adapter labels (see above).
+- New component tests under
+  `features/reading-services/components/__tests__/ReadingServiceSignIn.spec.ts`
+  (one state per method, password-not-retained, connected collapse, needsReconnect)
+  and `features/reading-services/composables/__tests__/usePrivateAdapterNavItems.spec.ts`.
+
+### Gates run this stage (all on Unraid, 192.168.5.3)
+
+Fill in before handoff: server + client type-check; server vitest
+(`reading-services`); client vitest (`reading-services`, `readwise`, `hardcover`,
+`settings`); `validate-locales.mjs`; changed-file prettier/eslint; taste `lint.mjs`;
+boot gate.
 
 
 

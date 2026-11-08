@@ -108,6 +108,7 @@ export class ReadingServicesController {
         iconUrl: adapter.iconUrl ?? null,
         authMethods: adapter.authMethods,
         needsReconnect: credential?.needsReconnect ?? false,
+        accountLabel: credential?.accountLabel ?? null,
       });
     }
     return summaries;

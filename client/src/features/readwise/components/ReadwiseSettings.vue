@@ -28,6 +28,8 @@ const tokenInput = ref('')
 const tokenVisible = ref(false)
 const tokenInputId = 'readwise-access-token'
 const validationResult = ref<ReadwiseTokenValidationResult | null>(null)
+/** Collapses the connection form to an account-status row once connected, like the generic private-adapter Sign-in section. */
+const switching = ref(false)
 
 const form = reactive({
   enabled: false,
@@ -63,6 +65,7 @@ async function handleSave() {
   })
   if (ok) {
     tokenInput.value = ''
+    switching.value = false
     toast.success('Readwise settings saved')
   } else {
     toast.error(error.value ?? 'Failed to save settings')
@@ -95,6 +98,12 @@ function toggleTokenVisible() {
         </div>
       </div>
 
+      <div v-if="settings?.tokenConfigured && !switching" class="flex items-center justify-between" data-testid="readwise-connected-row">
+        <p class="text-sm text-muted-foreground">Your Readwise access token is saved.</p>
+        <Button variant="outline" size="sm" type="button" @click="switching = true">Switch account</Button>
+      </div>
+
+      <template v-else>
       <div v-if="error" class="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2">
         <AlertCircle class="size-3.5 shrink-0 text-destructive mt-0.5" />
         <p class="text-xs text-destructive leading-relaxed">{{ error }}</p>
@@ -155,13 +164,15 @@ function toggleTokenVisible() {
         <ToggleSwitch v-model="form.enabled" />
       </div>
 
-      <div class="flex items-center justify-end pt-2 border-t border-border">
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+        <Button v-if="settings?.tokenConfigured" variant="ghost" size="sm" type="button" @click="switching = false">Cancel</Button>
         <Button size="sm" type="button" :disabled="saving" @click="handleSave">
           <Loader2 v-if="saving" class="size-3.5 animate-spin" />
           <Save v-else class="size-3.5" />
           Save
         </Button>
       </div>
+      </template>
     </div>
 
     <SettingsSection

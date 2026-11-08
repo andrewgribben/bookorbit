@@ -1757,6 +1757,53 @@
       }
     },
     "readingServices": {
+      "signIn": {
+        "title": "Sign in",
+        "methodPrompt": "Choose how to sign in",
+        "connectedToast": "Connected to {provider}",
+        "token": {
+          "submit": "Connect"
+        },
+        "password": {
+          "submit": "Sign in",
+          "errors": {
+            "invalid": "That username or password wasn't right.",
+            "mfa_required": "This account needs two-factor approval before it can sign in here.",
+            "network": "Couldn't reach the provider. Try again in a moment.",
+            "unsupported": "Password sign-in isn't available for this account.",
+            "rateLimited": "Too many attempts. Try again in about {minutes} minutes.",
+            "rateLimitedNow": "Too many attempts. Try again shortly."
+          }
+        },
+        "device": {
+          "start": "Connect",
+          "instructions": "Enter this code at the link below.",
+          "openLink": "Open the sign-in page",
+          "expiresIn": "Expires in {seconds}s",
+          "copy": "Copy code",
+          "copied": "Code copied",
+          "expired": "This code expired before it was approved.",
+          "denied": "Sign-in was declined.",
+          "error": "Something went wrong starting the sign-in.",
+          "retry": "Try again"
+        },
+        "connected": {
+          "status": "Connected",
+          "switchAccount": "Switch account",
+          "disconnect": "Disconnect",
+          "disconnectConfirmTitle": "Disconnect {provider}?",
+          "disconnectConfirmDescription": "You can sign back in at any time. Nothing already synced is deleted.",
+          "disconnectedToast": "Disconnected from {provider}"
+        },
+        "reconnect": {
+          "description": "Your {provider} sign-in needs refreshing. Sign in again below to keep syncing."
+        }
+      },
+      "generic": {
+        "noFeatures": "This provider doesn't declare any syncable features yet.",
+        "shelvesNote": "Once connected, this provider's shelves can be added to your dashboard from",
+        "shelvesNoteLink": "Customize Dashboard"
+      },
       "libraries": {
         "title": "Libraries",
         "subtitle": "Choose which libraries sync. Turning a library off, or narrowing one of its features, never deletes anything already synced - it just stops syncing from there on.",

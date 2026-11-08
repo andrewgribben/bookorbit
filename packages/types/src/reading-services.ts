@@ -141,6 +141,8 @@ export type ReadingServiceSummary = {
   authMethods?: ReadingServiceAuthMethod[];
   /** True when a stored credential exists but the provider reported it expired/invalid (`auth_expired`). */
   needsReconnect?: boolean;
+  /** The adapter-supplied account label for the stored credential, when one exists. Private adapters only. */
+  accountLabel?: string | null;
 };
 
 export type SyncRunProgressCounters = {
