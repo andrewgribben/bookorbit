@@ -31,6 +31,7 @@ const disabledReasonMessages: Record<ReadwiseSyncDisabledReason, string> = {
   missing_token: 'Add your Readwise access token to start syncing.',
   user_disabled: 'Sync is turned off.',
   invalid_token: 'Your Readwise token was rejected. Paste a new one and re-enable.',
+  no_readwise_books: t('settings.readwise.disabledReasons.noReadwiseBooks'),
 }
 
 onMounted(async () => {

@@ -1751,6 +1751,11 @@
         "storygraph": "Sync your reading progress and status to The StoryGraph."
       }
     },
+    "readwise": {
+      "disabledReasons": {
+        "noReadwiseBooks": "Your Readwise account doesn't have access to the Books API, so sync is paused."
+      }
+    },
     "metadata": {
       "title": "Metadata",
       "subtitle": "Configure metadata providers, matching rules, automation, and author enrichment.",
