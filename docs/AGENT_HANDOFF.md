@@ -811,6 +811,127 @@ Implements the approved mockups (`settings-readwise.html`, `design-notes.md`) ag
 - `pnpm run validate:locales` (client): 25 catalogs validated against 12156 English messages.
 - Full repo-wide lint/typecheck and e2e were **not** run, per the "focused checks only" instruction for this stage.
 
+## S8: feat-reading-services-integration (2026-11-08)
+
+Integration branch `feat-reading-services-integration`, created from `feat-book-review` @
+`59fdcb423`, then `git merge --no-ff feat-readwise-highlights-two-way` (`a5ecf8942`) and
+`git merge --no-ff feat-readwise-web-settings` (`72f9289c0`). Worktrees: PC
+`D:/Development/bookorbit-worktrees/feat-reading-services-integration`, Unraid
+`/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-integration`. Local
+only, not pushed.
+
+Both merges conflicted only in this file (each stage's handoff section landed back to back,
+resolved by keeping both sections in sequence, no code conflicts). `client/src/locales/en.json`
+auto-merged cleanly as a union of both stages' additions. There is no
+`registry/capabilities/en.json` file in this repo; the task's mention of that path did not
+apply here.
+
+After the merges, this stage closed three gaps the S6 web-settings handoff flagged as blocked
+on missing server support, now unblocked because S3b/S4/S5 had since landed on the branches
+being merged in:
+
+1. **`GET /api/v1/reading-services/:provider/migration/readwise-only`** (paginated,
+   `offset`/`limit` query params, clamped to a 100-row max page) - exposes the classification
+   `ReadwiseBooksMigrationService.finishMigration` already cached under
+   `migration-readwise-only` but never had an HTTP route. Added an optional
+   `listRemoteOnlyBooks?(userId, offset, limit)` method to `ReadingServiceProviderAdapter` so
+   the controller stays provider-agnostic; only the Readwise adapter implements it. The cached
+   classification now also carries `author`, `coverImageUrl` (from a new `product.cover_image`
+   field added to `ReadwiseBookProduct`, parsed if present) and `externalUrl` (always `null`:
+   the Readwise Books API response this client parses has no public web URL for a book entry,
+   so this stays unfilled rather than guessing a URL shape). Shared types:
+   `ReadingServiceRemoteOnlyBook` / `ReadingServiceRemoteOnlyBooksPage` in
+   `packages/types/src/reading-services.ts`. Client: `ReadingServiceMigrationPanel.vue` renders
+   the list (cover thumbnail, title, author, ownership pill) below the migration state card and
+   loads the next page on demand; `useReadingServiceMigration.ts` auto-loads it on mount when
+   `summary.migration.state === 'done'`, and again once a tracked run completes.
+2. **Resume a failed migration from its cursor.** `ReadingServiceSyncRunService.resumeMigration(id, userId)`
+   resets a `failed` run back to `running` (clearing `error`/`finishedAt`) and re-enters
+   `runLoop` from the run's own stored `cursor`/`counters`, instead of `startMigration`'s old
+   path of always creating a brand-new run with an empty cursor. New endpoint
+   `POST /api/v1/reading-services/runs/:id/resume`. Throws `BadRequestException` if the run
+   isn't currently `failed`. Client button label is "Resume migration" (was "Retry migration").
+   The now-unused `retryButton` locale key was left in place rather than removed, since
+   `validate:locales` does not flag unused keys and removing it was not necessary for this
+   stage.
+3. **`publish_sessions` defaults to off.** `READING_SERVICE_FEATURES_DEFAULT_OFF` (currently
+   just `publish_sessions`) is a new exported list in `packages/types`;
+   `ReadingServiceFeaturesService.getFeatures` now merges this default into the DB-backed
+   feature map before returning, so a user who has never touched the toggle gets an explicit
+   `false` rather than the generic opt-out-reads-as-on semantics every other feature uses. Label
+   is "Share sessions to my {provider} feed" (interpolated, since this component is shared with
+   the still-unbuilt Hardcover settings page) and the row renders indented (`pl-6`) under
+   "Reading sessions" in `ReadingServiceFeatureList.vue`, matching the mockup's sub-row
+   treatment.
+4. **Bookmarks row.** Added `"bookmarks"` to `READING_SERVICE_FEATURES` (previously absent
+   entirely, per the S5 handoff's explicit note that there was no bookmark feature to disable).
+   No adapter declares a capability for it, so `ReadingServiceFeatureList`'s existing generic
+   "disabled with a reason" rendering picks it up automatically; no new disabled-row logic was
+   needed, only the locale strings (`features.bookmarks.*`) and the feature-key addition. Review,
+   sessions and highlights were already live toggles on this branch (capabilities carried
+   `review: 'both'`, `sessions: 'both'`, `highlights: 'both'` since S3b/S4/S5), so no code change
+   was needed there beyond the merge itself; the S6 handoff's note to "re-check this list after
+   S4/S5/S3b/S7 land" is resolved by the merge alone.
+
+Visual QA: no `design-taste-frontend` skill is registered in this Hermes profile, so the
+readwise-only list and the publish_sessions row were built to match the existing
+`ReadingServiceFeatureList`/`ReadingServiceMigrationPanel` component grammar exactly (same
+`SettingsRow`/`ToggleSwitch`/card/counter-grid patterns, same cover-thumbnail sizing as
+`AchievementBookCover.vue`) rather than against a design-system review, as instructed for that
+fallback case.
+
+Tests added/updated: `reading-service-features.service.test.ts` (default-off and
+stored-override cases), `reading-service-sync-run.service.test.ts` (resume-from-cursor,
+reject-resuming-a-non-failed-run, not-found), `reading-services.controller.test.ts`
+(resume endpoint permission checks, readwise-only list endpoint delegation and the
+no-adapter-support empty-page fallback), `readwise-books-migration.service.test.ts`
+(`listRemoteOnlyBooks` classification shape and pagination). Client:
+`ReadingServiceFeatureList.spec.ts` (bookmarks renders disabled with reason, switch count
+bumped to 12), `ReadingServiceMigrationPanel.spec.ts` (resume button and handler, readwise-only
+list rendering, load-more visibility, auto-load on a `state: 'done'` summary).
+
+**Verified on Unraid** (worktree above, after `pnpm install`):
+
+- `pnpm --filter @bookorbit/types run build`: clean.
+- `pnpm --filter server run type-check`: clean, exit 0.
+- `pnpm --filter client run type-check`: clean, exit 0 (`tsc` + `vue-tsc --build`).
+- `npx vitest run src/modules/reading-services src/modules/readwise` (server): **34 files,
+  301 tests, all passed.**
+- `npx vitest run src/features/reading-services src/features/readwise` (client): **5 files,
+  47 tests, all passed.**
+- `npx eslint` on every new/changed file (server + client): clean after one `--fix` pass for
+  prettier-only wrapping (4 files), copied back to the PC worktree as a diff and committed there
+  (never committed on Unraid, per the task rules).
+- `npx prettier --check` on every changed file: clean.
+- `pnpm run validate:locales` (client): 25 catalogs validated against 12181 English messages.
+- Migrations 0001-0142 applied cleanly on a disposable `pgvector/pgvector:pg18` container
+  (`bookorbit-disposable-rsi`, port 55447, removed afterwards) after bootstrapping
+  `uuid-ossp`/`pg_trgm`/`unaccent`/`vector` + `public.bookorbit_unaccent` from
+  `postgres-extensions.ts`; `pnpm db:generate drift_check` reported "No schema changes, nothing
+  to migrate" (expected: this stage only added TypeScript-level fields/features, no schema
+  change).
+- Full repo-wide lint/typecheck and e2e were **not** run, per the "focused checks only"
+  instruction for this stage.
+
+Open questions for the owner / a successor:
+
+- `externalUrl` on a readwise-only book is always `null`. If Readwise Books does expose a
+  public web URL for an entry somewhere in its API that this client doesn't currently parse,
+  wiring it through would need a confirmed field name, not a guess.
+- `coverImageUrl` depends on `product.cover_image` being present in the Readwise Books API
+  response; this field was added defensively based on the documented Books API shape but has
+  not been exercised against a live Readwise account, since this task never calls the real
+  Readwise API. If covers show up blank in practice, check the actual field name Readwise
+  returns.
+- The unused `settings.readingServices.migration.retryButton` / `retryingButton` locale keys
+  were left in place rather than removed (the panel no longer reaches that state transition);
+  harmless but worth a cleanup pass if someone is already touching that file.
+- The readwise-only list panel only loads when a migration's last run is `completed`
+  (`state === 'done'`) or a tracked run just finished; it is not shown for `never`, `running` or
+  `failed` states, matching the idea that this list reflects the *last successful* migration's
+  classification, not a live query. If the product intent is to show it in more states, that
+  is a product decision, not something this stage inferred from the API.
+
 ## First commands for a successor agent
 
 ```bash
