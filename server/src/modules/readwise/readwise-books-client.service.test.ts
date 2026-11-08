@@ -63,6 +63,12 @@ describe('ReadwiseBooksClientService', () => {
       expect(url).toBe(`${READWISE_BOOKS_URL}?isbns=111%2C222`);
     });
 
+    it('returns book ids as strings when Readwise sends numbers', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [{ id: 6805312, product: null }], next: null }));
+      const page = await service.listBooks(1, 'tok');
+      expect(page.results[0]?.id).toBe('6805312');
+    });
+
     it('calls queue.throttle before fetching', async () => {
       fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [], next: null }));
       await service.listBooks(7, 'tok');

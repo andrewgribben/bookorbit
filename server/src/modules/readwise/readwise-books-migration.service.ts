@@ -192,7 +192,10 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       if (page.length < READWISE_MIGRATION_PUSH_PAGE_SIZE) break;
     }
 
-    const readwiseOnly = remoteBooks.filter((b) => !matchedExternalIds.has(b.id)).length;
+    // A remote book BookOrbit already linked on an earlier run counts as matched even when this
+    // run's title/isbn matching misses it (see `linkedExternalIds` on `finishMigration`).
+    const linkedExternalIds = await this.linkedExternalIds(userId);
+    const readwiseOnly = remoteBooks.filter((b) => !matchedExternalIds.has(b.id) && !linkedExternalIds.has(b.id)).length;
     return { matched, toCreate, readwiseOnly };
   }
 
@@ -329,8 +332,17 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   ): Promise<void> {
     // D1: Readwise-only books are counted as skipped and classified by ownership for the
     // migration-screen list; nothing here is pushed to Readwise or written locally.
+    //
+    // A remote book that `reading_service_book_links` already links to a local book (from an
+    // earlier migration run that created or matched it) must never be classified Readwise-only
+    // again, even if this run's isbn/title matching misses it (e.g. Readwise normalized the
+    // title/author it stores for an API-created book differently from what BookOrbit sent). One
+    // batched lookup for the whole run, not a per-book query, so this stays cheap at scale.
+    const linkedExternalIds = await this.linkedExternalIds(userId);
     const seen = new Set<string>();
-    const readwiseOnly = remoteBooks.filter((b) => !matchedExternalIds.has(b.externalId) && !seen.has(b.externalId) && seen.add(b.externalId));
+    const readwiseOnly = remoteBooks.filter(
+      (b) => !matchedExternalIds.has(b.externalId) && !linkedExternalIds.has(b.externalId) && !seen.has(b.externalId) && seen.add(b.externalId),
+    );
     counters.skipped += readwiseOnly.length;
     const classified = readwiseOnly.map((b) => ({
       externalId: b.externalId,
@@ -343,6 +355,12 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       ownership: classifyReadwiseOwnership(b.creationOrigin),
     }));
     await this.cache.set(userId, this.provider, MIGRATION_READWISE_ONLY_CACHE_KEY, classified, MIGRATION_INDEX_TTL_MS);
+  }
+
+  /** Every externalBookId this user already links to a local book for this provider, excluding links Readwise itself deleted. One batched query, reused by both `finishMigration` and `previewMigration`. */
+  private async linkedExternalIds(userId: number): Promise<Set<string>> {
+    const links = await this.readingServicesRepo.findBookLinksForProvider(userId, this.provider);
+    return new Set(links.filter((l) => !l.remoteDeleted).map((l) => l.externalBookId));
   }
 
   /**
