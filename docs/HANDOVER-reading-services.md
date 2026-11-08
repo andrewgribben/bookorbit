@@ -130,9 +130,9 @@ Fixes made directly on the release branch after that:
      sqlite/embedder, CWA snapshot) - don't chase them as part of this work.
    - Concurrent sync of one account from two BookOrbit instances is not prevented in code.
    - Merge `feat-reading-services-release` into `development` only when the owner says so.
-   - The PC's main checkout `D:/Development/bookorbit` (branch `development`) has 516 staged files of
-     unknown origin (their tree matches no branch). Nothing was committed from it. Ask the owner before
-     unstaging or committing anything there.
+   - The PC's main checkout `D:/Development/bookorbit` is a clean `development`. It had 516 staged files
+     left over from this work; every file matched a blob in the pushed branches. The snapshot is kept
+     locally as `refs/backup/main-checkout-stray-20261108` and the checkout was reset.
 
 ## 7. Android app (`andrewgribben/bookorbit-android`)
 
