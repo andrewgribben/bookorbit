@@ -87,11 +87,15 @@ export class ReadingServicesController {
 
   @Get('runs/:id')
   async getRun(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number): Promise<SyncRunProgress> {
-    return this.syncRunService.getRun(id, user.id);
+    const progress = await this.syncRunService.getRun(id, user.id);
+    this.assertProviderAccess(user, progress.provider);
+    return progress;
   }
 
   @Delete('runs/:id')
   async cancelRun(@CurrentUser() user: RequestUser, @Param('id', ParseIntPipe) id: number): Promise<SyncRunProgress> {
+    const progress = await this.syncRunService.getRun(id, user.id);
+    this.assertProviderAccess(user, progress.provider);
     return this.syncRunService.cancel(id, user.id);
   }
 
