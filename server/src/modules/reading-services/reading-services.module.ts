@@ -26,6 +26,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceMatchRepository,
   ],
   exports: [
+    ReadingServicesRepository,
     ReadingServiceRegistry,
     ReadingServiceTokenService,
     ReadingServiceCacheService,
