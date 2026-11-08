@@ -82,7 +82,7 @@ export class ReadwiseHighlightsPullService {
           await this.applyRemoteHighlight(userId, highlight, counters);
         }
       }
-      if (!page.nextPageCursor || page.results.length === 0) break;
+      if (!page.nextPageCursor) break;
       pageCursor = page.nextPageCursor;
     }
 

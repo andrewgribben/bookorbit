@@ -17,7 +17,7 @@ function makeReturningChain(row: unknown) {
 
 function makeSelectChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const method of ['from', 'leftJoin', 'where', 'groupBy', 'orderBy']) {
+  for (const method of ['from', 'leftJoin', 'innerJoin', 'where', 'groupBy', 'orderBy']) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   chain.limit = vi.fn().mockResolvedValue(rows);
