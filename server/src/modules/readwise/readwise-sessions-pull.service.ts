@@ -118,7 +118,9 @@ export class ReadwiseSessionsPullService {
       READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS,
     );
     if (localMatch) {
-      await this.readingServicesRepo.recordItemLinks([{ userId, provider: 'readwise', kind: 'session', localId: localMatch.id, externalId: session.id }]);
+      await this.readingServicesRepo.recordItemLinks([
+        { userId, provider: 'readwise', kind: 'session', localId: localMatch.id, externalId: session.id },
+      ]);
       return false; // linked, not imported as a new row - no new stats to add
     }
 

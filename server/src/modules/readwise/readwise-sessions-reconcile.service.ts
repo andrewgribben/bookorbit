@@ -119,7 +119,9 @@ export class ReadwiseSessionsReconcileService {
     const remoteDurationSeconds = Math.max(0, Math.round((new Date(remoteEndedAt).getTime() - remoteStart) / 1000));
     const startDeltaSeconds = Math.abs(localStartedAt.getTime() - remoteStart) / 1000;
     const durationDeltaSeconds = Math.abs(localDurationSeconds - remoteDurationSeconds);
-    return startDeltaSeconds <= READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS && durationDeltaSeconds <= READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS;
+    return (
+      startDeltaSeconds <= READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS && durationDeltaSeconds <= READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS
+    );
   }
 
   private async fetchAllRemoteSessions(userId: number, token: string): Promise<ReadwiseSession[]> {

@@ -12,7 +12,13 @@ const mockCache = { get: vi.fn(), set: vi.fn() };
 const mockSessionsRepo = { findAllPushableSessions: vi.fn() };
 
 function makeService() {
-  return new ReadwiseSessionsReconcileService(mockClient as any, mockReadwiseRepo as any, mockReadingServicesRepo as any, mockCache as any, mockSessionsRepo as any);
+  return new ReadwiseSessionsReconcileService(
+    mockClient as any,
+    mockReadwiseRepo as any,
+    mockReadingServicesRepo as any,
+    mockCache as any,
+    mockSessionsRepo as any,
+  );
 }
 
 function session(partial: Partial<{ id: number; bookId: number; startedAt: Date; durationSeconds: number }>) {

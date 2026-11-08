@@ -179,6 +179,7 @@ describe('ReadwiseBooksMigrationService', () => {
       await service.migratePage(1, indexCursor!, counters);
 
       expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ id: 'r1', status: 'finished', rating: 4 })]);
+      expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(1, 'readwise', 10, expect.objectContaining({ externalBookId: 'r1' }));
       expect(counters).toMatchObject({ scanned: 1, matched: 1, updated: 1 });
     });
 

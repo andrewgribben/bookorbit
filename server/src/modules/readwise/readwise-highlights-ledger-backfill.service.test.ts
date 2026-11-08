@@ -117,9 +117,7 @@ describe('ReadwiseHighlightsLedgerBackfillService', () => {
     expect(result).toEqual({ linked: 1, unmatched: 0 });
     expect(mockReadwiseRepo.findAnnotationsByIds).toHaveBeenCalledWith(1, []);
     expect(mockReadwiseRepo.findUnlinkedAnnotationByText).toHaveBeenCalledWith(1, 10, 'fear is the mind-killer');
-    expect(mockReadingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
-      expect.objectContaining({ localId: 88, externalId: '900' }),
-    ]);
+    expect(mockReadingServicesRepo.recordItemLinks).toHaveBeenCalledWith([expect.objectContaining({ localId: 88, externalId: '900' })]);
   });
 
   it('counts unmatched when neither the id nor a content match resolves locally', async () => {
