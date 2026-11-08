@@ -3,9 +3,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { ReadingServiceShelfItem } from '@bookorbit/types'
 import ExternalShelf from '../ExternalShelf.vue'
 
-const apiMock = vi.fn()
-const pushMock = vi.fn()
-const hasPermissionMock = vi.fn().mockReturnValue(false)
+const apiMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>()
+const pushMock = vi.fn<(...args: unknown[]) => unknown>()
+const hasPermissionMock = vi.fn<(...args: unknown[]) => unknown>().mockReturnValue(false)
 
 vi.mock('@/lib/api', () => ({ api: (url: string, init?: RequestInit) => apiMock(url, init) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: pushMock }) }))
@@ -13,7 +13,12 @@ vi.mock('@/features/auth/composables/usePermissions', () => ({ usePermissions: (
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: { name: 'DropdownMenu', template: '<div><slot /></div>' },
   DropdownMenuContent: { name: 'DropdownMenuContent', template: '<div><slot /></div>' },
-  DropdownMenuItem: { name: 'DropdownMenuItem', props: ['disabled'], emits: ['click'], template: '<button type="button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>' },
+  DropdownMenuItem: {
+    name: 'DropdownMenuItem',
+    props: ['disabled'],
+    emits: ['click'],
+    template: '<button type="button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+  },
   DropdownMenuTrigger: { name: 'DropdownMenuTrigger', template: '<button type="button"><slot /></button>' },
 }))
 
@@ -133,14 +138,21 @@ describe('ExternalShelf', () => {
       apiMock.mockImplementation((url: string) => {
         if (url.startsWith('/api/v1/reading-services/')) return Promise.resolve(jsonResponse([shelfItem({ bookId: null })]))
         if (url === '/api/v1/book-requests/availability') {
-          return Promise.resolve(jsonResponse([{ ownedBookId: null, existingRequestId: null, existingRequestStatus: null, alreadySubscribed: false }]))
+          return Promise.resolve(
+            jsonResponse([{ ownedBookId: null, existingRequestId: null, existingRequestStatus: null, alreadySubscribed: false }]),
+          )
         }
         if (url === '/api/v1/book-requests') return Promise.resolve(jsonResponse({ request: { id: 5, status: 'pending' }, subscribed: false }))
         return Promise.resolve(jsonResponse([]))
       })
 
       const wrapper = mount(ExternalShelf, {
-        props: { provider: 'readwise', shelf: 'owned-elsewhere', titleKey: 'dashboard.ownedElsewhere.title', descriptionKey: 'dashboard.ownedElsewhere.description' },
+        props: {
+          provider: 'readwise',
+          shelf: 'owned-elsewhere',
+          titleKey: 'dashboard.ownedElsewhere.title',
+          descriptionKey: 'dashboard.ownedElsewhere.description',
+        },
       })
       await flushPromises()
 

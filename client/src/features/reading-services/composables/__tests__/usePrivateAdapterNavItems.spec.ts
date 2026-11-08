@@ -5,7 +5,7 @@ import type { ReadingServiceSummary } from '@bookorbit/types'
 import { usePrivateAdapterNavItems } from '../usePrivateAdapterNavItems'
 
 const summaries = ref<ReadingServiceSummary[]>([])
-const fetchSummaries = vi.fn()
+const fetchSummaries = vi.fn<(...args: unknown[]) => unknown>()
 
 vi.mock('../useReadingServices', () => ({
   useReadingServices: () => ({ summaries, fetchSummaries }),

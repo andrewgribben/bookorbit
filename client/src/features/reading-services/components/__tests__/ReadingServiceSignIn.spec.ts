@@ -4,14 +4,14 @@ import type { ReadingServiceAuthMethod } from '@bookorbit/types'
 import ReadingServiceSignIn from '../ReadingServiceSignIn.vue'
 
 const mocks = vi.hoisted(() => ({
-  connectReadingServiceWithToken: vi.fn(),
-  connectReadingServiceWithPassword: vi.fn(),
-  startReadingServiceDeviceAuth: vi.fn(),
-  pollReadingServiceDeviceAuth: vi.fn(),
-  disconnectReadingService: vi.fn(),
+  connectReadingServiceWithToken: vi.fn<(...args: unknown[]) => unknown>(),
+  connectReadingServiceWithPassword: vi.fn<(...args: unknown[]) => unknown>(),
+  startReadingServiceDeviceAuth: vi.fn<(...args: unknown[]) => unknown>(),
+  pollReadingServiceDeviceAuth: vi.fn<(...args: unknown[]) => unknown>(),
+  disconnectReadingService: vi.fn<(...args: unknown[]) => unknown>(),
 }))
 
-const toastSuccess = vi.hoisted(() => vi.fn())
+const toastSuccess = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>())
 
 vi.mock('../../api/reading-service-auth.api', async () => {
   const actual = await vi.importActual<typeof import('../../api/reading-service-auth.api')>('../../api/reading-service-auth.api')
@@ -25,7 +25,7 @@ vi.mock('../../api/reading-service-auth.api', async () => {
   }
 })
 
-vi.mock('vue-sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }))
+vi.mock('vue-sonner', () => ({ toast: { success: toastSuccess, error: vi.fn<(...args: unknown[]) => unknown>() } }))
 
 const TOKEN_METHOD: ReadingServiceAuthMethod = { kind: 'token', label: 'API token', help: 'Paste it here' }
 const PASSWORD_METHOD: ReadingServiceAuthMethod = {

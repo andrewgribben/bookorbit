@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import { ref, type Ref } from 'vue'
+import { ref } from 'vue'
 import type { WidgetConfig } from '@bookorbit/types'
 import DashboardWidgetRow from '../DashboardWidgetRow.vue'
 
@@ -12,12 +12,12 @@ vi.mock('../../composables/useDashboardWidgets', () => ({
   useDashboardWidgets: () => ({
     widgets,
     enabledWidgets: widgets,
-    saveWidgets: vi.fn(),
+    saveWidgets: vi.fn<(...args: unknown[]) => unknown>(),
   }),
 }))
 
 vi.mock('../../composables/useReadingRecapWidget', () => ({
-  useReadingRecapWidget: () => ({ data: recapData, loading: recapLoading, error: ref(false), refresh: vi.fn() }),
+  useReadingRecapWidget: () => ({ data: recapData, loading: recapLoading, error: ref(false), refresh: vi.fn<(...args: unknown[]) => unknown>() }),
 }))
 
 function setRecap(data: unknown, loading: boolean) {

@@ -40,7 +40,7 @@ const mocks = vi.hoisted(() => ({
 const savingLibraryId = ref<number | null>(null)
 
 vi.mock('@/features/library/composables/useLibraries', () => ({
-  useLibraries: () => ({ libraries, fetchLibraries: vi.fn() }),
+  useLibraries: () => ({ libraries, fetchLibraries: vi.fn<(...args: unknown[]) => unknown>() }),
 }))
 
 vi.mock('../../composables/useReadingServices', () => ({

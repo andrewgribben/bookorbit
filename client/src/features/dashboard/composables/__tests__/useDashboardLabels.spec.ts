@@ -9,7 +9,7 @@ import pt from '@/locales/pt.json'
 import { useDashboardLabels } from '../useDashboardLabels'
 
 const summaries = ref<ReadingServiceSummary[]>([])
-const fetchSummaries = vi.fn()
+const fetchSummaries = vi.fn<(...args: unknown[]) => unknown>()
 
 vi.mock('@/features/reading-services/composables/useReadingServices', () => ({
   useReadingServices: () => ({

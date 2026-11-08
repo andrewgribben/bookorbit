@@ -37,15 +37,15 @@ const readwiseOnlyNextOffset = ref<number | null>(0)
 const loadingReadwiseOnlyBooks = ref(false)
 
 const mocks = vi.hoisted(() => ({
-  trackRun: vi.fn(),
+  trackRun: vi.fn<(...args: unknown[]) => unknown>(),
   runPreview: vi.fn<() => Promise<void>>(),
   startMigration: vi.fn<() => Promise<void>>(),
   resumeMigration: vi.fn<() => Promise<void>>(),
   cancelMigration: vi.fn<() => Promise<void>>(),
   loadReadwiseOnlyBooks: vi.fn<() => Promise<void>>(),
-  hasPermission: vi.fn().mockReturnValue(false),
-  stateFor: vi.fn().mockReturnValue('requestable'),
-  errorFor: vi.fn().mockReturnValue(null),
+  hasPermission: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue(false),
+  stateFor: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue('requestable'),
+  errorFor: vi.fn<(...args: unknown[]) => unknown>().mockReturnValue(null),
   checkMany: vi.fn<() => Promise<void>>(),
   requestOne: vi.fn<() => Promise<void>>(),
   requestAll: vi.fn<() => Promise<{ created: number; skipped: number; errors: number; results: never[] }>>(),

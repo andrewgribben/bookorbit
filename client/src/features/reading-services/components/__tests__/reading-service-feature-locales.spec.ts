@@ -10,7 +10,8 @@ import en from '@/locales/en.json'
  * ReadingServiceLibraries render raw `settings.readingServices.features.<id>.label` strings.
  */
 describe('reading-service feature locale completeness', () => {
-  const features = (en as any).settings.readingServices.features
+  const features = (en as { settings: { readingServices: { features: Record<string, { label?: string; hint?: string }> } } }).settings.readingServices
+    .features
 
   it('has an entry for every feature in READING_SERVICE_FEATURES', () => {
     for (const feature of READING_SERVICE_FEATURES) {
@@ -23,9 +24,9 @@ describe('reading-service feature locale completeness', () => {
       const entry = features[feature]
       expect(entry, `missing en.json entry for feature "${feature}"`).toBeDefined()
       expect(typeof entry.label, `feature "${feature}" has no label`).toBe('string')
-      expect(entry.label.length, `feature "${feature}" has an empty label`).toBeGreaterThan(0)
+      expect(entry.label?.length ?? 0, `feature "${feature}" has an empty label`).toBeGreaterThan(0)
       expect(typeof entry.hint, `feature "${feature}" has no hint`).toBe('string')
-      expect(entry.hint.length, `feature "${feature}" has an empty hint`).toBeGreaterThan(0)
+      expect(entry.hint?.length ?? 0, `feature "${feature}" has an empty hint`).toBeGreaterThan(0)
     }
   })
 
