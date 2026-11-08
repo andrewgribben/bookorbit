@@ -245,7 +245,9 @@ function startSwitching(): void {
         @submit.prevent="handlePasswordSubmit"
       >
         <div class="space-y-2">
-          <label :for="`reading-service-${provider}-username`" class="settings-label">{{ activeMethod.fields?.username?.label || t('settings.readingServices.signIn.password.usernameLabel') }}</label>
+          <label :for="`reading-service-${provider}-username`" class="settings-label">{{
+            activeMethod.fields?.username?.label || t('settings.readingServices.signIn.password.usernameLabel')
+          }}</label>
           <input
             :id="`reading-service-${provider}-username`"
             v-model="usernameInput"
@@ -256,7 +258,9 @@ function startSwitching(): void {
           />
         </div>
         <div class="space-y-2">
-          <label :for="`reading-service-${provider}-password`" class="settings-label">{{ activeMethod.fields?.password?.label || t('settings.readingServices.signIn.password.passwordLabel') }}</label>
+          <label :for="`reading-service-${provider}-password`" class="settings-label">{{
+            activeMethod.fields?.password?.label || t('settings.readingServices.signIn.password.passwordLabel')
+          }}</label>
           <div class="flex gap-2">
             <input
               :id="`reading-service-${provider}-password`"
