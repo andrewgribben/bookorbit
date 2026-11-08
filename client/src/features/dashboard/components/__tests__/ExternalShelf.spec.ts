@@ -26,7 +26,12 @@ function shelfItem(overrides: Partial<ReadingServiceShelfItem> = {}): ReadingSer
 async function mountShelf(items: ReadingServiceShelfItem[]) {
   apiMock.mockResolvedValue({ ok: true, json: async () => items })
   const wrapper = mount(ExternalShelf, {
-    props: { provider: 'readwise', shelf: 'owned-elsewhere', titleKey: 'dashboard.ownedElsewhere.title', descriptionKey: 'dashboard.ownedElsewhere.description' },
+    props: {
+      provider: 'readwise',
+      shelf: 'owned-elsewhere',
+      titleKey: 'dashboard.ownedElsewhere.title',
+      descriptionKey: 'dashboard.ownedElsewhere.description',
+    },
   })
   await flushPromises()
   return wrapper
@@ -78,9 +83,7 @@ describe('ExternalShelf', () => {
   })
 
   it("shows a friend's name and status on a friends-shelf item", async () => {
-    const wrapper = await mountShelf([
-      shelfItem({ friend: { displayName: 'Alex', avatarUrl: null, status: 'currently reading', date: null } }),
-    ])
+    const wrapper = await mountShelf([shelfItem({ friend: { displayName: 'Alex', avatarUrl: null, status: 'currently reading', date: null } })])
 
     expect(wrapper.text()).toContain('Alex')
     expect(wrapper.text()).toContain('currently reading')
