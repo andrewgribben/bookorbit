@@ -17,6 +17,7 @@ import ReadingDnaWidget from './widgets/ReadingDnaWidget.vue'
 import LongWaitWidget from './widgets/LongWaitWidget.vue'
 import DiversityScoreWidget from './widgets/DiversityScoreWidget.vue'
 import ReadingRhythmWidget from './widgets/ReadingRhythmWidget.vue'
+import ReadingRecapWidget from './widgets/ReadingRecapWidget.vue'
 
 const { widgets, enabledWidgets, saveWidgets } = useDashboardWidgets()
 
@@ -54,6 +55,7 @@ const widgetComponents: Record<WidgetType, Component> = {
   'long-wait': LongWaitWidget,
   'diversity-score': DiversityScoreWidget,
   'reading-rhythm': ReadingRhythmWidget,
+  'reading-recap': ReadingRecapWidget,
 }
 
 type DashboardWidgetSize = '1x1' | '1x1.5'
@@ -71,6 +73,7 @@ const widgetLayout: Record<WidgetType, { size: DashboardWidgetSize }> = {
   'long-wait': { size: '1x1' },
   'diversity-score': { size: '1x1' },
   'reading-rhythm': { size: '1x1.5' },
+  'reading-recap': { size: '1x1.5' },
 }
 
 const widgetSizeClass: Record<DashboardWidgetSize, string> = {

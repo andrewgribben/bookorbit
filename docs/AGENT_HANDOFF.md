@@ -726,7 +726,6 @@ subscription).
 No live Readwise calls, no writes to the production `bookorbit-db`, no
 schema change (confirmed by `drift_check` below), review/rating code
 untouched.
-
 **Verified on Unraid** (worktree above, after `pnpm install`):
 
 - `pnpm --filter server run type-check`: clean, exit 0.
@@ -775,6 +774,173 @@ Open questions for the owner / a successor:
 - Bookmarks remain unsupported, as instructed, with no code path at all
   (not even a disabled feature flag) since Readwise's v2 highlights API
   has nothing to map a bookmark to.
+
+## S7/S6: Readwise reading-recap widget + owned-elsewhere shelf (2026-11-08)
+
+Branch `feat-reading-services-widgets`, stacked on `feat-book-review` @
+`59fdcb42`. Worktrees: PC `D:/Development/bookorbit-worktrees/feat-reading-services-widgets`,
+Unraid `/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-widgets`.
+Commit **`147c3bf38`** plus a small eslint/locale fixup folded into the same
+commit before final push to Unraid for verification; local only, not pushed.
+
+Scope: dashboard reading-recap widget (S7) and the "Owned elsewhere" shelf
+(S6/S7, D1), server + web, per the approved mockups
+`designs/bookorbit-reading-services/dashboard-recap-widget.html` and
+`owned-elsewhere-shelf.html`. Deliberately stayed out of
+`ReadingServiceMigrationPanel`/the settings feature list (a sibling agent on
+`feat-reading-services-integration` owns those).
+
+What was built:
+
+1. **Types** (`packages/types/src/reading-services.ts`, `dashboard.ts`) -
+   `ReadingRecapMonthData` (`month` 1-12, `seconds`), `ReadingRecapWidget`
+   (`provider`, `year`, `booksFinished`, `sessions`, `totalSeconds`,
+   `readingDays`, `goal: number | null`, `byMonth`), new widget type
+   `"reading-recap"` mapped to `ReadingRecapWidget | null` in
+   `DashboardWidgetDataMap`. `ExternalBookCard` (`title`, `author`,
+   `coverUrl`, `isbn13`, `provider`, `providerUrl`, `libraryBookId`,
+   `people`) and `ExternalBookShelfResponse` (`books`, `total`) are
+   deliberately **generic on `provider`**, not Readwise-specific, so a future
+   Hardcover "owned elsewhere"-style shelf can reuse the same shapes without
+   a new type.
+2. **`ReadwiseRecapService`** (`server/src/modules/readwise/readwise-recap.service.ts`) -
+   calls the S2 `ReadwiseBooksClientService.statsSummary` + `.sessionsByDay`
+   for the given year, buckets `sessionsByDay` into 12 months, caches the
+   built widget in `reading_service_cache` under key `recap:<year>` for 1h
+   (`READWISE_RECAP_CACHE_TTL_MS`). Returns `null` (never a zeroed shape)
+   when Readwise isn't connected, `disabledReason` is set, the
+   `recap_widget` feature toggle is off, there's no token, or the Readwise
+   call fails for any reason (a 403 also auto-disables the connection, same
+   pattern as every other Readwise adapter). This null-vs-empty-object
+   distinction is what lets the widget hide entirely per the design notes'
+   "Orchestrator visual review" item, rather than rendering a zeroed card
+   for a provider nobody connected.
+3. **`ReadwiseOwnedElsewhereService`** (`readwise-owned-elsewhere.service.ts`) -
+   pages the full remote Books library, excludes books already linked via
+   `reading_service_book_links` (`ReadingServicesRepository.findBookLinksForProvider`),
+   classifies the rest with the existing S2 `readwise-book-ownership.ts`
+   (`classifyReadwiseOwnership`), keeps only `'owned'` (D9: "Readwise-only
+   books appear only when owned"; `'unknown'`/`'not_owned'` excluded), and
+   independently runs the shared pure `book-matcher.ts` against the local
+   library so a card can still carry `libraryBookId` for a book that
+   happens to match but isn't synced yet. Cached 6h under cache key
+   `owned-elsewhere`. Same connection/feature/403 gating as the recap
+   service, returning `[]` instead of `null` (a list, not a nullable
+   widget).
+4. **Endpoints** - `GET /api/v1/dashboard/widgets/reading-recap` (through
+   the existing `DashboardWidgetService`/`DashboardController` widget-batch
+   machinery, added as a new entry in `widgetLoaders`) and
+   `GET /api/v1/dashboard/shelves/owned-elsewhere` (its own small endpoint,
+   not batched, returning `ExternalBookShelfResponse`).
+5. **`DashboardModule`** now imports `ReadwiseModule` (no cycle: neither
+   `ReadwiseModule` nor anything it imports references `DashboardModule`).
+6. **Web** - `ReadingRecapWidget.vue` registers as a normal dashboard widget
+   (`DashboardWidgetRow.vue`'s `widgetComponents`/`widgetLayout` maps, size
+   `1x1.5` like Reading Rhythm) via `useReadingRecapWidget`/`fetchReadingRecap`
+   following the exact `useWidgetData` pattern every other widget uses. It
+   renders a KPI strip (books finished, hours, sessions, reading days), a
+   goal progress bar (or a "no goal set" line when `goal` is null), and a
+   12-month bar chart where the **current month's bar uses the `bg-primary`
+   accent token** per the design notes, others `bg-primary/40` (has data) or
+   `bg-muted/50` (no data). `OwnedElsewhereShelf.vue` + `useOwnedElsewhereShelf.ts`
+   are a standalone component/composable (not routed through
+   `DashboardScroller.vue`'s batched scroller system, since `ExternalBookCard`
+   is not a `BookCard` and can't flow through that batch shape), wired into
+   `DashboardView.vue` right after `DashboardWidgetRow`. Cover-missing cards
+   use the exact same `aspect-ratio: 2/3` tile as cards with a cover, per the
+   design notes, just with a text fallback instead of an `<img>`. Tapping a
+   card opens the matched BookOrbit book (`libraryBookId` set) or the
+   book's Readwise page in a new tab otherwise.
+7. **Known deviation from the design notes' "hidden entirely" requirement** -
+   `ReadingRecapWidget.vue` itself renders nothing (no DOM at all) when the
+   endpoint returns `null`, which is the component-level half of "hidden
+   entirely". However `DashboardWidgetRow.vue`'s per-widget wrapper `<div>`
+   (border/background shell) is rendered unconditionally by the row grid
+   before any child widget's own async data resolves, since the row doesn't
+   know a widget's data ahead of mount. The practical effect: there may be a
+   brief empty bordered box during the loading flash, and if a future
+   refactor moves the empty-check logic, the shell could outlive the hidden
+   content. Flagging for QA to actually look at a disconnected account in
+   the browser (this was not screenshot-verified, only reasoned through the
+   markup) and for the owner to decide if `DashboardWidgetRow.vue` needs a
+   "does this widget type's data resolve to null, and if so skip the shell
+   entirely" mechanism added generically.
+8. **Locale** - `dashboard.settings.widgetNames.readingRecap`,
+   `dashboard.widgets.readingRecap.*` (title, the four KPI labels, goal
+   line, no-goal line, 12 short month labels), and `dashboard.ownedElsewhere.*`
+   (title, description, viewAll, empty, failedToLoad) added to `en.json`
+   only, matching the existing pattern of English-only strings for new
+   features pending translation. `validate:locales` passes (other locale
+   catalogs fall back to English for untranslated keys by design).
+
+Tests added: `readwise-recap.service.test.ts` (8 cases: disabled/no-token/
+feature-off/cached/built-from-stats/403-disables/other-error-returns-null),
+`readwise-owned-elsewhere.service.test.ts` (9 cases: disabled/feature-off/
+no-token/cached/excludes-linked/excludes-not-owned/returns-unlinked-owned/
+matches-by-isbn/403-disables), plus new cases folded into the existing
+`dashboard-widget.service.test.ts` and `dashboard.controller.test.ts` for
+the new loader/endpoint wiring. Client:
+`ReadingRecapWidget.spec.ts` (hides on null, shows KPIs+goal, shows no-goal
+message) and `OwnedElsewhereShelf.spec.ts` (hides when empty, renders
+cover-missing fallback, routes to library book vs opens Readwise tab).
+**Verified on Unraid** (worktree above, after `pnpm install`):
+
+- `pnpm --filter server run type-check`: clean, exit 0.
+- `pnpm --filter client run type-check`: clean, exit 0 (after fixing one
+  pre-existing test, `useDashboardLabels.spec.ts`'s `WIDGET_KEY_BY_TYPE`
+  map, which is a hand-maintained mirror of every `WidgetType` and needed
+  the new `reading-recap` entry added; copied back to the PC and folded
+  into the same commit).
+- `npx eslint` on every new/changed server and client file: clean after one
+  `--fix` pass on three test files (prettier-only multi-line-literal
+  formatting), copied back to the PC and folded into the commit.
+- `npx prettier --check` on every new/changed file: all matched files use
+  Prettier style.
+- `npx vitest run` targeted: server **4 files / 88 tests passed**
+  (`readwise-recap.service.test.ts`, `readwise-owned-elsewhere.service.test.ts`,
+  `dashboard-widget.service.test.ts`, `dashboard.controller.test.ts`); client
+  **3 files / 21 tests passed** (`ReadingRecapWidget.spec.ts`,
+  `OwnedElsewhereShelf.spec.ts`, `useDashboardLabels.spec.ts`).
+- `pnpm --filter client run validate:locales`: "Validated 25 locale
+  catalogs against 12129 English messages", clean.
+- No schema change, so no migration/disposable-Postgres step was needed.
+  No live Readwise calls, no writes to `bookorbit-db`.
+
+API shapes for the Android stage:
+
+- `GET /api/v1/dashboard/widgets/reading-recap` -> `ReadingRecapWidget | null`:
+  `{ provider: "readwise", year: number, booksFinished: number, sessions:
+  number, totalSeconds: number, readingDays: number, goal: number | null,
+  byMonth: { month: 1-12, seconds: number }[] }`. `null` means hide the
+  widget entirely (disconnected, feature off, or no data available); do not
+  render a zeroed card.
+- `GET /api/v1/dashboard/shelves/owned-elsewhere` -> `ExternalBookShelfResponse`:
+  `{ books: ExternalBookCard[], total: number | null }`. `ExternalBookCard`:
+  `{ title: string, author: string | null, coverUrl: string | null, isbn13:
+  string | null, provider: string, providerUrl: string | null,
+  libraryBookId: number | null, people: string[] }`. Empty `books` array
+  (not absent) when disconnected or nothing to show. `libraryBookId` set
+  means the app should deep-link to that local book instead of
+  `providerUrl`.
+
+Open questions for the owner / a successor:
+
+- `READWISE_BOOK_WEB_URL_BASE = 'https://readwise.io/books'` used to build
+  `providerUrl` in the owned-elsewhere service is a best-effort guess, not
+  confirmed against Readwise's documentation (`readwise-api.md` does not
+  document a per-book web URL). Verify the real URL pattern (or drop
+  `providerUrl` to `null` if there isn't a stable one) before relying on it
+  in the Android client or shipping this to real users.
+- `people` on `ExternalBookCard` is always `[]` for Readwise (no
+  per-contributor data in the Books API beyond a single `author` string);
+  kept in the generic shape in case a future provider (Hardcover) has
+  structured contributor data.
+- The `DashboardWidgetRow.vue` shell-while-loading-then-hidden behaviour
+  noted above (point 7) was reasoned through, not screenshot-verified in a
+  live browser; worth a manual QA pass against a test account with Readwise
+  disconnected before this ships.
+- No E2E/integration test against a disposable Postgres was run (no schema
+  change, nothing to migrate); only unit/component tests as listed above.
 
 ## S6: Readwise web settings UI (2026-11-08)
 

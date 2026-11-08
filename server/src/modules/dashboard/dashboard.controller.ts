@@ -12,11 +12,12 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import type { Locale } from '@bookorbit/types';
+import type { ExternalBookShelfResponse, Locale } from '@bookorbit/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequestLocale } from '../../common/decorators/request-locale.decorator';
 import type { RequestUser } from '../../common/types/request-user';
+import { ReadwiseOwnedElsewhereService } from '../readwise/readwise-owned-elsewhere.service';
 import { DashboardService } from './dashboard.service';
 import { DashboardWidgetService } from './dashboard-widget.service';
 import { DashboardScrollerBatchDto } from './dto/dashboard-scroller-batch.dto';
@@ -28,6 +29,7 @@ export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,
     private readonly widgetService: DashboardWidgetService,
+    private readonly ownedElsewhereService: ReadwiseOwnedElsewhereService,
   ) {}
 
   @Get('scrollers/:type')
@@ -123,5 +125,17 @@ export class DashboardController {
   @Get('widgets/reading-rhythm')
   getReadingRhythm(@CurrentUser() user: RequestUser) {
     return this.widgetService.getReadingRhythm(user);
+  }
+
+  @Get('widgets/reading-recap')
+  getReadingRecap(@CurrentUser() user: RequestUser) {
+    return this.widgetService.getReadingRecap(user);
+  }
+
+  /** Readwise-owned books not yet in the BookOrbit library (S7, D1). Empty array when disconnected. */
+  @Get('shelves/owned-elsewhere')
+  async getOwnedElsewhereShelf(@CurrentUser() user: RequestUser): Promise<ExternalBookShelfResponse> {
+    const books = await this.ownedElsewhereService.getOwnedElsewhere(user.id);
+    return { books, total: books.length };
   }
 }

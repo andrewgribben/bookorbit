@@ -10529,7 +10529,8 @@
         "diversityScore": "Diversity Score",
         "libraryOverview": "Library Overview",
         "yearProjection": "Year Projection",
-        "longWait": "The Long Wait"
+        "longWait": "The Long Wait",
+        "readingRecap": "Reading Recap"
       },
       "shelfNames": {
         "recentlyAdded": "Recently Added",
@@ -10584,6 +10585,13 @@
       "emptyDescription": "Create a library to start organizing and reading your books. Point it to a folder and it will do the rest.",
       "noLibrariesDescription": "Your administrator hasn't set up any libraries yet. Reach out to them to get started.",
       "createFirstLibrary": "Create your first library"
+    },
+    "ownedElsewhere": {
+      "title": "Owned elsewhere",
+      "description": "Books Readwise says you own that aren't in your BookOrbit library yet.",
+      "viewAll": "View all {count}",
+      "empty": "No owned-elsewhere books to show.",
+      "failedToLoad": "Failed to load."
     },
     "widgets": {
       "currentlyReading": {
@@ -10657,6 +10665,29 @@
         "ofGoal": "of {goal}",
         "percentComplete": "{percentage}% complete",
         "editGoal": "Edit goal"
+      },
+      "readingRecap": {
+        "title": "{year} reading recap",
+        "booksFinished": "Books finished",
+        "readingTime": "Reading time",
+        "sessions": "Sessions",
+        "readingDays": "Reading days",
+        "goal": "Goal: {goal} books",
+        "noGoal": "No reading goal set this year.",
+        "monthShort": {
+          "1": "J",
+          "2": "F",
+          "3": "M",
+          "4": "A",
+          "5": "M",
+          "6": "J",
+          "7": "J",
+          "8": "A",
+          "9": "S",
+          "10": "O",
+          "11": "N",
+          "12": "D"
+        }
       },
       "readingRhythm": {
         "title": "Reading Rhythm",

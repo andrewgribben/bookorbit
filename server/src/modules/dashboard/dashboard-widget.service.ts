@@ -14,6 +14,7 @@ import type {
   NeglectedGemsWidgetData,
   ReadingDnaWidgetData,
   ReadingGoalWidgetData,
+  ReadingRecapWidget,
   ReadingRhythmWidgetData,
   ReadingStreakWidgetData,
   UserSettings,
@@ -29,6 +30,7 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { addDateKeyDays } from '../../common/utils/reading-daily-stats.utils';
 import { toTimeZoneStartOfDay } from '../../common/utils/timezone.utils';
 import { LibraryService } from '../library/library.service';
+import { ReadwiseRecapService } from '../readwise/readwise-recap.service';
 import {
   READING_ATTEMPT_CHANGED,
   ReadingAttemptEventsService,
@@ -76,6 +78,7 @@ export class DashboardWidgetService implements OnModuleInit, OnModuleDestroy {
     private readonly widgetRepo: DashboardWidgetRepository,
     private readonly libraryService: LibraryService,
     private readonly readingAttemptEvents: ReadingAttemptEventsService,
+    private readonly readwiseRecapService: ReadwiseRecapService,
   ) {}
 
   private readonly onReadingAttemptChanged = ({ userId }: ReadingAttemptChangedPayload): void => {
@@ -411,6 +414,17 @@ export class DashboardWidgetService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Readwise Books recap (S7). Not run through `liveCache`/`staleCache`: the data is already
+   * cached per user per year in `reading_service_cache` by `ReadwiseRecapService`, scoped to a
+   * different TTL than the rest of this service's widgets. Returns null when Readwise isn't
+   * connected or the `recap_widget` feature is off, so the client hides the widget entirely.
+   */
+  async getReadingRecap(user: RequestUser): Promise<ReadingRecapWidget | null> {
+    const clock = this.readerClock(user);
+    return this.readwiseRecapService.getRecap(user.id, clock.year);
+  }
+
   private readonly widgetLoaders: Record<WidgetType, (user: RequestUser, locale: Locale) => Promise<DashboardWidgetBatchResult['data']>> = {
     'reading-goal': (user) => this.getReadingGoal(user),
     'currently-reading': (user) => this.getCurrentlyReading(user),
@@ -424,6 +438,7 @@ export class DashboardWidgetService implements OnModuleInit, OnModuleDestroy {
     'long-wait': (user) => this.getLongWait(user),
     'diversity-score': (user) => this.getDiversityScore(user),
     'reading-rhythm': (user) => this.getReadingRhythm(user),
+    'reading-recap': (user) => this.getReadingRecap(user),
   };
 
   /**
