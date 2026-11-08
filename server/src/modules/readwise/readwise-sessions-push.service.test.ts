@@ -138,4 +138,21 @@ describe('ReadwiseSessionsPushService', () => {
     await expect(service.flushUser(1, [10, 11])).rejects.toThrow();
     expect(readwiseRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'no_readwise_books', enabled: false });
   });
+
+  it('retries a failed batch session by session instead of dropping the whole batch', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 400 }), session({ id: 401 })]);
+    (client.createSessions as any)
+      .mockRejectedValueOnce(new Error('Readwise Books API error: PATCH /books/api/v1/sessions -> 400'))
+      .mockResolvedValueOnce([{ id: 'ext-400' }])
+      .mockRejectedValueOnce(new Error('Readwise Books API error: PATCH /books/api/v1/sessions -> 400'));
+
+    await service.flushUser(1, [10]);
+
+    expect(client.createSessions).toHaveBeenCalledTimes(3);
+    expect(readingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
+      { userId: 1, provider: 'readwise', kind: 'session', localId: 400, externalId: 'ext-400' },
+    ]);
+  });
 });

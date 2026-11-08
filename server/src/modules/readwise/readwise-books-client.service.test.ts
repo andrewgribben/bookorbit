@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { ReadwiseQueueService } from './readwise-queue.service';
 import { READWISE_BOOKS_URL, READWISE_SESSIONS_BY_DAY_URL, READWISE_SESSIONS_URL, READWISE_STATS_SUMMARY_URL } from './readwise.constants';
@@ -17,6 +17,7 @@ function makeFetchResponse(status: number, body: unknown = {}, headers: Record<s
     status,
     ok: status >= 200 && status < 300,
     json: vi.fn().mockResolvedValue(body),
+    text: vi.fn().mockResolvedValue(typeof body === 'string' ? body : JSON.stringify(body)),
     headers: { get: (name: string) => headers[name] ?? null },
   } as unknown as Response;
 }
@@ -122,7 +123,32 @@ describe('ReadwiseBooksClientService', () => {
 
     it('throws on an unexpected status', async () => {
       fetchMock.mockResolvedValueOnce(makeFetchResponse(500));
-      await expect(service.listBooks(1, 'tok')).rejects.toThrow('Readwise Books API error: 500');
+      await expect(service.listBooks(1, 'tok')).rejects.toThrow('Readwise Books API error');
+    });
+
+    it('throws a typed ReadwiseBooksHttpError with method, path, status and a sanitised body on a 400', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(400, { error: 'invalid rating' }));
+      const err = await service.updateBooks(1, 'tok', [{ id: '1', rating: 99 }]).catch((e) => e);
+      expect(err).toBeInstanceOf(ReadwiseBooksHttpError);
+      expect(err.method).toBe('PATCH');
+      expect(err.path).toBe('/books/api/v1/books');
+      expect(err.status).toBe(400);
+      expect(err.responseBody).toContain('invalid rating');
+      expect(err.message).not.toContain('tok');
+    });
+
+    it('never includes a query string (so no token) in the thrown path', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(400, {}));
+      const err = await service.listBooks(1, 'secret-token', { updatedAfter: '2026-01-01' }).catch((e) => e);
+      expect(err).toBeInstanceOf(ReadwiseBooksHttpError);
+      expect(err.path).not.toContain('?');
+      expect(err.path).not.toContain('secret-token');
+    });
+
+    it('truncates a long response body to 500 characters', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(400, 'x'.repeat(2000)));
+      const err = await service.listBooks(1, 'tok').catch((e) => e);
+      expect(err.responseBody.length).toBeLessThanOrEqual(500);
     });
   });
 

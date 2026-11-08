@@ -19,11 +19,17 @@ import { buildRemoteIndex, matchBook, type RemoteIndexBook } from '../reading-se
 import { classifyReadwiseOwnership } from './readwise-book-ownership';
 import type { ReadwiseBook, ReadwiseBookCreateItem, ReadwiseBookStatus, ReadwiseBookUpdateItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
 import { ReadwiseBooksPullService } from './readwise-books-pull.service';
 import { ReadwiseOwnedElsewhereService } from './readwise-owned-elsewhere.service';
-import { READWISE_BOOKS_LIST_LIMIT, READWISE_MIGRATION_PUSH_PAGE_SIZE } from './readwise.constants';
+import {
+  READWISE_BOOKS_CREATE_BATCH,
+  READWISE_BOOKS_LIST_LIMIT,
+  READWISE_BOOKS_UPDATE_BATCH,
+  READWISE_MIGRATION_PUSH_PAGE_SIZE,
+} from './readwise.constants';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseRepository } from './readwise.repository';
 
@@ -288,59 +294,12 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
           },
         });
       }
-      if (updateItems.length > 0) {
-        await this.callReadwise(userId, () =>
-          this.client.updateBooks(
-            userId,
-            token,
-            updateItems.map((u) => u.item),
-          ),
-        );
-        for (const u of updateItems) {
-          await this.readingServicesRepo.upsertBookLink(userId, this.provider, u.book.bookId, {
-            externalBookId: u.externalId,
-            matchMethod: u.matchMethod,
-            snapshot: {
-              status: u.book.status,
-              rating: u.book.rating,
-              review: u.book.review,
-              startedAt: u.book.startedAt,
-              finishedAt: u.book.finishedAt,
-            },
-          });
-        }
-        counters.updated += updateItems.length;
-      }
-      if (createItems.length > 0) {
-        const results = await this.callReadwise(userId, () =>
-          this.client.createBooks(
-            userId,
-            token,
-            createItems.map((c) => c.item),
-          ),
-        );
-        for (let i = 0; i < createItems.length; i++) {
-          const created = results[i];
-          const entry = createItems[i]!;
-          if (!created || created.status === 'error' || !created.book_id) {
-            counters.failed += 1;
-            continue;
-          }
-          matchedSoFar.add(created.book_id);
-          await this.readingServicesRepo.upsertBookLink(userId, this.provider, entry.book.bookId, {
-            externalBookId: created.book_id,
-            matchMethod: 'created',
-            snapshot: {
-              status: entry.book.status,
-              rating: entry.book.rating,
-              review: entry.book.review,
-              startedAt: entry.book.startedAt,
-              finishedAt: entry.book.finishedAt,
-            },
-          });
-        }
-        counters.created += createItems.length - createItems.filter((_, i) => !results[i] || results[i]!.status === 'error').length;
-      }
+      // Readwise's PATCH /books caps a batch at 100 items and POST /books at 10 (readwise-api.md
+      // §5); READWISE_MIGRATION_PUSH_PAGE_SIZE (200) can exceed both, so each call is chunked to
+      // the documented limit. A batch that still 400s is retried item by item rather than
+      // aborting the whole migration run; only items that fail individually count as `failed`.
+      await this.pushUpdatesInBatches(userId, token, updateItems, counters);
+      await this.pushCreatesInBatches(userId, token, createItems, counters, matchedSoFar);
     } catch (err) {
       const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
       this.logger.error(
@@ -427,6 +386,149 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       throw err;
     }
   }
+
+  /** Account-level failures (bad token, no Readwise Books) must still abort the whole run. */
+  private isAbortingError(err: unknown): boolean {
+    return err instanceof ReadwiseUnauthorizedError || err instanceof ReadwiseBooksForbiddenError;
+  }
+
+  private async recordUpdateSuccess(userId: number, u: { book: LocalBookForMigration; externalId: string; matchMethod: string }): Promise<void> {
+    await this.readingServicesRepo.upsertBookLink(userId, this.provider, u.book.bookId, {
+      externalBookId: u.externalId,
+      matchMethod: u.matchMethod,
+      snapshot: {
+        status: u.book.status,
+        rating: u.book.rating,
+        review: u.book.review,
+        startedAt: u.book.startedAt,
+        finishedAt: u.book.finishedAt,
+      },
+    });
+  }
+
+  /**
+   * PATCHes `updateItems` in chunks of at most `READWISE_BOOKS_UPDATE_BATCH` (the Readwise-
+   * documented limit). If a whole chunk 400s (or otherwise fails for a reason that isn't an
+   * account-level auth/forbidden error), it is retried one item at a time so one bad record
+   * doesn't sink its neighbours; items still failing after the retry are counted in
+   * `counters.failed` and logged with the BookOrbit bookId and the Readwise error, but the run
+   * continues.
+   */
+  private async pushUpdatesInBatches(
+    userId: number,
+    token: string,
+    updateItems: { book: LocalBookForMigration; externalId: string; matchMethod: string; item: ReadwiseBookUpdateItem }[],
+    counters: SyncRunProgressCounters,
+  ): Promise<void> {
+    for (let i = 0; i < updateItems.length; i += READWISE_BOOKS_UPDATE_BATCH) {
+      const batch = updateItems.slice(i, i + READWISE_BOOKS_UPDATE_BATCH);
+      try {
+        await this.callReadwise(userId, () =>
+          this.client.updateBooks(
+            userId,
+            token,
+            batch.map((u) => u.item),
+          ),
+        );
+        for (const u of batch) {
+          await this.recordUpdateSuccess(userId, u);
+          counters.updated += 1;
+        }
+      } catch (err) {
+        if (this.isAbortingError(err)) throw err;
+        for (const u of batch) {
+          try {
+            await this.callReadwise(userId, () => this.client.updateBooks(userId, token, [u.item]));
+            await this.recordUpdateSuccess(userId, u);
+            counters.updated += 1;
+          } catch (itemErr) {
+            if (this.isAbortingError(itemErr)) throw itemErr;
+            counters.failed += 1;
+            this.logItemFailure(userId, 'update', u.book.bookId, u.externalId, itemErr);
+          }
+        }
+      }
+    }
+  }
+
+  private async recordCreateResults(
+    userId: number,
+    batch: { book: LocalBookForMigration; item: ReadwiseBookCreateItem }[],
+    results: { id: string; status: 'created' | 'existing' | 'error'; book_id?: string; error?: string }[],
+    counters: SyncRunProgressCounters,
+    matchedSoFar: Set<string>,
+  ): Promise<void> {
+    for (let i = 0; i < batch.length; i++) {
+      const created = results[i];
+      const entry = batch[i]!;
+      if (!created || created.status === 'error' || !created.book_id) {
+        counters.failed += 1;
+        this.logItemFailure(userId, 'create', entry.book.bookId, null, new Error(created?.error ?? 'Readwise returned no book_id'));
+        continue;
+      }
+      matchedSoFar.add(created.book_id);
+      await this.readingServicesRepo.upsertBookLink(userId, this.provider, entry.book.bookId, {
+        externalBookId: created.book_id,
+        matchMethod: 'created',
+        snapshot: {
+          status: entry.book.status,
+          rating: entry.book.rating,
+          review: entry.book.review,
+          startedAt: entry.book.startedAt,
+          finishedAt: entry.book.finishedAt,
+        },
+      });
+      counters.created += 1;
+    }
+  }
+
+  /**
+   * POSTs `createItems` in chunks of at most `READWISE_BOOKS_CREATE_BATCH` (Readwise accepts
+   * 1-10 per create call; the migration page is far larger). Same per-item retry-and-continue
+   * policy as `pushUpdatesInBatches` for a chunk that 400s outright.
+   */
+  private async pushCreatesInBatches(
+    userId: number,
+    token: string,
+    createItems: { book: LocalBookForMigration; item: ReadwiseBookCreateItem }[],
+    counters: SyncRunProgressCounters,
+    matchedSoFar: Set<string>,
+  ): Promise<void> {
+    for (let i = 0; i < createItems.length; i += READWISE_BOOKS_CREATE_BATCH) {
+      const batch = createItems.slice(i, i + READWISE_BOOKS_CREATE_BATCH);
+      try {
+        const results = await this.callReadwise(userId, () =>
+          this.client.createBooks(
+            userId,
+            token,
+            batch.map((c) => c.item),
+          ),
+        );
+        await this.recordCreateResults(userId, batch, results, counters, matchedSoFar);
+      } catch (err) {
+        if (this.isAbortingError(err)) throw err;
+        for (const c of batch) {
+          try {
+            const singleResult = await this.callReadwise(userId, () => this.client.createBooks(userId, token, [c.item]));
+            await this.recordCreateResults(userId, [c], singleResult, counters, matchedSoFar);
+          } catch (itemErr) {
+            if (this.isAbortingError(itemErr)) throw itemErr;
+            counters.failed += 1;
+            this.logItemFailure(userId, 'create', c.book.bookId, null, itemErr);
+          }
+        }
+      }
+    }
+  }
+
+  /** Per-item migration push failure: logged with the BookOrbit bookId and the Readwise error so a batch 400 is diagnosable without aborting the run. */
+  private logItemFailure(userId: number, op: 'update' | 'create', bookId: number, externalId: string | null, err: unknown): void {
+    const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
+    this.logger.error(
+      `[${EVENT}] [fail] userId=${userId} op=${op} bookId=${bookId} externalId=${externalId ?? 'null'} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - migration item push failed, run continues`,
+    );
+  }
+
   /**
    * BookOrbit always wins a mismatch on rating/review/dates/status: when nothing differs, the
    * link is recorded without sending a PATCH (nothing to overwrite), which matters on a

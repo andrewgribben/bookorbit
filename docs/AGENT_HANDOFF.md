@@ -2588,6 +2588,84 @@ not run against any real database.**
 
 ---
 
+## Readwise Books migration 400 fix (2026-11-08)
+
+Branch `fix-readwise-migration-400`, from `feat-reading-services-release` @ `73115afd`.
+
+**Root cause (confirmed, high confidence):** `ReadwiseBooksMigrationService.runPushPage`
+sent the entire page's `updateItems`/`createItems` (up to `READWISE_MIGRATION_PUSH_PAGE_SIZE` =
+200 books) in a single `PATCH`/`POST /books` call. Readwise's documented batch limits
+(`readwise-api.md` §5, confirmed in `readwise.constants.ts`'s own `READWISE_BOOKS_UPDATE_BATCH`
+(100) and `READWISE_BOOKS_CREATE_BATCH` (10) - both defined but never imported or used by the
+migration service) are 1-100 items for PATCH and 1-10 for POST. A user with more than 10 new
+books to create (or more than 100 to update) in one push page would have every such call sent
+oversized, which Readwise's API rejects outright with `400` rather than returning the documented
+"200 with per-item errors" - matching the owner's live report (`7 updated, 0 created, 125
+skipped` then a hard failure, consistent with a create batch far over the 10-item cap).
+
+Ranked candidate causes investigated, with evidence:
+
+1. **Unchunked batch exceeding Readwise's documented limits (fixed).** See above. The two batch
+   constants already existed, unused, which is a strong signal this was dropped rather than never
+   known.
+2. **Rating/review/date payload bugs (checked, not found to be wrong).** BookOrbit's rating is
+   an integer 1-5 (`user_book_ratings.rating`, check constraint 1-5); Readwise accepts 0.25-5 in
+   steps of 0.25, so every BookOrbit rating value is already a valid multiple. Dates are built as
+   `${dateOnly}T00:00:00Z`, a valid ISO-8601 UTC instant. Status mapping
+   (`readwise-books-status-mapping.ts`) only ever emits Readwise's own enum values and never
+   `unsorted` (the one value Readwise rejects on write). None of these were changed.
+3. **Open question, not fixed - needs an owner/product decision, not a guess:** `user_book_reviews
+   .review` has no minimum-length constraint in the schema, so a user clearing a review to `''`
+   (empty string, not `null`) would push `review: ""`. Readwise's docs say `review` is "1-10000
+   characters; `null` clears it" - an empty string is neither a valid 1+ char review nor `null`,
+   so it may 400 on its own. I did not reproduce this against the live account's actual data (no
+   access) and did not add speculative empty-string-to-null coercion, since the live log's
+   `created=0` pattern already points at the batch-size bug as sufficient explanation. If the
+   batch-size fix below does not fully resolve the next live run, check for books with an
+   empty-string review next.
+
+**Fixes landed (server):**
+
+- `ReadwiseBooksClientService.request()` now throws a typed `ReadwiseBooksHttpError` (status,
+  method, path with no query string so no token can leak, and a `sanitizeLogValue`-truncated
+  (<=500 char) response body) on any non-2xx/401/403/429 response, and logs the same before
+  throwing. The generic `Error(...${res.status})` is gone.
+- `ReadwiseBooksMigrationService.runPushPage` now chunks `updateItems` to
+  `READWISE_BOOKS_UPDATE_BATCH` (100) and `createItems` to `READWISE_BOOKS_CREATE_BATCH` (10)
+  before each Readwise call (`pushUpdatesInBatches` / `pushCreatesInBatches`).
+- Resilience: if a whole batch call fails for any reason other than an account-level
+  `ReadwiseUnauthorizedError`/`ReadwiseBooksForbiddenError` (chiefly a 400), it is retried one
+  item at a time. Items still failing after the retry increment `counters.failed` and are logged
+  (`[readwise.books_migration] [fail] ... op=update|create bookId=... externalId=... error=...`)
+  with the BookOrbit `bookId` and the Readwise error message; the run continues to the next batch
+  and page instead of aborting. Auth/forbidden errors still abort immediately (unchanged
+  behaviour - a bad token or a lost Readwise Books subscription is not something retrying
+  item-by-item can fix).
+- Same per-item batch-retry pattern applied to `ReadwiseSessionsPushService.pushBook` (sessions
+  were already correctly chunked to `READWISE_SESSIONS_CREATE_BATCH`=10, but a failing batch
+  previously dropped every session in it rather than retrying individually).
+- `ReadwiseBooksPushService` (the S3 per-book event-driven push) was not touched: it already
+  sends arrays of exactly one item per call, so it was never exposed to the batch-size bug.
+
+**Resumability check:** the migration cursor (`{ phase: 'push', afterBookId }`) only advances
+past a page once `runPushPage` returns without throwing. With the per-item retry in place, a page
+that previously threw (and so never advanced `afterBookId`, leaving the run stuck retrying the
+same oversized batch forever) now always completes the page (recording successes and failures)
+and advances the cursor. A re-run/resume after this fix will not re-push already-linked books:
+`upsertBookLink` is keyed on `(userId, provider, bookId)` and the `remoteAlreadyMatches` check
+still silently skips a PATCH when the remote already agrees with BookOrbit, so resuming is
+idempotent for already-linked books. This was verified by code inspection and the existing/added
+unit tests, not a live resume against the owner's data (no access; live is never written for a
+development verification task).
+
+**Tests added:** `readwise-books-client.service.test.ts` (typed error, no-query-string path, body
+truncation), `readwise-books-migration.service.test.ts` (150-book page chunks into 15 create
+calls of <=10, a 400 create/update batch retries item by item and the run completes, a 403 still
+aborts immediately), `readwise-sessions-push.service.test.ts` (a failing session batch retries
+session by session).
+
+---
+
 ## First commands for a successor agent
 
 ```bash
