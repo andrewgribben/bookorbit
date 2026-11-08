@@ -596,6 +596,192 @@ Open questions for the owner / a successor:
   the same per-feature toggle plumbing already built for rating/status in
   the Readwise settings screen (`features.review`).
 
+---
+
+## Phase 2: Hardcover social shelves (2026-11-08)
+
+Branch `feat-hardcover-social`, stacked on `feat-book-review` @ `59fdcb423`.
+Worktrees: PC
+`D:/Development/bookorbit-worktrees/feat-hardcover-social`, Unraid
+`/mnt/user/data/Development/bookorbit-worktrees/feat-hardcover-social`. Head
+commit **`18803ef09`**, local only, not pushed. Two commits: the feature, then
+a lint/prettier follow-up (both local, no `--no-verify`).
+
+Server only, no client/web/Android changes in this stage, per the card.
+
+What was built (plan section 7 items 1 and 2/3, scoped to social shelves and
+the private-adapter hook; external-book dashboard scroller cards from §7.2
+and Android parity from §7.6 are explicitly out of scope here):
+
+1. **`HardcoverReadingServicesAdapterService`**
+   (`server/src/modules/hardcover/hardcover-reading-services-adapter.service.ts`)
+   registers with the shared `ReadingServiceRegistry` in `onModuleInit`, the
+   same pattern `ReadwiseBooksMigrationService` already uses. Its
+   `capabilities` map declares `status: 'both'`, `rating: 'both'`,
+   `dates: 'both'` (mirroring `HardcoverSettingsService`'s existing
+   `autoSyncOnStatusChange`/`autoSyncOnRatingChange`/`autoSyncOnProgressUpdate`
+   toggles, which already sync both ways) plus the three new read-only social
+   capabilities `friends_shelf`, `trending_shelf`, `recommendations_shelf`.
+   It deliberately does **not** claim `owned` or `review`, since the existing
+   module does not sync either. `migratePage` is a no-op (returns `null`) and
+   `pull` refreshes the four cached shelves: this adapter never writes a
+   user's own Hardcover state, that stays entirely with
+   `HardcoverSyncService`/`HardcoverImportService`/`HardcoverEventListener`,
+   which this stage did not touch at all.
+2. **`HardcoverSocialService`**
+   (`server/src/modules/hardcover/hardcover-social.service.ts`) holds the
+   GraphQL queries and shaping for all four shelves:
+   - `friends-reading` / `friends-finished` -> `followed_user_books` filtered
+     by `status_id` (2 = currently reading, 3 = read within the last 90
+     days).
+   - `trending` -> `books_trending`.
+   - `recommendations` -> **not available from Hardcover** (research doc
+     confirms no algorithmic recommendations root field exists). Implemented
+     as a documented best-effort proxy: the most-added books
+     (`books(order_by: {users_count: desc})`), filtered to exclude books
+     already linked in `reading_service_book_links` for that user. This must
+     be revisited if Hardcover ever ships a real recommendations field.
+   - **UNVERIFIED GraphQL queries, called out explicitly in code comments**:
+     `followed_user_books`'s and `books_trending`'s exact argument shapes
+     were not confirmed by introspection against a live token (the research
+     doc only confirms the root field *names* exist, per risk #6 in
+     `research/hardcover-api.md`). `parseTrendingResponse` treats any
+     unexpected `books_trending` shape as an empty shelf rather than
+     throwing, per the research doc's "defensive parsing" mitigation for the
+     beta API risk. **Before this goes live, introspect the schema with a
+     real token and adjust the query/variable names if they differ.**
+3. **Matching to local books** -
+   `HardcoverSocialMatchRepository.findCandidates` (new file
+   `hardcover-social-match.repository.ts`) does a bounded, indexed lookup
+   (isbn13 equality, `lower(title)` using the existing `bm_title_lower_idx`)
+   scoped to the shelf batch's own isbn/title set, not a full-library scan,
+   then `HardcoverSocialService` reuses the existing
+   `reading-services/book-matcher.ts` (`buildRemoteIndex`/`matchBook`,
+   unchanged) in the reverse direction from how the Readwise migration uses
+   it. No direct unit test was written for the repository itself (DB-query
+   heavy, no equivalent exists for the sibling
+   `readwise-books-local-books.repository.ts` either); it is exercised
+   indirectly through `HardcoverSocialService`'s tests via a mocked
+   repository interface. Flag this if a future stage wants real DB
+   coverage.
+4. **Caching** - each shelf is cached under `reading_service_cache` key
+   `shelf:<shelf-name>` for 6 hours (`SHELF_CACHE_TTL_MS`), inside the plan's
+   "6-12h" budget for staying within Hardcover's 5k/day rate limit.
+   `getShelf` serves the cache on a hit and falls through to a live fetch
+   (caching the result) on a miss or an unconnected user returns `[]`.
+5. **Generic endpoint** - `GET /api/v1/reading-services/:provider/shelves/:shelf`
+   added to the existing `ReadingServicesController`. Shelf names are the new
+   `READING_SERVICE_SHELVES` tuple in `packages/types/src/reading-services.ts`:
+   `friends-reading`, `friends-finished`, `trending`, `recommendations`. A
+   shelf that is not one of those four 400s; a shelf the provider's adapter
+   doesn't declare the matching capability for (`friends_shelf` for both
+   friends shelves, `trending_shelf`, `recommendations_shelf`) or that has no
+   `getShelf` implementation 404s, so a client can distinguish "not a real
+   shelf name" from "this provider doesn't have this shelf". **Response shape
+   (for the widgets/web agent, coordinate before changing it):**
+   ```ts
+   type ReadingServiceShelfItem = {
+     provider: 'readwise' | 'hardcover'; // generic: a future Readwise shelf reuses the same shape
+     externalId: string;
+     title: string;
+     authors: string[];
+     coverUrl: string | null;
+     externalUrl: string | null;
+     bookId: number | null; // matched local BookOrbit book, or null
+     friend: { displayName: string; avatarUrl: string | null; status: string; date: string | null } | null; // only on friends shelves
+   };
+   ```
+   This lives in `packages/types/src/reading-services.ts` alongside
+   `READING_SERVICE_SHELVES`. `ReadingServiceProviderAdapter.getShelf` is an
+   optional interface method (same pattern as `previewMigration`), so a
+   provider without a social graph implements nothing extra.
+6. **Private adapter loading hook** (plan phase 2 item 5) -
+   `ReadingServicePrivateAdapterLoaderService`
+   (`server/src/modules/reading-services/reading-service-private-adapter-loader.service.ts`),
+   wired into `ReadingServicesModule`'s providers so it runs on boot like
+   every other `OnModuleInit` in this codebase. Controlled by the new
+   `READING_SERVICES_PRIVATE_ADAPTERS_DIR` env var
+   (`readingServicesConfig.privateAdaptersDir`), documented in
+   `server/.env.example`. When unset (the default), it logs once and does
+   nothing. When set, it scans that directory's top level for
+   `index.mjs`/`index.js`, dynamically imports each with the same
+   CJS-build/ESM-test straddle `PluginLoaderService` uses for indexer
+   plugins, and registers a default export that looks like a
+   `ReadingServiceProviderAdapter` (duck-typed check: `provider` string,
+   `capabilities` object, and `isConnected`/`migratePage`/`pull` functions).
+   It refuses to load something claiming a built-in provider name
+   (`readwise`/`hardcover`) or a name already registered, and never throws
+   out of `onModuleInit` itself (one bad file just gets a `[fail]` log line,
+   the rest still try).
+   - **Security, documented in the class's doc comment and the env.example
+     entry**: a loaded module runs inside this process with full access
+     (database, every other injected service, decrypted tokens). It is the
+     exact same trust boundary `PluginLoaderService` already documents for
+     indexer plugins. Nothing under this repo ships such a module; the env
+     var only matters if an operator deliberately points it at a directory
+     they wrote or audited themselves, outside the deployed tree. This was
+     written with the personal Readwise-friends POC
+     (`research/readwise-private-api-spike.md`, §9a D4) in mind as the
+     eventual consumer, but that POC code was not touched, read, or
+     referenced beyond this doc note.
+   - **Open question for the owner/successor**: the registered private
+     adapter is NOT currently reachable through
+     `ReadingServicesController`, because `assertProviderAccess` only
+     accepts the fixed `READING_SERVICE_PROVIDERS` tuple
+     (`['readwise', 'hardcover']`) and maps each to a specific `Permission`.
+     A private adapter with, say, `provider: 'readwise-friends'` registers
+     successfully in the registry (so `list()` and the registry-level
+     `has()`/`get()` work) but the controller's `/`, `/:provider/features`,
+     `/:provider/shelves/:shelf` etc. routes will all 400 for it today. Fully
+     solving this means generalising `PROVIDER_PERMISSIONS` (which
+     permission gates an arbitrary private provider?) and is left as a
+     follow-up rather than guessed at here.
+
+**Tests** (all new/changed files, GraphQL mocked at the `fetch`/client-query
+level, no live Hardcover calls, no real or disposable Postgres touched):
+`hardcover-social.service.test.ts` (6 tests),
+`hardcover-reading-services-adapter.service.test.ts` (9 tests),
+`reading-service-private-adapter-loader.service.test.ts` (5 tests, using
+real temp directories and real dynamic `import()` of written-to-disk
+`.mjs` files, the same approach `plugin-loader.service.test.ts` uses),
+plus new cases added to the existing
+`reading-services.controller.test.ts` (3 new tests for the shelf endpoint).
+
+**Verified on Unraid** (worktree above, after
+`pnpm install --frozen-lockfile`, `pnpm --filter @bookorbit/types build`,
+`pnpm --filter @bookorbit/plugin-api build`):
+
+- `pnpm --filter server run type-check`: clean, exit 0.
+- `pnpm --filter client run type-check`: clean, exit 0 (unaffected by this
+  stage; run anyway per the gate list).
+- `npx eslint src/modules/hardcover src/modules/reading-services` (server):
+  clean, 0 problems.
+- `npx prettier --check src/modules/hardcover src/modules/reading-services`
+  (server): all matched files use Prettier style.
+- `npx vitest run src/modules/hardcover src/modules/reading-services`
+  (server): **27 test files, 439 tests, all passed** (includes every
+  pre-existing Hardcover/reading-services test, confirming nothing broke).
+- Full repo-wide lint, the client test suite, and e2e were **not** run, per
+  "focused checks only" for this card.
+
+Unresolved / notes for the next agent:
+
+- The two UNVERIFIED GraphQL queries (`followed_user_books` args,
+  `books_trending` shape) need a real-token introspection pass before any
+  live smoke test of this stage.
+- The controller-reachability gap for private adapters (point 6 above) needs
+  an owner decision: generalise `PROVIDER_PERMISSIONS`/`assertProviderAccess`
+  to accept any registered provider under some shared permission, or accept
+  that private adapters are registry-only until a concrete private adapter
+  needs the HTTP surface.
+- `recommendations_shelf`'s "most-added, minus already-linked" proxy has no
+  UI copy anywhere yet explaining it isn't a real recommendation; worth a
+  product decision before a widgets/web stage surfaces it as "Recommended
+  for you".
+- No dashboard scroller/card UI was touched (plan §7.2), and no Android work
+  (plan §7.6); both remain for a later stage once the shelf endpoint above is
+  confirmed against a live token.
+
 ## First commands for a successor agent
 
 ```bash
