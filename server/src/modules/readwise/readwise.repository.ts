@@ -212,7 +212,10 @@ export class ReadwiseRepository {
   }
 
   private bookIdsInLibraries(libraryIds: readonly number[]) {
-    return this.db.select({ id: schema.books.id }).from(schema.books).where(inArray(schema.books.libraryId, [...libraryIds]));
+    return this.db
+      .select({ id: schema.books.id })
+      .from(schema.books)
+      .where(inArray(schema.books.libraryId, [...libraryIds]));
   }
 
   private selectHighlightRows(extraWhere: ReturnType<typeof and>, userId: number, limit: number, libraryIds: readonly number[] | null = null) {

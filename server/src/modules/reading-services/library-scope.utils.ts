@@ -49,4 +49,3 @@ export function isBookInScope(effectiveLibraryIds: readonly number[], bookLibrar
 export function isLibraryInEffectiveScope(effectiveLibraryIds: readonly number[], libraryId: number | null | undefined): boolean {
   return isBookInScope(effectiveLibraryIds, [libraryId]);
 }
-

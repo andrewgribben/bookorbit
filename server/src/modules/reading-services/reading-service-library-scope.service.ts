@@ -23,10 +23,7 @@ export class ReadingServiceLibraryScopeService {
 
   /** Accessible library ids where `feature` is effectively usable; `null` feature checks `enabled` only. */
   async getEffectiveLibraryIds(user: RequestUser, provider: ReadingServiceProvider, feature: ReadingServiceFeature | null): Promise<number[]> {
-    const [accessible, settings] = await Promise.all([
-      this.libraryService.findAccessibleLibraryIds(user),
-      this.getSettingsMap(user, provider),
-    ]);
+    const [accessible, settings] = await Promise.all([this.libraryService.findAccessibleLibraryIds(user), this.getSettingsMap(user, provider)]);
     return effectiveLibraryIdsForFeature(accessible, settings, feature);
   }
 
@@ -98,4 +95,3 @@ export class ReadingServiceLibraryScopeService {
     await this.repo.deleteLibrarySetting(user.id, provider, libraryId);
   }
 }
-
