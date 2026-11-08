@@ -81,7 +81,16 @@ export type ReadingServiceLibrarySetting = {
  */
 export type ReadingServiceAuthMethod =
   | { kind: "token"; label: string; help?: string; placeholder?: string }
-  | { kind: "device_code"; label: string; help?: string };
+  | { kind: "device_code"; label: string; help?: string }
+  | {
+      kind: "password";
+      label: string;
+      help?: string;
+      fields: {
+        username: { label: string; placeholder?: string };
+        password: { label: string; placeholder?: string };
+      };
+    };
 
 export type ReadingServiceDeviceAuthStart = {
   verificationUrl: string;
@@ -97,6 +106,11 @@ export type ReadingServiceDeviceAuthPollResult = {
   accountLabel?: string | null;
   message?: string | null;
 };
+
+/** Result of `POST /reading-services/:provider/auth/password`. Never carries the password back. */
+export type ReadingServicePasswordLoginResult =
+  | { ok: true; accountLabel?: string | null }
+  | { ok: false; reason: "invalid" | "mfa_required" | "network" | "unsupported"; message?: string | null };
 
 export type ReadingServiceSummary = {
   provider: ReadingServiceProvider;

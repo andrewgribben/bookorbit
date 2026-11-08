@@ -43,7 +43,7 @@ onUnmounted(() => {
     <HardcoverLinkedBooks v-if="settings?.tokenConfigured" />
 
     <SettingsSection
-      v-if="settings?.tokenConfigured && readingServiceSummary"
+      v-if="readingServiceSummary"
       :title="t('settings.readingServices.libraries.title')"
       :brief="t('settings.readingServices.libraries.subtitle')"
     >

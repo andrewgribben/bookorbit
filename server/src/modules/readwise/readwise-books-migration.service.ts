@@ -109,6 +109,9 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     // S5: push (create/update/delete) and pull both run through the item-link ledger now.
     // Bookmarks have no analogue in the v2 highlights API, so that feature stays absent here.
     highlights: 'both',
+    // ReadwiseRecapService builds this from year stats + the session breakdown; read-only, no
+    // user toggle changes what's synced, it's just a dashboard display.
+    recap_widget: 'read',
   };
 
   constructor(

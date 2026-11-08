@@ -18,7 +18,14 @@ export default {
   shelves: [{ id: 'friends-reading', capability: 'friends_shelf', title: 'Friends reading', description: 'Test fixture shelf.' }],
 
   auth: {
-    methods: [{ kind: 'device_code', label: 'Sign in with Fixturewise', help: 'Approve the code at fixturewise.test/device' }],
+    methods: [
+      { kind: 'device_code', label: 'Sign in with Fixturewise', help: 'Approve the code at fixturewise.test/device' },
+      {
+        kind: 'password',
+        label: 'Sign in with username and password',
+        fields: { username: { label: 'Email' }, password: { label: 'Password' } },
+      },
+    ],
   },
 
   async startDeviceAuth() {
@@ -45,6 +52,14 @@ export default {
 
   async validateCredential(_ctx, credential) {
     if (credential === 'valid-token') return { ok: true, accountLabel: 'fixture-user@example.test' };
+    return { ok: false, reason: 'invalid' };
+  },
+
+  async loginWithPassword(_ctx, { username, password }) {
+    if (username === 'fixture-user@example.test' && password === 'correct-password') {
+      return { ok: true, credential: 'fixture-credential-from-password', accountLabel: username };
+    }
+    if (username === 'mfa-user@example.test') return { ok: false, reason: 'mfa_required' };
     return { ok: false, reason: 'invalid' };
   },
 

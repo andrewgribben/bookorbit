@@ -128,4 +128,13 @@ describe('ReadingServiceLibraries', () => {
 
     expect(mocks.resetLibrary).toHaveBeenCalledWith('hardcover', 2)
   })
+
+  it('keeps its frame and shows an honest empty state when there are no libraries yet', () => {
+    libraries.value = []
+    const wrapper = mount(ReadingServiceLibraries, { props: { provider: 'hardcover', summary: makeSummary() } })
+
+    expect(wrapper.find('.border.border-border').exists()).toBe(true)
+    expect(wrapper.text()).toContain('No libraries yet')
+    libraries.value = [makeLibrary({ id: 1, name: 'Books' }), makeLibrary({ id: 2, name: 'Comics' })]
+  })
 })

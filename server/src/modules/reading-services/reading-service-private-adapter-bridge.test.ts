@@ -120,4 +120,29 @@ describe('PrivateAdapterBridge', () => {
     await bridge.disconnect(1);
     expect(credentials.disconnect).toHaveBeenCalledWith(1, 'fixturewise');
   });
+
+  it('reports unsupported when the module has no loginWithPassword', async () => {
+    const bridge = new PrivateAdapterBridge(makeModule(), credentials, cache);
+    const result = await bridge.loginWithPassword(1, 'user@example.test', 'whatever');
+    expect(result).toEqual({ ok: false, reason: 'unsupported' });
+  });
+
+  it('passes the username and password straight through to the module on loginWithPassword', async () => {
+    const loginWithPassword = vi.fn().mockResolvedValue({ ok: true, credential: 'new-token', accountLabel: 'user@example.test' });
+    const bridge = new PrivateAdapterBridge(makeModule({ loginWithPassword }), credentials, cache);
+
+    const result = await bridge.loginWithPassword(1, 'user@example.test', 'super-secret');
+
+    expect(result).toEqual({ ok: true, credential: 'new-token', accountLabel: 'user@example.test' });
+    expect(loginWithPassword).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }), { username: 'user@example.test', password: 'super-secret' });
+  });
+
+  it('passes through a failed loginWithPassword reason unchanged', async () => {
+    const loginWithPassword = vi.fn().mockResolvedValue({ ok: false, reason: 'mfa_required' });
+    const bridge = new PrivateAdapterBridge(makeModule({ loginWithPassword }), credentials, cache);
+
+    const result = await bridge.loginWithPassword(1, 'user@example.test', 'wrong');
+
+    expect(result).toEqual({ ok: false, reason: 'mfa_required' });
+  });
 });

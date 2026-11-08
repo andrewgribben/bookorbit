@@ -76,6 +76,20 @@ export interface ReadingServiceProviderAdapter {
   /** Validates a pasted token/credential. Only present when `authMethods` includes a `token` entry. */
   validateCredential?(userId: number, credential: string): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }>;
 
+  /**
+   * Signs in with a username/email + password. Only present when `authMethods` includes a
+   * `password` entry. The host passes the raw password straight through and never stores,
+   * caches, or logs it beyond this one call - only the returned `credential` is persisted.
+   */
+  loginWithPassword?(
+    userId: number,
+    usernameOrEmail: string,
+    password: string,
+  ): Promise<
+    | { ok: true; credential: string; accountLabel?: string | null }
+    | { ok: false; reason: 'invalid' | 'mfa_required' | 'network' | 'unsupported'; message?: string | null }
+  >;
+
   /** Starts a device-code sign-in. Only present when `authMethods` includes a `device_code` entry. */
   startDeviceAuth?(userId: number): Promise<ReadingServiceDeviceAuthStart>;
 

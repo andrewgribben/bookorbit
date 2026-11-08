@@ -36,3 +36,19 @@ export class ConnectTokenDto {
   @MinLength(1)
   credential!: string;
 }
+
+/**
+ * Body for `POST /reading-services/:provider/auth/password` (the `password` auth method).
+ * `password` is redacted from request logs by `server/src/common/logger.config.ts` (it is
+ * already in the global `req.body.password` redact path) and is never persisted - only the
+ * `credential` a successful `loginWithPassword` call returns gets stored.
+ */
+export class ConnectPasswordDto {
+  @IsString()
+  @MinLength(1)
+  username!: string;
+
+  @IsString()
+  @MinLength(1)
+  password!: string;
+}

@@ -1763,7 +1763,8 @@
         "customise": "Customise",
         "reset": "Reset",
         "inherits": "Follows the settings above.",
-        "customised": "Some features are turned off just for this library."
+        "customised": "Some features are turned off just for this library.",
+        "empty": "No libraries yet. Add one from the library settings to choose what syncs."
       },
       "whatSyncs": {
         "title": "What syncs",

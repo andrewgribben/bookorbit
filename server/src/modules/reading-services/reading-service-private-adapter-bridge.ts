@@ -31,6 +31,13 @@ export interface PrivateAdapterV2Module {
     ctx: PrivateAdapterCtx,
     credential: string,
   ): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }>;
+  loginWithPassword?(
+    ctx: PrivateAdapterCtx,
+    credentials: { username: string; password: string },
+  ): Promise<
+    | { ok: true; credential: string; accountLabel?: string | null }
+    | { ok: false; reason: 'invalid' | 'mfa_required' | 'network' | 'unsupported'; message?: string | null }
+  >;
 }
 
 export interface PrivateAdapterCtx {
@@ -113,6 +120,20 @@ export class PrivateAdapterBridge implements ReadingServiceProviderAdapter {
   async validateCredential(userId: number, credential: string): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }> {
     if (!this.module.validateCredential) return { ok: false, reason: 'invalid' };
     return this.module.validateCredential(this.makeCtx(userId, null), credential);
+  }
+
+  async loginWithPassword(
+    userId: number,
+    usernameOrEmail: string,
+    password: string,
+  ): Promise<
+    | { ok: true; credential: string; accountLabel?: string | null }
+    | { ok: false; reason: 'invalid' | 'mfa_required' | 'network' | 'unsupported'; message?: string | null }
+  > {
+    if (!this.module.loginWithPassword) return { ok: false, reason: 'unsupported' };
+    // The password is handed straight to the module and never touches a log line, a cache
+    // entry, or this object's state - it is a local variable on this call's stack only.
+    return this.module.loginWithPassword(this.makeCtx(userId, null), { username: usernameOrEmail, password });
   }
 
   async startDeviceAuth(userId: number): Promise<ReadingServiceDeviceAuthStart> {

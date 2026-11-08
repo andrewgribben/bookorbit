@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
 
 import { PermissionService } from '../../common/services/permission.service';
@@ -619,6 +619,72 @@ describe('ReadingServicesController', () => {
 
       expect(result).toEqual({ ok: true });
       expect(disconnect).toHaveBeenCalledWith(1);
+    });
+
+    it('stores the credential after a successful password sign-in, never the password itself', async () => {
+      const { controller, registry, credentials } = makeController();
+      const loginWithPassword = vi.fn().mockResolvedValue({ ok: true, credential: 'token-from-password', accountLabel: 'user@example.test' });
+      registerAdapter(registry, { loginWithPassword });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const result = await controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'super-secret-password' });
+
+      expect(result).toEqual({ ok: true, accountLabel: 'user@example.test' });
+      expect(credentials.save).toHaveBeenCalledWith(1, 'fixturewise', 'token-from-password', 'user@example.test');
+      // The response the client actually receives must never contain the password.
+      expect(JSON.stringify(result)).not.toContain('super-secret-password');
+    });
+
+    it('returns the failure reason for a bad password sign-in without storing anything', async () => {
+      const { controller, registry, credentials } = makeController();
+      const loginWithPassword = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid' });
+      registerAdapter(registry, { loginWithPassword });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const result = await controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'wrong' });
+
+      expect(result).toEqual({ ok: false, reason: 'invalid', message: null });
+      expect(credentials.save).not.toHaveBeenCalled();
+    });
+
+    it('surfaces mfa_required so the UI can prompt for a second factor', async () => {
+      const { controller, registry } = makeController();
+      registerAdapter(registry, { loginWithPassword: vi.fn().mockResolvedValue({ ok: false, reason: 'mfa_required' }) });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const result = await controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'wrong' });
+
+      expect(result).toEqual({ ok: false, reason: 'mfa_required', message: null });
+    });
+
+    it('rejects a password submission when the adapter has no loginWithPassword', async () => {
+      const { controller, registry } = makeController();
+      registerAdapter(registry);
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      await expect(controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'x' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('never logs the raw password, on success or on failure', async () => {
+      const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        const { controller, registry } = makeController();
+        registerAdapter(registry, {
+          loginWithPassword: vi.fn().mockImplementation(async () => ({ ok: false, reason: 'invalid' })),
+        });
+        const user = makeUser([Permission.ReadwiseSync]);
+
+        await controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'a-very-secret-value' });
+
+        const allLoggedText = [...logSpy.mock.calls, ...warnSpy.mock.calls, ...errorSpy.mock.calls].map((args) => JSON.stringify(args)).join('\n');
+        expect(allLoggedText).not.toContain('a-very-secret-value');
+      } finally {
+        logSpy.mockRestore();
+        warnSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
     });
   });
 });

@@ -13,6 +13,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   READING_SERVICE_SHELVES,
@@ -21,6 +22,7 @@ import {
   type ReadingServiceDeviceAuthPollResult,
   type ReadingServiceDeviceAuthStart,
   type ReadingServiceFeature,
+  type ReadingServicePasswordLoginResult,
   type ReadingServiceProvider,
   type ReadingServiceRemoteOnlyBooksPage,
   type ReadingServiceShelf,
@@ -33,7 +35,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PermissionService } from '../../common/services/permission.service';
 import type { RequestUser } from '../../common/types/request-user';
 import { buildRemoteIndex, isbn10ToIsbn13, matchBook } from './book-matcher';
-import { ConnectTokenDto, UpdateReadingServiceFeaturesDto, UpdateReadingServiceLibraryDto } from './dto';
+import { ConnectPasswordDto, ConnectTokenDto, UpdateReadingServiceFeaturesDto, UpdateReadingServiceLibraryDto } from './dto';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
 import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 import { ReadingServiceMatchRepository } from './reading-service-match.repository';
@@ -158,6 +160,34 @@ export class ReadingServicesController {
     }
 
     await this.credentials.save(user.id, typedProvider, dto.credential, result.accountLabel ?? null);
+    return { ok: true, accountLabel: result.accountLabel ?? null };
+  }
+
+  /**
+   * Submits a `password`-method sign-in. The password is read once off this request's body,
+   * handed straight to the adapter, and discarded; only the credential the adapter returns is
+   * ever stored. Rate-limited per user (owner rule: 5 attempts per 15 minutes) since this is a
+   * credential-guessing surface, unlike the token/device-code routes.
+   */
+  @Post(':provider/auth/password')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } })
+  async connectWithPassword(
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Body() dto: ConnectPasswordDto,
+  ): Promise<ReadingServicePasswordLoginResult> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    if (!adapter?.loginWithPassword) {
+      throw new BadRequestException(`${typedProvider} does not support a password sign-in`);
+    }
+
+    const result = await adapter.loginWithPassword(user.id, dto.username, dto.password);
+    if (!result.ok) {
+      return { ok: false, reason: result.reason, message: result.message ?? null };
+    }
+
+    await this.credentials.save(user.id, typedProvider, result.credential, result.accountLabel ?? null);
     return { ok: true, accountLabel: result.accountLabel ?? null };
   }
 
