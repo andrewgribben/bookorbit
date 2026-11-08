@@ -1,0 +1,184 @@
+import { nextTick, ref } from 'vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { BookDetail } from '@bookorbit/types'
+
+import { BOOK_REVIEW_MAX_LENGTH, useBookReview } from '../useBookReview'
+
+const apiMock = vi.hoisted(() => vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<unknown>>())
+
+vi.mock('@/lib/api', () => ({
+  api: apiMock,
+}))
+
+function makeBook(overrides: Partial<BookDetail> = {}): BookDetail {
+  return {
+    id: 1,
+    libraryId: 1,
+    libraryName: 'Test Library',
+    status: 'present',
+    folderPath: '/books',
+    addedAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: null,
+    title: 'Test Book',
+    subtitle: null,
+    description: null,
+    isbn10: null,
+    isbn13: null,
+    publisher: null,
+    publishedDate: null,
+    publishedYear: null,
+    language: null,
+    pageCount: null,
+    seriesName: null,
+    seriesIndex: null,
+    rating: null,
+    personalNote: null,
+    personalNoteUpdatedAt: null,
+    review: null,
+    reviewUpdatedAt: null,
+    communityRatings: [],
+    coverSource: null,
+    coverMedia: [],
+    covers: { ebook: null, audio: null },
+    coverVersion: 'legacy:2024-01-01T00:00:00.000Z',
+    hardcoverEditionId: null,
+    providerIds: {},
+    authors: [],
+    genres: [],
+    tags: [],
+    files: [],
+    lastWrittenAt: null,
+    metadataScore: null,
+    readStatus: null,
+    audioMetadata: null,
+    readAloudSync: {
+      mode: 'auto',
+      state: 'unavailable',
+      unavailableReason: 'no_media_overlay_epub',
+      overlayFileId: null,
+      audioDurationSeconds: null,
+      overlayDurationSeconds: null,
+      durationDifferenceSeconds: null,
+      durationDifferenceRatio: null,
+      koreaderDownloadAvailable: false,
+    },
+    formatPriority: [],
+    comicMetadata: null,
+    customMetadata: [],
+    lockedFields: [],
+    collections: [],
+    ...overrides,
+  }
+}
+
+describe('useBookReview', () => {
+  beforeEach(() => {
+    apiMock.mockReset()
+  })
+
+  it('seeds the draft from the book and reports no unsaved changes', () => {
+    const book = ref(makeBook({ review: 'Existing review' }))
+    const { draft, hasReview, preview, canSave } = useBookReview(book)
+
+    expect(draft.value).toBe('Existing review')
+    expect(hasReview.value).toBe(true)
+    expect(preview.value).toBe('Existing review')
+    expect(canSave.value).toBe(false)
+  })
+
+  it('resets the draft when the book id changes', async () => {
+    const book = ref(makeBook({ id: 1, review: 'First book review' }))
+    const { draft, startEdit } = useBookReview(book)
+
+    startEdit()
+    draft.value = 'Unsaved edits'
+
+    book.value = makeBook({ id: 2, review: 'Second book review' })
+    await nextTick()
+
+    expect(draft.value).toBe('Second book review')
+  })
+
+  it('canSave is true only when the trimmed draft differs from the saved review', () => {
+    const book = ref(makeBook({ review: 'Saved' }))
+    const { draft, canSave } = useBookReview(book)
+
+    draft.value = 'Saved'
+    expect(canSave.value).toBe(false)
+
+    draft.value = '  Saved  '
+    expect(canSave.value).toBe(false)
+
+    draft.value = 'Changed'
+    expect(canSave.value).toBe(true)
+  })
+
+  it('clearDraft empties the draft so a blank review can be saved', () => {
+    const book = ref(makeBook({ review: 'Something' }))
+    const { draft, clearDraft, canClearDraft } = useBookReview(book)
+
+    expect(canClearDraft.value).toBe(true)
+    clearDraft()
+    expect(draft.value).toBe('')
+  })
+
+  it('save sends the trimmed review and returns the updated book', async () => {
+    const updated = makeBook({ review: 'Trimmed review', reviewUpdatedAt: '2026-07-01T00:00:00.000Z' })
+    apiMock.mockResolvedValue({ ok: true, json: async () => updated })
+
+    const book = ref(makeBook())
+    const { draft, save, editing } = useBookReview(book)
+    draft.value = '  Trimmed review  '
+    editing.value = true
+
+    const result = await save()
+
+    const [url, req] = apiMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/v1/books/1/review')
+    expect(req.method).toBe('PATCH')
+    expect(JSON.parse(String(req.body))).toEqual({ review: 'Trimmed review' })
+    expect(result).toEqual(updated)
+    expect(editing.value).toBe(false)
+  })
+
+  it('save is a no-op when there are no changes', async () => {
+    const book = ref(makeBook({ review: 'Same' }))
+    const { save } = useBookReview(book)
+
+    const result = await save()
+
+    expect(apiMock).not.toHaveBeenCalled()
+    expect(result).toBeNull()
+  })
+
+  it('sets an error and keeps editing open on a failed save', async () => {
+    apiMock.mockResolvedValue({ ok: false, status: 500 })
+
+    const book = ref(makeBook())
+    const { draft, save, error, editing } = useBookReview(book)
+    draft.value = 'Changed'
+    editing.value = true
+
+    const result = await save()
+
+    expect(result).toBeNull()
+    expect(error.value).toBe('Failed to save review.')
+    expect(editing.value).toBe(true)
+  })
+
+  it('cancelEdit discards draft changes and closes the editor', () => {
+    const book = ref(makeBook({ review: 'Saved review' }))
+    const { draft, editing, startEdit, cancelEdit } = useBookReview(book)
+
+    startEdit()
+    draft.value = 'Unsaved change'
+    cancelEdit()
+
+    expect(draft.value).toBe('Saved review')
+    expect(editing.value).toBe(false)
+  })
+
+  it('exposes the max length constant used by the template', () => {
+    expect(BOOK_REVIEW_MAX_LENGTH).toBe(10000)
+  })
+})

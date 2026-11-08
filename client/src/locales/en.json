@@ -6723,6 +6723,20 @@
           "clearAria": "Clear personal review",
           "cancelEditAria": "Cancel personal review edit"
         },
+        "review": {
+          "title": "Review",
+          "toggleAria": "Toggle review",
+          "editAria": "Edit review",
+          "placeholder": "Write a review",
+          "clearAria": "Clear review",
+          "cancelEditAria": "Cancel review edit",
+          "syncedHint": "Synced to Readwise",
+          "charCount": "{count} / {max} characters",
+          "charCountNearLimit": "{count} / {max} characters, close to the limit",
+          "saveFailed": "Failed to save review.",
+          "save": "Save review",
+          "updatedAt": "Updated {date}"
+        },
         "editCover": "Edit cover",
         "viewCover": "View larger cover",
         "coverStack": {

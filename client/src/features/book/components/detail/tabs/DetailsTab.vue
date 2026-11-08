@@ -14,6 +14,7 @@ import {
   Lock,
   ListChecks,
   ListRestart,
+  MessageSquareText,
   MoreVertical,
   Pencil,
   RotateCcw,
@@ -62,6 +63,7 @@ import { useLibraryPermissions } from '@/features/library/composables/useLibrary
 import { useDeleteBook } from '@/features/book/composables/useDeleteBook'
 import { useMetadataLocks } from '@/features/book/composables/useMetadataLocks'
 import { usePersonalNote, PERSONAL_NOTE_MAX_LENGTH } from '@/features/book/composables/usePersonalNote'
+import { useBookReview, BOOK_REVIEW_MAX_LENGTH } from '@/features/book/composables/useBookReview'
 import { useResetReadingState } from '@/features/book/composables/useResetReadingState'
 import DeleteBookDialog from '@/features/book/components/DeleteBookDialog.vue'
 import MoveToLibrarySheet from '@/features/book/components/MoveToLibrarySheet.vue'
@@ -576,6 +578,48 @@ watch(
 
 async function savePersonalNote() {
   const updated = await savePersonalNoteDraft()
+  if (updated) emit('saved', updated)
+}
+
+const showBookReview = ref(false)
+
+function toggleBookReview() {
+  showBookReview.value = !showBookReview.value
+}
+
+const {
+  draft: reviewDraft,
+  editing: reviewEditing,
+  saving: reviewSaving,
+  error: reviewError,
+  preview: reviewPreview,
+  hasReview,
+  canSave: canSaveReview,
+  canClearDraft: canClearReviewDraft,
+  charCount: reviewCharCount,
+  startEdit: startReviewEdit,
+  cancelEdit: cancelReviewEdit,
+  clearDraft: clearReviewDraft,
+  save: saveReviewDraft,
+} = useBookReview(computed(() => props.book))
+
+const reviewUpdatedLabel = computed(() => (props.book.reviewUpdatedAt ? formatDateTime(props.book.reviewUpdatedAt) : null))
+const reviewNearLimit = computed(() => reviewCharCount.value >= BOOK_REVIEW_MAX_LENGTH * 0.98)
+
+function startVisibleReviewEdit() {
+  showBookReview.value = true
+  startReviewEdit()
+}
+
+watch(
+  () => props.book.id,
+  () => {
+    showBookReview.value = false
+  },
+)
+
+async function saveBookReview() {
+  const updated = await saveReviewDraft()
   if (updated) emit('saved', updated)
 }
 
@@ -1704,6 +1748,20 @@ watch(
 
           <button
             type="button"
+            :aria-label="t('book.detail.details.review.toggleAria')"
+            class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            :class="{ 'text-primary hover:text-primary': showBookReview }"
+            @click="toggleBookReview"
+          >
+            <MessageSquareText class="size-3.5" />
+            <span>{{ t('book.detail.details.review.title') }}</span>
+            <span v-if="hasReview" class="size-1.5 rounded-full bg-primary" />
+          </button>
+
+          <div class="w-px h-3.5 bg-border mx-1.5" />
+
+          <button
+            type="button"
             :aria-label="t('book.detail.details.personalReview.toggleAria')"
             class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             :class="{ 'text-primary hover:text-primary': showPersonalReview }"
@@ -1907,6 +1965,109 @@ watch(
         </div>
       </div>
 
+      <!-- Collapsible Review container -->
+      <div v-show="showBookReview" class="mt-4 p-4 border border-border/70 rounded-lg bg-card/60 shadow-sm">
+        <div class="mb-3 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              {{ t('book.detail.details.review.title') }}
+            </p>
+            <p class="mt-0.5 text-[11px] text-muted-foreground">{{ t('book.detail.details.review.syncedHint') }}</p>
+            <p v-if="reviewUpdatedLabel && !reviewEditing" class="mt-0.5 text-[11px] text-muted-foreground">
+              {{ t('book.detail.details.review.updatedAt', { date: reviewUpdatedLabel }) }}
+            </p>
+          </div>
+          <Tooltip v-if="!reviewEditing">
+            <TooltipTrigger as-child>
+              <button
+                type="button"
+                class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                :aria-label="t('book.detail.details.review.editAria')"
+                @click="startReviewEdit"
+              >
+                <Pencil class="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('book.detail.details.review.editAria') }}</TooltipContent>
+          </Tooltip>
+        </div>
+
+        <template v-if="reviewEditing">
+          <textarea
+            v-model="reviewDraft"
+            class="min-h-24 max-h-72 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+            rows="4"
+            :maxlength="BOOK_REVIEW_MAX_LENGTH"
+            :placeholder="t('book.detail.details.review.placeholder')"
+          />
+          <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p
+              class="text-[11px]"
+              :class="reviewNearLimit ? 'font-medium text-amber-500' : 'text-muted-foreground'"
+            >
+              {{
+                t(
+                  reviewNearLimit ? 'book.detail.details.review.charCountNearLimit' : 'book.detail.details.review.charCount',
+                  { count: reviewCharCount, max: BOOK_REVIEW_MAX_LENGTH },
+                )
+              }}
+            </p>
+            <div class="flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <button
+                    type="button"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-xs border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    :aria-label="t('book.detail.details.review.clearAria')"
+                    :disabled="!canClearReviewDraft || reviewSaving"
+                    @click="clearReviewDraft"
+                  >
+                    <Trash2 class="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{{ t('book.detail.details.review.clearAria') }}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <button
+                    type="button"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-xs border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    :aria-label="t('book.detail.details.review.cancelEditAria')"
+                    :disabled="reviewSaving"
+                    @click="cancelReviewEdit"
+                  >
+                    <X class="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{{ t('common.cancel') }}</TooltipContent>
+              </Tooltip>
+              <button
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 rounded-xs bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!canSaveReview"
+                @click="saveBookReview"
+              >
+                <Check class="size-3.5" />
+                {{ reviewSaving ? 'Saving...' : t('book.detail.details.review.save') }}
+              </button>
+            </div>
+          </div>
+          <p v-if="reviewError" class="mt-2 text-xs text-rose-500">{{ reviewError }}</p>
+        </template>
+        <template v-else-if="hasReview">
+          <p class="line-clamp-4 whitespace-pre-line break-words text-sm leading-relaxed text-foreground">{{ reviewPreview }}</p>
+        </template>
+        <button
+          v-else
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border border-dashed border-input px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+          @click="startReviewEdit"
+        >
+          <Pencil class="size-3.5" />
+          {{ t('book.detail.details.review.placeholder') }}
+        </button>
+      </div>
+
       <!-- Collapsible Personal Review container -->
       <div v-show="showPersonalReview" class="mt-4 p-4 border border-border/70 rounded-lg bg-card/60 shadow-sm">
         <div class="mb-3 flex items-start justify-between gap-3">
@@ -2025,6 +2186,22 @@ watch(
             v-html="safeDescription"
           />
           <p v-else class="mt-2 text-sm italic text-muted-foreground">{{ t('book.detail.details.noDescription') }}</p>
+        </div>
+        <div class="mt-3 flex items-center gap-2.5 border-t border-border pt-3">
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {{ t('book.detail.details.review.title') }}
+          </p>
+          <p class="truncate text-[11px] text-muted-foreground">
+            {{ hasReview ? reviewPreview : t('book.detail.details.review.placeholder') }}
+          </p>
+          <button
+            type="button"
+            class="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-input px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            @click="startVisibleReviewEdit"
+          >
+            <Pencil class="size-3" />
+            {{ t('book.detail.details.review.save') }}
+          </button>
         </div>
         <div class="mt-3 flex items-center gap-2.5 border-t border-border pt-3">
           <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
