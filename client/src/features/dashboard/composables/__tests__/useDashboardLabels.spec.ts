@@ -12,7 +12,15 @@ const summaries = ref<ReadingServiceSummary[]>([])
 const fetchSummaries = vi.fn()
 
 vi.mock('@/features/reading-services/composables/useReadingServices', () => ({
-  useReadingServices: () => ({ summaries, fetchSummaries, getSummary: (provider: string) => ({ get value() { return summaries.value.find((s) => s.provider === provider) ?? null } }) }),
+  useReadingServices: () => ({
+    summaries,
+    fetchSummaries,
+    getSummary: (provider: string) => ({
+      get value() {
+        return summaries.value.find((s) => s.provider === provider) ?? null
+      },
+    }),
+  }),
 }))
 
 function readingServiceSummary(overrides: Partial<ReadingServiceSummary>): ReadingServiceSummary {

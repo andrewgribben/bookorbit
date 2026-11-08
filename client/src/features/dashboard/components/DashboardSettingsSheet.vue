@@ -579,7 +579,9 @@ function handleCancel() {
                   />
                 </button>
                 <div class="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{{ externalShelfTitle(entry.provider, entry.shelf) }}</span>
+                  <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{{
+                    externalShelfTitle(entry.provider, entry.shelf)
+                  }}</span>
                   <RouterLink
                     v-if="!connectedProviders.has(entry.provider)"
                     :to="providerSettingsRoute(entry.provider)"
