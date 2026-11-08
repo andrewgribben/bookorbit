@@ -96,7 +96,11 @@ onMounted(() => {
     <!-- Running -->
     <template v-else-if="run?.status === 'running'">
       <p class="text-xs text-muted-foreground">
-        {{ run.phase === 'reconciling' ? t('settings.readingServices.migration.reconcilingDescription', { provider: providerLabel }) : t('settings.readingServices.migration.runningDescription') }}
+        {{
+          run.phase === 'reconciling'
+            ? t('settings.readingServices.migration.reconcilingDescription', { provider: providerLabel })
+            : t('settings.readingServices.migration.runningDescription')
+        }}
       </p>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div v-for="key in ['updated', 'created', 'skipped', 'failed'] as const" :key="key" class="rounded-md border border-border px-3 py-2">
