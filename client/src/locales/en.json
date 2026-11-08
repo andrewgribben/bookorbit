@@ -10071,6 +10071,20 @@
       "viewRequest": "View request",
       "submittedAudiobook": "Requested. The audiobook will join this book when it arrives",
       "submittedEbook": "Requested. The e-book will join this book when it arrives"
+    },
+    "externalRequest": {
+      "requestButton": "Request",
+      "checkingButton": "Checking…",
+      "requestingButton": "Requesting…",
+      "requestedButton": "Requested",
+      "alreadyRequestedButton": "Already requested",
+      "errorButton": "Retry",
+      "requestAllButton": "Request all",
+      "requestAllConfirmTitle": "Request {count} books?",
+      "requestAllConfirmDescription": "This sends {count} requests to Book Requests. Depending on your request settings, some may start a search and download automatically.",
+      "requestAllConfirmLabel": "Request all {count}",
+      "requestAllResult": "Requested {created}, already had {skipped}, failed {errors}.",
+      "actionsFor": "Request actions for {title}"
     }
   },
   "collection": {
