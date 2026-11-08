@@ -104,20 +104,11 @@ export const bookRequestConfig = registerAs('bookRequest', () => ({
 }));
 
 /**
- * Encrypts Readwise and Hardcover tokens at rest. Dev falls back to JWT_SECRET, same as the
- * podcast key, so a fresh checkout still encrypts tokens without extra setup.
+ * Encrypts Readwise and Hardcover tokens at rest. Dev falls back to JWT_SECRET so a fresh
+ * checkout still encrypts tokens without extra setup.
  */
 export const readingServicesConfig = registerAs('readingServices', () => ({
   encryptionKey: process.env.READING_SERVICES_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
-}));
-
-export const podcastConfig = registerAs('podcast', () => ({
-  encryptionKey: process.env.PODCAST_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
-  maxFeedBytes: parsePositiveInteger(process.env.PODCAST_MAX_FEED_BYTES, 10 * 1024 * 1024),
-  maxEpisodeBytes: parsePositiveInteger(process.env.PODCAST_MAX_EPISODE_BYTES, 2 * 1024 * 1024 * 1024),
-  maxConcurrentDownloads: parsePositiveInteger(process.env.PODCAST_MAX_CONCURRENT_DOWNLOADS, 2),
-  requestTimeoutMs: parsePositiveInteger(process.env.PODCAST_REQUEST_TIMEOUT_MS, 30_000),
-  maxDownloadDurationMs: parsePositiveInteger(process.env.PODCAST_MAX_DOWNLOAD_DURATION_MS, 6 * 60 * 60_000),
 }));
 
 export const oidcRuntimeConfig = registerAs('oidcRuntime', () => ({
