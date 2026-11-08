@@ -211,6 +211,40 @@ export class ReadwiseRepository {
       .where(and(eq(schema.annotations.userId, userId), inArray(schema.annotations.id, annotationIds)));
   }
 
+  /**
+   * Content-based fallback for the ledger backfill: finds one local annotation on `bookId` whose
+   * exact text matches a remote highlight and that is not already linked to a Readwise highlight.
+   * Used when the remote highlight's `highlight_url` carries no BookOrbit annotationId, or carries
+   * one that no longer matches by text (a different BookOrbit instance can reuse the same numeric
+   * id for an unrelated annotation, so the id alone is never proof of identity across instances).
+   */
+  async findUnlinkedAnnotationByText(userId: number, bookId: number, text: string): Promise<{ id: number } | undefined> {
+    const linked = this.db
+      .select({ localId: schema.readingServiceItemLinks.localId })
+      .from(schema.readingServiceItemLinks)
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'highlight'),
+        ),
+      );
+    const [row] = await this.db
+      .select({ id: schema.annotations.id })
+      .from(schema.annotations)
+      .where(
+        and(
+          eq(schema.annotations.userId, userId),
+          eq(schema.annotations.bookId, bookId),
+          eq(schema.annotations.text, text),
+          isNull(schema.annotations.deletedAt),
+          notInArray(schema.annotations.id, linked),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
   private bookIdsInLibraries(libraryIds: readonly number[]) {
     return this.db
       .select({ id: schema.books.id })

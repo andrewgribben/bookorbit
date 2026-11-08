@@ -16,6 +16,7 @@ function makeService() {
   const readingServicesRepo = {
     findItemLinkByExternalId: vi.fn(),
     findBookLinkByExternalId: vi.fn(),
+    recordItemLinks: vi.fn(),
   } as unknown as ReadingServicesRepository;
   const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
   const cache = { get: vi.fn().mockResolvedValue(null), set: vi.fn() } as unknown as ReadingServiceCacheService;
@@ -23,6 +24,7 @@ function makeService() {
     resolveUserTimeZone: vi.fn().mockResolvedValue('UTC'),
     insertPulledSession: vi.fn().mockResolvedValue({ id: 1, inserted: true }),
     removePulledSession: vi.fn(),
+    findUnlinkedSessionMatch: vi.fn().mockResolvedValue(undefined),
   } as unknown as ReadwiseSessionsLocalRepository;
 
   const service = new ReadwiseSessionsPullService(client, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, cache, sessionsRepo);
@@ -90,6 +92,21 @@ describe('ReadwiseSessionsPullService', () => {
       expect.objectContaining({ externalId: 'ext-1', bookId: 42, format: 'ebook' }),
       'UTC',
     );
+  });
+
+  it('links a matching unlinked local session instead of inserting a duplicate', async () => {
+    const { service, client, readingServicesRepo, sessionsRepo } = makeService();
+    (client.listSessions as any).mockResolvedValueOnce({ results: [remoteSession()], next: null });
+    (readingServicesRepo.findItemLinkByExternalId as any).mockResolvedValueOnce(undefined);
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce({ bookId: 42 });
+    (sessionsRepo.findUnlinkedSessionMatch as any).mockResolvedValueOnce({ id: 900 });
+
+    await service.pullForUser(1);
+
+    expect(sessionsRepo.insertPulledSession).not.toHaveBeenCalled();
+    expect(readingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
+      { userId: 1, provider: 'readwise', kind: 'session', localId: 900, externalId: 'ext-1' },
+    ]);
   });
 
   it('soft-removes a locally imported session on a remote delete', async () => {

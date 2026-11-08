@@ -17,7 +17,7 @@ import type { ReadingServiceProviderAdapter } from '../reading-services/reading-
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { buildRemoteIndex, matchBook, type RemoteIndexBook } from '../reading-services/book-matcher';
 import { classifyReadwiseOwnership } from './readwise-book-ownership';
-import type { ReadwiseBook, ReadwiseBookCreateItem, ReadwiseBookUpdateItem } from './readwise-books-client.service';
+import type { ReadwiseBook, ReadwiseBookCreateItem, ReadwiseBookStatus, ReadwiseBookUpdateItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
@@ -43,6 +43,11 @@ interface CachedRemoteBook {
   author: string | null;
   coverImageUrl: string | null;
   creationOrigin: string | null;
+  status: ReadwiseBookStatus;
+  rating: number | null;
+  review: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
 }
 
 function toRemoteIndexBook(book: ReadwiseBook): CachedRemoteBook {
@@ -54,6 +59,11 @@ function toRemoteIndexBook(book: ReadwiseBook): CachedRemoteBook {
     author: book.product?.author ?? null,
     coverImageUrl: book.product?.cover_image ?? null,
     creationOrigin: book.creation_origin ?? null,
+    status: book.status,
+    rating: book.rating,
+    review: book.review,
+    startedAt: book.started_reading_at,
+    finishedAt: book.finished_reading_at,
   };
 }
 
@@ -223,6 +233,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
 
     const remoteBooks = (await this.cache.get<CachedRemoteBook[]>(userId, this.provider, MIGRATION_INDEX_CACHE_KEY)) ?? [];
     const index = buildRemoteIndex(remoteBooks.map(remoteBookToIndexEntry));
+    const remoteByExternalId = new Map(remoteBooks.map((b) => [b.externalId, b]));
     const matchedSoFar = new Set((await this.cache.get<string[]>(userId, this.provider, MIGRATION_MATCHED_CACHE_KEY)) ?? []);
 
     const page = await this.localBooks.findPage(userId, cursor.afterBookId, READWISE_MIGRATION_PUSH_PAGE_SIZE);
@@ -233,6 +244,8 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
 
     const createItems: { book: LocalBookForMigration; item: ReadwiseBookCreateItem }[] = [];
     const updateItems: { book: LocalBookForMigration; externalId: string; matchMethod: string; item: ReadwiseBookUpdateItem }[] = [];
+    // Matched books whose remote values already equal BookOrbit's: linked silently, no PATCH sent.
+    const silentlyLinkedItems: { book: LocalBookForMigration; externalId: string; matchMethod: string }[] = [];
 
     for (const book of page) {
       counters.scanned += 1;
@@ -242,12 +255,18 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       if (result) {
         matchedSoFar.add(result.externalId);
         counters.matched += 1;
-        updateItems.push({
-          book,
-          externalId: result.externalId,
-          matchMethod: result.method,
-          item: toUpdateItem(result.externalId, book, pushStatus),
-        });
+        const remote = remoteByExternalId.get(result.externalId);
+        if (remote && this.remoteAlreadyMatches(remote, book, pushStatus)) {
+          silentlyLinkedItems.push({ book, externalId: result.externalId, matchMethod: result.method });
+        } else {
+          if (remote) this.logOverwrite(userId, book.bookId, result.externalId, remote, pushStatus);
+          updateItems.push({
+            book,
+            externalId: result.externalId,
+            matchMethod: result.method,
+            item: toUpdateItem(result.externalId, book, pushStatus),
+          });
+        }
       } else if (pushStatus !== null) {
         createItems.push({ book, item: toCreateItem(book, pushStatus) });
       } else {
@@ -256,6 +275,19 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     }
 
     try {
+      for (const s of silentlyLinkedItems) {
+        await this.readingServicesRepo.upsertBookLink(userId, this.provider, s.book.bookId, {
+          externalBookId: s.externalId,
+          matchMethod: s.matchMethod,
+          snapshot: {
+            status: s.book.status,
+            rating: s.book.rating,
+            review: s.book.review,
+            startedAt: s.book.startedAt,
+            finishedAt: s.book.finishedAt,
+          },
+        });
+      }
       if (updateItems.length > 0) {
         await this.callReadwise(userId, () =>
           this.client.updateBooks(
@@ -394,6 +426,28 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       }
       throw err;
     }
+  }
+  /**
+   * BookOrbit always wins a mismatch on rating/review/dates/status: when nothing differs, the
+   * link is recorded without sending a PATCH (nothing to overwrite), which matters on a
+   * reconnect-safe first connect so a remote value that already agrees with BookOrbit's never
+   * gets logged as if it had been clobbered.
+   */
+  private remoteAlreadyMatches(remote: CachedRemoteBook, book: LocalBookForMigration, pushStatus: ReadwiseBookStatus | null): boolean {
+    return (
+      remote.status === pushStatus &&
+      remote.rating === book.rating &&
+      remote.review === book.review &&
+      remote.startedAt === book.startedAt &&
+      remote.finishedAt === book.finishedAt
+    );
+  }
+
+  /** Records, for the sync run log, the remote value BookOrbit is about to overwrite. */
+  private logOverwrite(userId: number, bookId: number, externalId: string, remote: CachedRemoteBook, pushStatus: ReadwiseBookStatus | null): void {
+    this.logger.log(
+      `[${EVENT}] [end] userId=${userId} bookId=${bookId} externalId=${externalId} previousStatus=${remote.status} previousRating=${remote.rating ?? null} previousReview=${sanitizeLogValue(remote.review ?? '')} previousStartedAt=${remote.startedAt ?? null} previousFinishedAt=${remote.finishedAt ?? null} newStatus=${pushStatus ?? null} - BookOrbit overwrote a differing remote value`,
+    );
   }
 }
 

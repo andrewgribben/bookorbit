@@ -9,6 +9,7 @@ import type { ReadwiseCreateSessionItem } from './readwise-books-client.service'
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
+import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
 import { READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS, READWISE_SESSIONS_PUSH_PAGE_SIZE, READWISE_SESSIONS_CREATE_BATCH } from './readwise.constants';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
@@ -67,6 +68,7 @@ export class ReadwiseSessionsPushService {
     private readonly readwiseSettings: ReadwiseSettingsService,
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly featuresService: ReadingServiceFeaturesService,
+    private readonly reconcile: ReadwiseSessionsReconcileService,
   ) {}
 
   async flushUser(userId: number, bookIds: number[]): Promise<void> {
@@ -76,6 +78,11 @@ export class ReadwiseSessionsPushService {
 
     const features = await this.featuresService.getFeatures(userId, 'readwise');
     if (!isFeatureEnabled(features, 'sessions')) return;
+
+    // Reconnect-safe first-connect pass: links any session that already exists on Readwise
+    // (pushed there by another BookOrbit instance connected to the same account) before the
+    // per-book push below would otherwise try to create it again. A no-op after the first call.
+    await this.reconcile.ensureReconciled(userId, token);
 
     const timezone = await this.sessionsRepo.resolveUserTimeZone(userId);
     const publishToFeed = isFeatureEnabled(features, 'publish_sessions');

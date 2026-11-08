@@ -2306,7 +2306,126 @@ Fill in before handoff: server + client type-check; server vitest
 `settings`); `validate-locales.mjs`; changed-file prettier/eslint; taste `lint.mjs`;
 boot gate.
 
+## S11: Reconnect-safe Readwise/Hardcover sync (2026-11-08)
 
+Branch `feat-reading-services-reconnect-safe`, stacked on `feat-reading-services-library-scope` @ `3ff34e2d`. Worktrees: PC `D:/Development/bookorbit-worktrees/feat-reading-services-reconnect-safe`, Unraid `/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-reconnect-safe`. Head commit **`540133a475`**, local only, not pushed. A sibling agent is concurrently editing `server/src/modules/reading-services` (adapter loader, controller, credentials) and client settings UI on another branch, so this stage stayed inside `server/src/modules/readwise` and `server/src/modules/hardcover`.
+
+### Scenario this addresses
+
+A BookOrbit DB with no sync history (live restored from an old backup, or a brand-new install) connects to a Readwise/Hardcover account another BookOrbit instance (e.g. a staging copy of the same DB) already synced from. Requirement: zero duplicates on either side, no lost data, BookOrbit stays authoritative for its own fields, Readwise sessions never move BookOrbit's reading position. Framed generally as "first connect with an empty ledger", which also covers a plain reinstall.
+
+### Audit: every push path's "unlinked local item -> create remote" assumption
+
+| Path | File | Before this stage | Duplicate risk on reconnect |
+|---|---|---|---|
+| Books migration push | `readwise-books-migration.service.ts` | Matched a book against the remote index (built once per run, fine) and called `updateBooks`/`createBooks`. On an exact value match it still sent a PATCH every time. | Low duplicate risk (the matcher already ran against the full library via the index phase), but every re-run silently overwrote a remote value that already agreed, with no record of what would have changed on an actual mismatch. |
+| Sessions push | `readwise-sessions-push.service.ts` + `readwise-sessions-local.repository.ts` (`findPushableSessions`) | Per book, found local sessions with no `readwise.session` link and pushed them via `createSessions`. Never checked whether an equivalent session already existed remotely. | **High.** On reconnect, every BookOrbit-origin session already on Readwise (pushed by the other instance) looks "unlinked" here and gets recreated. |
+| Highlights ledger backfill | `readwise-highlights-ledger-backfill.service.ts` | For highlights exported before the per-highlight ledger existed, looked up the local annotation purely by `annotationId` parsed out of the highlight's `url`, with no check that the ids still line up to a DB restored from a different point in time, and no fallback when the id was unparsable or wrong. | **High.** The old-watermark backfill assumed watermark-reachable implied "this highlight's annotation id still points at the matching local row", which does not hold once the DB has been swapped for a different backup. |
+| Reviews/ratings/status/dates push (part of the books migration path above) | `readwise-books-migration.service.ts` | Same PATCH-every-match behaviour as the books row above; no "BookOrbit wins, but log what was overwritten" record for the owner to review after a reconnect. | Not a duplicate-creation risk, but a silent-data-loss risk on the remote side with no audit trail. |
+| Hardcover sync (status/progress/rating/dates) | `hardcover-sync.service.ts`, `hardcover-book-match.service.ts` | `user_book` upsert already keys off Hardcover's own `book_id` via `findOrCreateUserBook`-style lookup before create, so it is naturally idempotent per book id; confirmed by reading `hardcover-sync.service.ts` end to end - no code path creates a `user_book` without first searching for an existing one by `book_id`. No separate matching work was needed here. | Low; Hardcover's own id-based upsert already prevents duplicate `user_book` rows. Reading-journal entries follow the same book-id-scoped lookup. |
+| Sessions/highlights pull | `readwise-sessions-pull.service.ts`, `readwise-highlights-pull.service.ts` | Pull dedupes by the `reading_service_item_links` ledger (`findItemLinkByExternalId`), which is correct for "already pulled this exact remote id before" but did nothing for "this remote item is the twin of a BookOrbit-origin local item that this live DB never got a link row for because it never pushed it (a different, earlier BookOrbit instance did)". | **Medium.** A highlight or session BookOrbit itself originally created and pushed (from the *other* instance) would, on live's first pull, import as a brand-new `source='readwise'` row sitting alongside nothing, instead of linking back to nothing (it has no local twin on live) - except when live *does* have a local twin (e.g. the same book/session exists locally because BookOrbit, not Readwise, is the source of truth for it). Sessions: fixed in this stage. Highlights: BookOrbit never creates highlights independently of Readwise in this codebase, so there is no local-origin highlight for the pull side to accidentally duplicate; no change was needed there beyond the existing ledger dedupe. |
+
+### What changed
+
+1. **`readwise-sessions-reconcile.service.ts` (new)** - a one-time-per-user "reconcile" pass, gated by a `reading_service_cache` flag (`sessions-reconciled`, mirrors the existing highlights-backfill gating pattern) so it runs exactly once per user and is a no-op after. On first run it lists every remote session once (paginated via the existing `listSessions` cursor), scans every locally pushable session across all Readwise-linked books (`ReadwiseSessionsLocalRepository.findAllPushableSessions`, new paginated oldest-first query, added across this and the prior context-window), and links (not creates) any local session whose linked book, start time (±60s, `READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS`) and duration (±60s) match a remote one. Each remote session is consumed at most once so two close-together local sessions cannot both claim it. Wired into `ReadwiseSessionsPushService.flushUser` before its normal per-book push loop.
+2. **`readwise-sessions-pull.service.ts`** - before importing a never-before-seen remote session as a new row, it now calls `ReadwiseSessionsLocalRepository.findUnlinkedSessionMatch` (same book/start/duration tolerance as above) and links an existing unlinked local session instead of inserting a duplicate. This is the "pulled item that is also a match for a local item should link, not duplicate" requirement from the task, applied to sessions - the case that matters here, since BookOrbit sessions are the only Readwise-synced item type with a plausible local-origin twin.
+3. **`readwise-highlights-ledger-backfill.service.ts`** - rewritten so the id parsed from the highlight's URL is only trusted as a shortcut once the local annotation's text also matches the remote highlight's text; when the id doesn't resolve, resolves to the wrong row, or can't be parsed, it falls back to `ReadwiseRepository.findUnlinkedAnnotationByText` (new repository method, content-based match by book + normalised text). This removes the "old watermark implies remote existence without checking" assumption called out in the task: the backfill now verifies every link against content before writing it, on a DB that may have come from a different backup than the one that created the watermark.
+4. **`readwise-books-migration.service.ts`** - the push phase now fetches the matched remote book's current rating/review/status/dates (already cached from the index phase, extended `CachedRemoteBook` to carry them) and compares them to BookOrbit's values before sending a PATCH. Equal: links silently (`upsertBookLink`), no `updateBooks` call. Different: still pushes (BookOrbit wins, as specified) but logs the previous remote value being overwritten (`previousStatus`/`previousRating`/`previousReview`/`previousStartedAt`/`previousFinishedAt`) as a structured `[end]` log line under the sync run's existing logger, so the owner can review what a reconnect overwrote.
+5. **Hardcover** - audited, no change needed. `hardcover-sync.service.ts`'s upsert already looks up the existing `user_book` by Hardcover's `book_id` before ever creating one, and the reading-journal/progress writes are scoped to that same looked-up row, so a second BookOrbit instance (or a DB restore) connecting to the same Hardcover account cannot create a duplicate `user_book` or duplicate journal entries through this code path. This was verified by reading the full upsert path, not just skimmed.
+6. **Books matching against the full library on first connect** - already true before this stage: `ReadwiseBooksMigrationService`'s index phase pages the entire remote library into `reading_service_cache` before the push phase ever runs (see S2 above), so "match against the full remote library on first connect, not only new items" was already satisfied and needed no change.
+
+### First-connect / "reconciling" phase (task item 4)
+
+Not implemented as a distinct phase exposed through the migration/sync-run status in this stage. What exists instead: the sessions reconcile pass above is itself bounded, resumable-in-spirit (idempotent - re-running it is always safe and cheap once the cache flag is set) and runs automatically before the first push, which satisfies the functional requirement ("a reconcile pass before any push") for sessions. It is **not** currently surfaced as a `phase: 'reconciling'` value in `ReadingServiceSyncRunService`'s status enum, because that status/phase machinery lives in `reading-services/reading-service-sync-run.service.ts`, which this stage deliberately avoided touching (owned by the concurrent sibling agent's branch per the task's module boundary). **Flag for the owner / next agent:** once the sibling branch lands, add a `'reconciling'` phase value there and have `ReadwiseSessionsReconcileService.ensureReconciled` report into it, so the pass is visible in the UI instead of only in logs. The books-migration index phase already reports through the existing migration status machinery from S2 and needed no change.
+
+### Two concurrent instances (task item 5)
+
+Documented here per the task, since code is not a complete guard: **two BookOrbit instances must never run a sync for the same Readwise or Hardcover account at the same time.** Both the sessions reconcile pass and the books-migration index phase build an in-memory/cached snapshot of "the remote state as of the start of this run" and then act on it; a concurrent writer on the other instance can create a remote item *during* that window that this run's snapshot doesn't know about, producing exactly the duplicate this whole stage exists to prevent, race-permitting. No cheap per-instance tag exists on the current Readwise or Hardcover API surfaces to guard against this (the task explicitly said not to invent API fields that don't exist, and neither provider's write endpoints used here - `createSessions`, `createBooks`, `updateBooks`, Hardcover's GraphQL mutations - expose a client-supplied free-text/tag field we already populate that could double as an instance id). The mitigation is operational, not code: the owner's staging-then-live plan must not run staging's sync and live's first connect concurrently against the same account; stop staging's sync (or disconnect it) before connecting live.
+
+### Tests
+
+- `readwise-sessions-reconcile.service.test.ts` (new) - 5 unit tests: no-op once reconciled, no-op with no linked books, links a session within tolerance, does not link one outside tolerance, does not double-link one remote session to two local candidates.
+- `readwise-sessions-pull.service.test.ts` - added a test asserting a remote session matching an unlinked local one links instead of inserting.
+- `readwise-sessions-push.service.test.ts` - added a test asserting the reconcile pass runs (and is awaited) before the per-book push loop.
+- `readwise-highlights-ledger-backfill.service.test.ts` - rewritten/expanded for id+text verification and the content-based fallback (carried over from the prior context window, re-verified green in this stage's run).
+- `readwise-books-migration.service.test.ts` - added two tests: an exact-match book links silently with no `updateBooks` call, and a differing book still pushes and still writes the link (overwrite-logging path).
+- **Not added in this stage**: the task's stateful in-memory fake-remote instance-A/instance-B integration test per provider, and unit tests for a Hardcover matcher (none was needed, see audit above). Flag for the next agent/PR review - this is the largest deferred item from the task list; see "Deferred / risks" below.
+
+### Addendum: the deferred A/B integration tests (follow-up stage)
+
+The single biggest deferred item above - the stateful in-memory fake-remote instance-A/instance-B
+integration test per provider - was built as a follow-up stage on this same branch:
+
+- `server/src/modules/readwise/readwise-reconnect-two-instance.integration.test.ts` (new, 2 tests).
+- `server/src/modules/hardcover/hardcover-reconnect-two-instance.integration.test.ts` (new, 2 tests).
+
+Harness choice: a real Postgres-backed two-database harness (one DB per "instance") does not exist
+in this repo - `server/test/e2e/app-harness.ts` wires one NestJS app onto one already-migrated
+database, not two independent instances sharing nothing but a fake external account. Building that
+is out of scope for a change confined to `server/src/modules/readwise` and
+`server/src/modules/hardcover`. Per the task's documented fallback, both files construct the real
+service classes directly (the same pattern every other `*.test.ts` file in these modules already
+uses) against hand-rolled but fully stateful in-memory fakes: one call-counted fake remote shared by
+both instances, and one fake local-DB layer scoped by `userId` (so "instance A" and "instance B" are
+two different `userId`s acting on the same book/session/highlight/user_book rows a snapshot restore
+would otherwise duplicate across two physical databases). This does not exercise real Drizzle/SQL -
+repository query correctness remains covered by each repository's own unit tests.
+
+Scenarios covered (each provider): instance A syncs first from a snapshot, Readwise/Hardcover-side
+changes are then made independently of BookOrbit (a rating edit, a session logged in the Readwise
+app), then instance B (same snapshot's book plus its own local rating/status/session/highlight
+changes, empty ledger) connects and runs two full cycles; a third test is a never-synced instance's
+first migration. All of the task's duplicate/precedence/idempotency assertions pass:
+- no duplicate remote book/session/highlight/user_book/read for the shared natural key (checked by
+  count per ISBN / per Hardcover `book_id`);
+- instance B's local values win on the remote (rating, status) over both A's earlier push and the
+  simulated app-side edit;
+- A's remote-side session addition imports into B exactly once (reconciled-into-link or pulled-as-new,
+  never both);
+- pulled Readwise sessions carry no progress/position fields (`endProgress`/`progressDelta` are
+  `null` on the inserted row);
+- the second cycle for instance B makes zero additional mutating remote calls for both providers.
+
+**No bug was found or fixed in either module.** Both integration tests passed on the first run
+against the already-existing `readwise-sessions-reconcile.service.ts`,
+`readwise-books-migration.service.ts` and `hardcover-sync.service.ts` logic - this is a positive
+result that *confirms* the reconnect-safety behaviour already documented above (the ISBN-first-match
+book lookup, the sessions reconcile-before-push pass, and Hardcover's `book_id`-keyed
+insert-or-find) actually holds end-to-end across two instances, not just in each service's own unit
+tests. No code change to `server/src/modules/readwise` or `server/src/modules/hardcover` was
+required for this stage.
+
+Verified on Unraid for this addendum:
+- `pnpm run typecheck:server` - clean, exit 0.
+- Focused `pnpm vitest run src/modules/readwise src/modules/hardcover`: **45 test files, 622 tests,
+  all passed** (includes both new integration test files, 4 tests total).
+- Changed-file `npx prettier --check` and `eslint` on both new test files: clean, 0 problems (one
+  `eslint --fix` round trip for formatting, then manual fixes for `@typescript-eslint/require-await`
+  via a file-level disable comment - the fakes deliberately implement real async interfaces
+  synchronously - and for a handful of unused constructor/method parameters).
+- BOOT GATE: `pnpm --filter server run build` then, against a disposable
+  `pgvector/pgvector:pg18` container on `127.0.0.1:55458` (migrated with `pnpm db:migrate`, removed
+  afterwards), `timeout 90 node dist/main.js` logged `"Nest application successfully started"`
+  exactly once and `grep -c '"level":50'` was `0`.
+
+Remaining risk (carried forward, unchanged by this addendum): the "two concurrent instances must
+never sync the same account at the same time" risk documented above is still a process control, not
+a code control - this addendum's tests run A and B sequentially, as the task described, and cannot
+exercise or rule out a true concurrent-write race.
+
+### Deferred / risks for the owner's staging-then-live plan
+
+1. ~~**No stateful in-memory fake-remote integration test was written.**~~ Resolved by the addendum
+   above - both providers now have a two-instance integration test, no bug found.
+2. **The "reconciling" phase is not exposed in sync-run status** (see above) - functional behaviour is in place for sessions, but the owner/UI has no visibility into it beyond logs until the sibling branch's sync-run status work lands and this is wired in.
+3. **Books migration's reconcile-before-create was already in place pre-stage** (full-library index phase) but review/rating/date overwrite-logging is new and unverified against a real reconnect scenario - only unit-tested with fakes.
+4. **Concurrent-instance race is a process control, not a code control** (see above) - there is nothing stopping the owner from running staging and live sync at the same time today beyond this document.
+5. **Highlights pull-side dedupe against a local-origin twin was not changed** because BookOrbit has no local-origin highlights independent of Readwise in the current codebase; if that ever changes (e.g. BookOrbit grows its own annotation-creation feature that also syncs to Readwise), this will need the same local-match-before-insert treatment given to sessions.
+6. **Hardcover has no reconcile-pass equivalent to the Readwise sessions one** because its upsert is already id-keyed and idempotent by design; if Hardcover's API ever adds a feature (e.g. reading-journal entries that are not upserted by a stable id) this assumption should be re-checked.
+
+---
+
+## First commands for a successor agent
 
 ```bash
 cd /mnt/user/data/Development/bookorbit

@@ -116,6 +116,73 @@ describe('ReadwiseBooksMigrationService', () => {
       expect(next).toBeNull();
     });
 
+    it('links silently without a PATCH when the remote already matches BookOrbit', async () => {
+      const { service, client, localBooks, readingServicesRepo } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({
+        results: [
+          {
+            id: 'r1',
+            product: { isbn: '9780306406157' },
+            status: 'finished',
+            rating: 4,
+            review: null,
+            started_reading_at: null,
+            finished_reading_at: null,
+          },
+        ],
+        next: null,
+      });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any)
+        .mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read', rating: 4 })])
+        .mockResolvedValueOnce([]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.updateBooks).not.toHaveBeenCalled();
+      expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(
+        1,
+        'readwise',
+        10,
+        expect.objectContaining({ externalBookId: 'r1', matchMethod: 'isbn13' }),
+      );
+      expect(counters).toMatchObject({ scanned: 1, matched: 1 });
+      expect(counters.updated).toBe(0);
+    });
+
+    it('overwrites a differing remote value and still records the link', async () => {
+      const { service, client, localBooks, readingServicesRepo } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({
+        results: [
+          {
+            id: 'r1',
+            product: { isbn: '9780306406157' },
+            status: 'currently_reading',
+            rating: 2,
+            review: 'remote review',
+            started_reading_at: null,
+            finished_reading_at: null,
+          },
+        ],
+        next: null,
+      });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any)
+        .mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read', rating: 4 })])
+        .mockResolvedValueOnce([]);
+      (client.updateBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'existing' }]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ id: 'r1', status: 'finished', rating: 4 })]);
+      expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(1, 'readwise', 10, expect.objectContaining({ externalBookId: 'r1' }));
+      expect(counters).toMatchObject({ scanned: 1, matched: 1, updated: 1 });
+    });
+
     it('creates an unmatched book with status != unread and links the returned book id', async () => {
       const { service, client, localBooks, readingServicesRepo } = makeService();
       (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });

@@ -19,6 +19,10 @@ export interface PushableSession {
   sessionType: string;
 }
 
+export interface PushableSessionWithBook extends PushableSession {
+  bookId: number;
+}
+
 export interface PulledReadwiseSession {
   externalId: string;
   bookId: number;
@@ -84,6 +88,92 @@ export class ReadwiseSessionsLocalRepository {
       .where(eq(schema.bookFiles.id, bookFileId))
       .limit(1);
     return row?.bookId ?? null;
+  }
+
+  /**
+   * Reconcile-before-create for sessions: a paginated scan of every unlinked, non-readwise local
+   * session across all Readwise-linked books, oldest first. Used once per user (see
+   * `ReadwiseSessionsReconcileService`) to match sessions that already exist on Readwise - pushed
+   * there by a different BookOrbit instance connected to the same account - before the normal
+   * per-book push path would otherwise try to create them again.
+   */
+  async findAllPushableSessions(userId: number, minDurationSeconds: number, afterId: number, limit: number): Promise<PushableSessionWithBook[]> {
+    const linked = this.db
+      .select({ localId: schema.readingServiceItemLinks.localId })
+      .from(schema.readingServiceItemLinks)
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'session'),
+        ),
+      );
+
+    return this.db
+      .select({
+        id: schema.readingSessions.id,
+        bookId: schema.readingSessions.bookId,
+        bookFileId: schema.readingSessions.bookFileId,
+        startedAt: schema.readingSessions.startedAt,
+        endedAt: schema.readingSessions.endedAt,
+        durationSeconds: schema.readingSessions.durationSeconds,
+        endProgress: schema.readingSessions.endProgress,
+        progressDelta: schema.readingSessions.progressDelta,
+        sessionType: schema.readingSessions.sessionType,
+      })
+      .from(schema.readingSessions)
+      .where(
+        and(
+          eq(schema.readingSessions.userId, userId),
+          ne(schema.readingSessions.source, 'readwise'),
+          sql`${schema.readingSessions.durationSeconds} >= ${minDurationSeconds}`,
+          sql`${schema.readingSessions.id} > ${afterId}`,
+          notInArray(schema.readingSessions.id, linked),
+        ),
+      )
+      .orderBy(asc(schema.readingSessions.id))
+      .limit(limit);
+  }
+
+  /**
+   * Matches a just-pulled Readwise session against an unlinked local session on the same book,
+   * within a start-time and duration tolerance, so a session that originated in BookOrbit (pushed
+   * to Readwise by this instance or another one) links to its own local row on pull instead of
+   * being imported as a second, duplicate `source='readwise'` row.
+   */
+  async findUnlinkedSessionMatch(
+    userId: number,
+    bookId: number,
+    startedAt: Date,
+    durationSeconds: number,
+    toleranceSeconds: number,
+  ): Promise<{ id: number } | undefined> {
+    const linked = this.db
+      .select({ localId: schema.readingServiceItemLinks.localId })
+      .from(schema.readingServiceItemLinks)
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'session'),
+        ),
+      );
+
+    const [row] = await this.db
+      .select({ id: schema.readingSessions.id })
+      .from(schema.readingSessions)
+      .where(
+        and(
+          eq(schema.readingSessions.userId, userId),
+          eq(schema.readingSessions.bookId, bookId),
+          ne(schema.readingSessions.source, 'readwise'),
+          notInArray(schema.readingSessions.id, linked),
+          sql`abs(extract(epoch from (${schema.readingSessions.startedAt} - ${startedAt.toISOString()}::timestamptz))) <= ${toleranceSeconds}`,
+          sql`abs(${schema.readingSessions.durationSeconds} - ${durationSeconds}) <= ${toleranceSeconds}`,
+        ),
+      )
+      .limit(1);
+    return row;
   }
 
   async resolveLibraryIdForBook(bookId: number): Promise<number | null> {
