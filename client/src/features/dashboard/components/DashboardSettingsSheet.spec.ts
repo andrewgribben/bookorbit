@@ -37,6 +37,7 @@ const saveWidgetsMock = vi.fn<(widgets: WidgetConfig[], libraryIds?: readonly nu
 const saveLibraryScopeMock = vi.fn<(libraryIds: readonly number[] | null) => Promise<void>>()
 const shelfUser = ref({ id: 1, settings: {}, permissions: [] as Permission[], isSuperuser: false })
 const saveShelfApi = vi.fn<typeof api>()
+const pickerShelvesRef = ref<{ provider: string; shelf: string; connected: boolean; enabled: boolean; order: number }[]>([])
 
 vi.mock('@/features/auth/composables/useAuth', () => ({ useAuth: () => ({ user: shelfUser }) }))
 vi.mock('@/lib/api', () => ({ api: (...args: Parameters<typeof api>) => saveShelfApi(...args) }))
@@ -87,7 +88,7 @@ vi.mock('../composables/useExternalShelvesConfig', () => ({
   useExternalShelvesConfig: () => ({
     availableShelves: ref([]),
     enabledExternalShelves: ref([]),
-    pickerShelves: ref([]),
+    pickerShelves: pickerShelvesRef,
     loading: ref(false),
     loaded: ref(true),
     fetchAvailableShelves: vi.fn<() => Promise<void>>(),
@@ -151,6 +152,7 @@ beforeEach(async () => {
   librariesRef.value = [{ id: 1, name: 'Books' } as Library, { id: 2, name: 'Comics' } as Library]
   saveWidgetsMock.mockResolvedValue()
   saveLibraryScopeMock.mockResolvedValue()
+  pickerShelvesRef.value = []
   await setI18nLocale('en')
 })
 
@@ -182,6 +184,27 @@ describe('DashboardSettingsSheet', () => {
     expect(saveShelfApi).not.toHaveBeenCalled()
     expect(storedRows()[0]).toBe(2)
     expect(wrapper.emitted('saved')).toHaveLength(1)
+  })
+
+  it('keeps external shelf toggles when the library scope save refreshes the picker', async () => {
+    shelfUser.value = { id: 1, permissions: [], isSuperuser: false, settings: { dashboardShelfConfig: { syncAcrossSessions: true } } }
+    const storedOff = () => [{ provider: 'readwise-social', shelf: 'friends-reading', connected: true, enabled: false, order: 1 }]
+    pickerShelvesRef.value = storedOff()
+    // Saving the library scope re-reads the user, which re-derives the picker from the stored (still off) config.
+    saveLibraryScopeMock.mockImplementation(async () => {
+      pickerShelvesRef.value = storedOff()
+    })
+    const wrapper = await openSheet()
+
+    await wrapper.get('[role="switch"][aria-checked="false"]').trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === en.common.save)
+      ?.trigger('click')
+    await flushPromises()
+
+    const saved = JSON.parse(String(saveShelfApi.mock.calls[0]![1]?.body)).settings.dashboardShelfConfig.externalShelves
+    expect(saved).toEqual([{ provider: 'readwise-social', shelf: 'friends-reading', enabled: true, order: 1 }])
   })
 
   it('offers shelf sync off by default and persists opt-in only on save', async () => {

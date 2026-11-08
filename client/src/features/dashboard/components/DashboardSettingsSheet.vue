@@ -97,11 +97,15 @@ watch(
   },
 )
 
-// The picker's available-shelves fetch can finish after the sheet is opened; re-seed the draft
-// once it has, so a first-ever open does not show an empty list while loading.
+// The picker's available-shelves fetch can finish after the sheet is opened, so add rows that
+// arrive late. Rows already in the draft keep the user's edits: saving the library scope re-reads
+// the user, which re-derives the picker from the stored config before the shelves are saved.
 watch(externalShelfPickerShelves, (rows) => {
   if (!props.open) return
-  externalShelvesDraft.value = rows.map((s) => ({ provider: s.provider, shelf: s.shelf, enabled: s.enabled, order: s.order }))
+  const drafted = new Map(externalShelvesDraft.value.map((entry) => [`${entry.provider}:${entry.shelf}`, entry]))
+  externalShelvesDraft.value = rows.map(
+    (s) => drafted.get(`${s.provider}:${s.shelf}`) ?? { provider: s.provider, shelf: s.shelf, enabled: s.enabled, order: s.order },
+  )
 })
 
 // ── Drag to reorder ──────────────────────────────────────────
