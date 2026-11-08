@@ -40,7 +40,7 @@ const mockLedgerBackfill = {
 };
 
 const mockLibraryScopeService = {
-  getEffectiveLibraryIds: vi.fn().mockResolvedValue(null),
+  getEffectiveLibraryIds: vi.fn(),
 };
 
 function makeService() {
@@ -91,6 +91,7 @@ describe('ReadwiseSyncService', () => {
     mockTokenService.getToken.mockResolvedValue('tok');
     mockCache.get.mockResolvedValue(true); // ledger already backfilled by default
     mockCache.set.mockResolvedValue(undefined);
+    mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValue([1]);
   });
 
   describe('flush guards', () => {

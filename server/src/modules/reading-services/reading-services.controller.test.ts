@@ -6,6 +6,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import type { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import { ReadingServicesController } from './reading-services.controller';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
+import type { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServiceSyncRunService } from './reading-service-sync-run.service';
 
@@ -19,6 +20,11 @@ function makeController() {
     getFeatures: vi.fn().mockResolvedValue({}),
     setFeatures: vi.fn().mockResolvedValue(undefined),
   } as unknown as ReadingServiceFeaturesService;
+  const libraryScopeService = {
+    getLibrarySummaries: vi.fn().mockResolvedValue([]),
+    setLibrarySetting: vi.fn().mockResolvedValue({ libraryId: 1, enabled: true, features: {} }),
+    resetLibrarySetting: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ReadingServiceLibraryScopeService;
   const syncRunService = {
     startMigration: vi.fn(),
     getRun: vi.fn(),
@@ -27,8 +33,15 @@ function makeController() {
     getLatestMigrationSummary: vi.fn().mockResolvedValue({ state: 'never', runId: null, finishedAt: null }),
   } as unknown as ReadingServiceSyncRunService;
   const matchRepository = { findCandidates: vi.fn().mockResolvedValue([]) } as unknown as ReadingServiceMatchRepository;
-  const controller = new ReadingServicesController(registry, featuresService, syncRunService, new PermissionService(), matchRepository);
-  return { controller, registry, featuresService, syncRunService, matchRepository };
+  const controller = new ReadingServicesController(
+    registry,
+    featuresService,
+    libraryScopeService,
+    syncRunService,
+    new PermissionService(),
+    matchRepository,
+  );
+  return { controller, registry, featuresService, libraryScopeService, syncRunService, matchRepository };
 }
 
 describe('ReadingServicesController', () => {
@@ -443,5 +456,45 @@ describe('ReadingServicesController', () => {
 
     expect(matchRepository.findCandidates).not.toHaveBeenCalled();
     expect(result).toEqual([{ provider: 'private-service', externalId: 'ext1', title: 'Dune', authors: ['Frank Herbert'], bookId: 7, friend: null }]);
+  });
+
+  describe('library scope endpoints', () => {
+    it('updates a library setting through PUT and returns the stored effective values', async () => {
+      const { controller, libraryScopeService } = makeController();
+      const user = makeUser([Permission.ReadwiseSync]);
+      vi.mocked(libraryScopeService.setLibrarySetting).mockResolvedValue({ libraryId: 2, enabled: false, features: {} });
+
+      const result = await controller.updateLibrary(user, 'readwise', 2, { enabled: false });
+
+      expect(libraryScopeService.setLibrarySetting).toHaveBeenCalledWith(user, 'readwise', 2, { enabled: false });
+      expect(result).toEqual({ libraryId: 2, enabled: false, features: {} });
+    });
+
+    it('rejects a PUT for a provider the user lacks permission for', async () => {
+      const { controller } = makeController();
+      const user = makeUser([]);
+
+      await expect(controller.updateLibrary(user, 'readwise', 2, { enabled: false })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('resets a library setting through DELETE', async () => {
+      const { controller, libraryScopeService } = makeController();
+      const user = makeUser([Permission.HardcoverSync]);
+
+      const result = await controller.resetLibrary(user, 'hardcover', 3);
+
+      expect(libraryScopeService.resetLibrarySetting).toHaveBeenCalledWith(user, 'hardcover', 3);
+      expect(result).toEqual({ libraryId: 3, enabled: true, features: {} });
+    });
+
+    it('includes the libraries array from the scope service in the provider summary', async () => {
+      const { controller, libraryScopeService } = makeController();
+      const user = makeUser([Permission.ReadwiseSync]);
+      vi.mocked(libraryScopeService.getLibrarySummaries).mockResolvedValue([{ libraryId: 1, enabled: true, features: {} }]);
+
+      const [summary] = await controller.list(user);
+
+      expect(summary?.libraries).toEqual([{ libraryId: 1, enabled: true, features: {} }]);
+    });
   });
 });
