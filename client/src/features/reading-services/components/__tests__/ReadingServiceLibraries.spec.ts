@@ -103,7 +103,9 @@ describe('ReadingServiceLibraries', () => {
       },
     })
 
-    await wrapper.get('button').trigger('click')
+    const customiseButtons = wrapper.findAll('button').filter((b: { text: () => string }) => b.text() === 'Customise')
+    expect(customiseButtons).toHaveLength(2)
+    await customiseButtons[1]!.trigger('click')
     const featureSwitches = wrapper.findAll('[role="switch"]')
     // Index 0 is Books' sync switch, 1 is Comics' sync switch, the rest are per-feature rows for Comics.
     expect(featureSwitches.length).toBeGreaterThan(2)

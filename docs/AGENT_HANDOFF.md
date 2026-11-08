@@ -1632,7 +1632,176 @@ not pushed.
   has no UI copy calling that out, now also true for any provider shown
   through the picker.
 
-## API for Android
+## S10: Per-library per-feature reading-services scope (2026-11-08)
+
+Finishing stage for `feat-reading-services-library-scope`. Previous agent's
+branch had the design/implementation (schema, service, controller,
+hardcover policy, Readwise scoping, web `ReadingServiceLibraries.vue`,
+migration `0143_reading_service_library_settings`) plus one pending
+uncommitted test fix on both the PC and Unraid worktrees (identical diffs
+on both sides - reconciled by committing on the PC and re-syncing via
+bundle, never touching the Unraid copy's git history).
+
+Design (owner-approved, unchanged from the previous agent's plan): one row
+per `(userId, provider, libraryId)` with `{enabled, features overrides}`;
+a missing row means "inherit" (library enabled, every feature follows the
+provider toggle); overrides only narrow, never widen, a feature the
+provider-level toggle already turned off; a disabled library excludes
+everything for it; a book that lives in more than one library syncs if
+ANY in-scope library allows it; `library_excluded` beats a per-book
+Hardcover `included` override; changing a library's scope never deletes
+anything already pushed to Readwise/Hardcover.
+
+### What needed fixing beyond the pending test commit
+
+The controller test file's pending fix only added the
+`libraryScopeService` constructor arg to the mock harness. Running the
+focused suites surfaced three more real gaps, all fixed in this stage:
+
+- `HardcoverSyncService`'s own test file never mocked
+  `ReadingServiceLibraryScopeService` at all (not even the stale version) -
+  every `syncBook`/`syncAll`/`getBookSyncState` call threw
+  `Cannot read properties of undefined (reading 'getEffectiveLibraryIds')`.
+  Fixed by adding the mock and a `libraryId: 1` on the shared `readingBook`
+  fixture (library-scope checks fail closed on a book with no library id,
+  by design - see `isLibraryInEffectiveScope` in `library-scope.utils.ts`).
+- The controller's "library scope endpoints" tests called
+  `updateLibrary`/`resetLibrary`/`list` without ever registering the
+  `readwise`/`hardcover` adapters on the test registry, so
+  `assertProviderAccess` 400'd with "Unknown reading-service provider"
+  before the scope logic ran. Fixed by registering the adapter in each of
+  those four tests, matching the pattern already used elsewhere in the
+  file.
+- `ReadingServiceMatchRepository.findCandidates` gained a `provider`
+  second argument in this feature (`findCandidates(userId, provider,
+  isbn13s, titlesLower)`) and one pre-existing controller test still
+  asserted the old 3-arg call.
+
+### Verification (Unraid, disposable DB)
+
+- Server vitest, focused: `pnpm vitest run src/modules/readwise
+  src/modules/reading-services src/modules/hardcover` - **54 test files,
+  717 tests, all passed**. (Did not run the whole-repo suite per owner
+  instruction mid-task; every file this stage touched is in that focused
+  set.)
+- Client vitest, focused: `pnpm vitest run src/features/reading-services
+  src/features/readwise src/features/hardcover` - **16 test files, 148
+  tests, all passed** (one `ReadingServiceLibraries.spec.ts` test fixed:
+  it clicked `wrapper.get('button')` assuming that was Comics' "Customise"
+  button, but the component renders a Customise button for every enabled
+  library, so it was hitting Books' button first - fixed by selecting the
+  Comics-row button by its text among all "Customise" buttons).
+- `pnpm run typecheck:server` and `pnpm run typecheck:client`: both exit 0.
+- `pnpm run validate:locales` (client): 25 locale catalogs validated
+  against 12225 English messages, clean.
+- `pnpm db:migrate` against the disposable DB (`postgres://postgres:postgres@
+  127.0.0.1:55452/bookorbit`): migrations applied successfully.
+- `drizzle-kit generate --name drift_check`: "No schema changes, nothing
+  to migrate" - no drift between the migration files and
+  `db/schema/reading-services.ts`.
+- Changed-file prettier/eslint (diffed against `4634f1fe4`, the commit
+  before this feature's first commit): one file needed `prettier --write`
+  (`hardcover-sync.service.test.ts`, from this stage's own edit); eslint
+  clean on every changed server and client file. Two prettier warnings
+  outside this diff (`packages/types/src/hardcover.ts`,
+  `server/src/db/migrations/meta/*.json`) are drizzle-generated/pre-existing
+  and outside `format:check`'s own globs (`src/**/*.ts`, `test/**/*.ts`),
+  so left untouched. One pre-existing client prettier warning on
+  `useSeriesDetail.test.ts` is unrelated to this diff, also left untouched.
+
+### Boot gate
+
+`pnpm --filter server run build` (nest build via swc): succeeded, 1556
+files compiled.
+
+From `server/`, against the migrated disposable DB:
+
+```
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55452/bookorbit \
+PORT=3098 NODE_ENV=production \
+JWT_SECRET=a-random-secret-value-1234567890 \
+SETUP_BOOTSTRAP_TOKEN=boot-gate-token-abcdef123456 \
+APP_DATA_PATH=/tmp/bookorbit-boot-data \
+timeout 90 node dist/main.js
+```
+
+Logged `{"level":30,...,"context":"NestApplication","msg":"Nest
+application successfully started"}` exactly once, and `grep -c
+'"level":50'` on the full log was `0` (zero fatal lines). The only
+warnings were the pre-existing `READING_SERVICES_ENCRYPTION_KEY must be a
+64-char hex string` (expected - none was set for this throwaway boot) and
+a few Fastify/path-to-regexp deprecation notices unrelated to this
+feature.
+
+### Android (separate repo, `bookorbit-android`, branch
+`feat-reading-services-parity`)
+
+Added `ReadingServiceLibrarySetting` and a pure
+`ReadingServiceSummary.libraryScopeSummary()` extension (in
+`core/model/ReadingServices.kt`) that derives from the new `libraries`
+field: null when absent/empty (tolerates an older server - no scope line
+renders), otherwise `{enabledCount, totalCount, customisedCount}` with an
+`isAllLibraries` helper. Settings' Integrations section now shows one row
+per connected provider below the existing "Manage on the web" row, with
+"All libraries" or "N of M libraries, K customised" from that summary
+(string resources `settings_integrations_library_scope_all` /
+`_n_of_m` / `_customised`). New unit test file
+`ReadingServicesLibraryScopeTest.kt` (4 cases, including that a disabled
+library's own feature overrides don't count toward "customised").
+
+Verification on the PC (no device installs): `./gradlew.bat
+:app:testFullDebugUnitTest` - BUILD SUCCESSFUL; `./gradlew.bat
+:app:assembleFullDebug` - BUILD SUCCESSFUL. Committed locally only
+(`9deea1a`), not pushed.
+
+### Hardcover "owned" sync - not implemented, API finding only
+
+BookOrbit does **not** sync Hardcover's "owned" flag today (confirmed by
+reading `hardcover-sync.service.ts`/`hardcover-sync-policy.ts`: pushed
+fields are status, rating, dates, review and reading sessions/highlights,
+never `owned`/`owned_copies`). The owner asked only to investigate, not
+implement, Hardcover's support for marking a book owned:
+
+- `user_books.owned` (`Boolean!`) and `user_books.owned_copies` (`Int!`)
+  are documented, queryable fields
+  (`src/content/docs/api/GraphQL/Schemas/UserBooks.mdx` in
+  `hardcoverapp/hardcover-docs`, with a worked "Get Owned Books" query
+  example filtering `owned: {_eq: true}`).
+- A mutation named `edition_owned` is listed in the current GraphQL
+  Actions/Scopes reference (`src/content/docs/api/GraphQL/Actions.mdx`
+  and `capabilities.json` in the same repo), gated by the `write:library`
+  scope. **Its argument signature is not published anywhere in the docs**
+  - no example payload, no schema page for it, and it is absent from
+    `schema.graphql`'s mutation-root input types in the slice I could
+    fetch.
+- A third-party open-source integration
+  (`kristianedlund/hardcover-mcp`, MIT, unofficial) added ownership
+  support and its own changelog shows it moving *away* from calling
+  `edition_owned` directly: an early commit ("add owned books support")
+  exposed `owned`/`owned_copies` via `set_user_book`, then a follow-up fix
+  ("use `edition_owned` toggle and Owned list for ownership") ended up
+  implementing ownership by adding/removing the book from the user's
+  special internal list with `slug: "owned"` (via the regular list
+  mutations), rather than a direct call to `edition_owned`. That is
+  circumstantial evidence the direct mutation's contract was unreliable
+  enough in practice that a working integration chose the list-based
+  route instead, but I could not confirm this from Hardcover's own docs.
+- **Recommendation if this is ever implemented**: treat `edition_owned`
+  as unconfirmed and either (a) probe it with GraphQL introspection
+  (`__type(name: "mutation_root")`) against a real token before writing
+  any code, since Hasura allows introspecting the schema with a PAT, or
+  (b) follow `hardcover-mcp`'s proven path of mutating list membership on
+  the internal "owned" list via the already-documented list mutations
+  (`upsert_list_book`/`delete_list_book`), which this codebase already
+  uses for ordinary lists.
+
+### Open questions for the next agent
+
+- None blocking. The library-scope feature is complete and gated green
+  end to end (server, client, migrations, boot, Android read-only
+  summary). Hardcover "owned" sync remains a future feature, not started.
+
+
 
 JSON shapes exported by this branch as of commit `8e09d0f9d`, exactly as
 the server sends them (field names, types, null-ability). All routes are
@@ -1711,8 +1880,54 @@ permission for:
   migration: { state: "never" | "running" | "done" | "failed"; runId: number | null; finishedAt: string | null };
   lastPullAt: string | null;
   disabledReason: string | null;
+  libraries: ReadingServiceLibrarySetting[]; // added by S10 (per-library scope); absent on servers that predate it
 }
 ```
+
+Where `ReadingServiceLibrarySetting` is:
+
+```ts
+{
+  libraryId: number;
+  enabled: boolean; // false excludes every book in this library from this provider, regardless of feature overrides
+  features: Partial<Record<ReadingServiceFeature, boolean>>; // per-library narrowing; a key here can only turn a feature OFF, never on if the provider-level toggle is already off
+}
+```
+
+`libraries` always has one entry per library the caller can access (not
+just the ones with an override row) - a missing override means
+"inherit": library enabled, every feature follows the provider-level
+toggle. A client can render "All libraries" when every entry is
+`enabled: true` with an empty `features`, otherwise "N of M libraries, K
+customised" (`N` = enabled count, `M` = `libraries.length`, `K` = enabled
+libraries with at least one `features` key set to `false`). Android does
+exactly this in `ReadingServiceSummary.libraryScopeSummary()`
+(`core/model/ReadingServices.kt`), treating an absent/empty `libraries`
+as "don't render a scope line" so it tolerates an older server.
+
+### `PUT /reading-services/:provider/libraries/:libraryId`
+
+Requires permission for that provider's adapter (same gate as
+`PATCH /reading-services/:provider/features`). Body (`UpdateReadingServiceLibraryDto`,
+both fields optional - omitting one leaves it unchanged):
+
+```ts
+{ enabled?: boolean; features?: Partial<Record<string, boolean>> }
+```
+
+Unknown feature keys are silently dropped (forward-compat with an older
+client/newer server mismatch), not rejected. Returns the full effective
+setting after the update, inherited defaults filled in:
+
+```ts
+{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }
+```
+
+### `DELETE /reading-services/:provider/libraries/:libraryId`
+
+Resets the library back to "inherit" (deletes the override row; does not
+touch anything already pushed to the provider). Same response shape as
+the `PUT` above, now reflecting the inherited defaults.
 
 ### `PATCH /books/:id/review`
 
