@@ -1,11 +1,33 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { SCROLLER_TYPES, WIDGET_TYPES, type ScrollerConfig, type ScrollerType, type WidgetType } from '@bookorbit/types'
+import { ref } from 'vue'
+import { SCROLLER_TYPES, WIDGET_TYPES, type ReadingServiceSummary, type ScrollerConfig, type ScrollerType, type WidgetType } from '@bookorbit/types'
 
 import { i18n, setI18nLocale } from '@/i18n'
 import en from '@/locales/en.json'
 import pt from '@/locales/pt.json'
 import { useDashboardLabels } from '../useDashboardLabels'
+
+const summaries = ref<ReadingServiceSummary[]>([])
+const fetchSummaries = vi.fn()
+
+vi.mock('@/features/reading-services/composables/useReadingServices', () => ({
+  useReadingServices: () => ({ summaries, fetchSummaries, getSummary: (provider: string) => ({ get value() { return summaries.value.find((s) => s.provider === provider) ?? null } }) }),
+}))
+
+function readingServiceSummary(overrides: Partial<ReadingServiceSummary>): ReadingServiceSummary {
+  return {
+    provider: 'readwise',
+    connected: false,
+    capabilities: {},
+    features: {},
+    migration: { state: 'never', runId: null, finishedAt: null },
+    lastPullAt: null,
+    disabledReason: null,
+    libraries: [],
+    ...overrides,
+  } as ReadingServiceSummary
+}
 
 // The composable calls useI18n(), so it has to run inside a component setup.
 function mountComposable(): ReturnType<typeof useDashboardLabels> {
@@ -77,6 +99,8 @@ function smartScopeShelf(overrides: Partial<ScrollerConfig> = {}): ScrollerConfi
 
 beforeEach(async () => {
   await setI18nLocale('en')
+  summaries.value = []
+  vi.clearAllMocks()
 })
 
 afterEach(async () => {
@@ -230,6 +254,45 @@ describe('useDashboardLabels', () => {
       const { shelfTitle } = mountComposable()
 
       expect(shelfTitle(smartScopeShelf({ label: '   ' }))).toBe(CATALOGS.en.shelfNames.smartScope)
+    })
+  })
+
+  describe('externalShelfProviderName', () => {
+    it('resolves built-in providers through the English catalog', () => {
+      const { externalShelfProviderName } = mountComposable()
+
+      expect(externalShelfProviderName('readwise')).toBe(en.dashboard.externalShelves.providerNames.readwise)
+      expect(externalShelfProviderName('hardcover')).toBe(en.dashboard.externalShelves.providerNames.hardcover)
+    })
+
+    // Owner bug report: a private adapter (e.g. a friends/social provider) has no entry in
+    // EXTERNAL_SHELF_PROVIDER_KEYS, so indexing it used to produce an `undefined` message key and
+    // render the raw path `dashboard.externalShelves.providerNames.undefined` verbatim.
+    it('falls back to the summary displayName for an unknown provider instead of a raw message key', () => {
+      summaries.value = [readingServiceSummary({ provider: 'readwise-social' as ReadingServiceSummary['provider'], displayName: 'Readwise friends' })]
+      const { externalShelfProviderName } = mountComposable()
+
+      const name = externalShelfProviderName('readwise-social')
+
+      expect(name).toBe('Readwise friends')
+      expect(name).not.toContain('dashboard.externalShelves')
+      expect(name).not.toContain('undefined')
+    })
+
+    it('falls back to the bare provider id when an unknown provider has no summary or displayName', () => {
+      const { externalShelfProviderName } = mountComposable()
+
+      expect(externalShelfProviderName('mystery-adapter')).toBe('mystery-adapter')
+    })
+
+    it('never leaks a raw message path through externalShelfTitle or externalShelfDescription for an unknown provider', () => {
+      summaries.value = [readingServiceSummary({ provider: 'readwise-social' as ReadingServiceSummary['provider'], displayName: 'Readwise friends' })]
+      const { externalShelfTitle, externalShelfDescription } = mountComposable()
+
+      expect(externalShelfTitle('readwise-social', 'friends-reading')).not.toContain('undefined')
+      expect(externalShelfDescription('readwise-social')).not.toContain('undefined')
+      expect(externalShelfTitle('readwise-social', 'friends-reading')).toContain('Readwise friends')
+      expect(externalShelfDescription('readwise-social')).toContain('Readwise friends')
     })
   })
 })

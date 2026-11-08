@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronUp, Columns2, GripVertical, Plus, RotateCcw, Rows3, Trash2 } from '@lucide/vue'
 
 import type { ExternalShelfConfig, ScrollerConfig, ScrollerType, WidgetConfig } from '@bookorbit/types'
+import type { RouteLocationRaw } from 'vue-router'
 import { formatList } from '@/i18n/formatters'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useSmartScopes } from '@/features/smart-scope/composables/useSmartScopes'
@@ -35,6 +36,16 @@ const { smartScopes, fetchSmartScopes } = useSmartScopes()
 const { libraries, fetchLibraries } = useLibraries()
 const { widgetName, shelfTypeName, externalShelfTitle, externalShelfDescription } = useDashboardLabels()
 const { pickerShelves: externalShelfPickerShelves, loaded: externalShelvesLoaded } = useExternalShelvesConfig()
+
+// Which providers are already connected, so the picker description can link unconnected ones
+// straight to their settings page instead of just naming them (owner bug report).
+const connectedProviders = computed(() => new Set(externalShelfPickerShelves.value.filter((shelf) => shelf.connected).map((shelf) => shelf.provider)))
+
+function providerSettingsRoute(provider: string): RouteLocationRaw {
+  if (provider === 'readwise') return { name: 'settings-readwise' }
+  if (provider === 'hardcover') return { name: 'settings-hardcover' }
+  return { name: 'settings-reading-service', params: { provider } }
+}
 
 const activeTab = ref<'widgets' | 'shelves'>('shelves')
 const draft = ref<ScrollerConfig[]>([])
@@ -554,7 +565,7 @@ function handleCancel() {
               <div
                 v-for="entry in externalShelvesDraft"
                 :key="`${entry.provider}-${entry.shelf}`"
-                class="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+                class="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
               >
                 <button
                   type="button"
@@ -567,8 +578,19 @@ function handleCancel() {
                     :class="entry.enabled ? 'translate-x-4' : 'translate-x-0'"
                   />
                 </button>
-                <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{{ externalShelfTitle(entry.provider, entry.shelf) }}</span>
-                <span class="shrink-0 text-xs text-muted-foreground">{{ externalShelfDescription(entry.provider) }}</span>
+                <div class="flex min-w-0 flex-1 items-center justify-between gap-2">
+                  <span class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{{ externalShelfTitle(entry.provider, entry.shelf) }}</span>
+                  <RouterLink
+                    v-if="!connectedProviders.has(entry.provider)"
+                    :to="providerSettingsRoute(entry.provider)"
+                    class="max-w-[45%] shrink-0 truncate text-right text-xs text-primary underline-offset-2 hover:underline"
+                  >
+                    {{ externalShelfDescription(entry.provider) }}
+                  </RouterLink>
+                  <span v-else class="max-w-[45%] shrink-0 truncate text-right text-xs text-muted-foreground">
+                    {{ externalShelfDescription(entry.provider) }}
+                  </span>
+                </div>
               </div>
             </div>
           </fieldset>
