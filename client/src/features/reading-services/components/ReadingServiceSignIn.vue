@@ -13,6 +13,7 @@ import type { ReadingServiceAuthMethod, ReadingServiceProvider } from '@bookorbi
 import { Button } from '@/components/ui/button'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { SECRET_INPUT_ATTRS } from '@/lib/secret-input'
+import { copyToClipboard } from '@/lib/clipboard'
 import { useCountdown, useReadingServiceAuth } from '../composables/useReadingServiceAuth'
 
 const props = defineProps<{
@@ -115,8 +116,8 @@ const deviceCountdown = useCountdown(() => auth.deviceStart.value?.expiresAt ?? 
 async function copyDeviceCode(): Promise<void> {
   const code = auth.deviceStart.value?.userCode
   if (!code) return
-  await navigator.clipboard.writeText(code)
-  toast.success(t('settings.readingServices.signIn.device.copied'))
+  const copied = await copyToClipboard(code)
+  if (copied) toast.success(t('settings.readingServices.signIn.device.copied'))
 }
 
 watch(
