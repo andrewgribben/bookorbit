@@ -411,6 +411,116 @@ position entirely. If this resurfaces elsewhere, prefer the
 `SomeClass['method']` pattern over `typeof this.foo` in a local type
 annotation.
 
+## S4: Readwise reading sessions two-way sync (2026-11-08)
+
+Branch `feat-readwise-sessions`, stacked on `feat-readwise-books-two-way`
+@ `13370231f` (the tip moved past the plan's original `2a831ec5` anchor
+while this stage was in progress, since another agent merged an
+`no_readwise_books` label fix into `feat-readwise-books-two-way`; this
+branch was built directly on the new tip rather than merged afterwards).
+Worktrees: PC `D:/Development/bookorbit-worktrees/feat-readwise-sessions`,
+Unraid `/mnt/user/data/Development/bookorbit-worktrees/feat-readwise-sessions`.
+Final hash **`74335fc80c4f9e912ebea56f7c5f88a1419b0798`**, local only, not pushed.
+
+Scope: server-side only (client `listSessions`/`createSessions`/
+`deleteSessions` already existed from S2). Push: eligible BookOrbit
+sessions go to Readwise with a `publish_to_feed` toggle. Pull: Readwise
+sessions land in BookOrbit for stats, but can never move BookOrbit's own
+reading position/status (plan section 9).
+
+What was built:
+
+1. `reading_sessions.source` check constraint and the shared
+   `ReadingSessionSource` type gained a `'readwise'` value (migration
+   0141, generated with `pnpm db:generate add_readwise_session_source`,
+   applied and drift-checked clean on a disposable pg18 container).
+2. Defense in depth: `ReadingSessionRepository.findLatestEndProgress`
+   and the other position-affecting query now explicitly exclude
+   `source = 'readwise'` rows, on top of pulled sessions never carrying
+   progress/position fields in the first place (belt and suspenders).
+3. `ReadwiseSessionsPushService` + `ReadwiseSessionsPushSchedulerService`
+   + `ReadwiseSessionsEventListener`: a session save fires
+   `ACHIEVEMENT_EVENT_READING_SESSION_SAVED`, the listener resolves
+   `bookFileId` to a book and queues a debounced (2s, capped at 10s)
+   per-user/per-book flush. The flush only looks at books that already
+   have a Readwise book link (skips `remoteDeleted` links), selects up
+   to 200 unlinked, non-readwise-sourced sessions of at least 60s via
+   `ReadwiseSessionsLocalRepository.findPushableSessions`, posts them to
+   the Books API sessions endpoint in batches of 10, and writes every
+   ledger row (`reading_service_item_links`, `kind='session'`) in one
+   batch insert right after each successful POST. A 403 disables the
+   Readwise connection the same way the S3 books push does, and a
+   failed batch gets retried with a 30s base / 5 max-retry backoff.
+   `publish_to_feed` on the pushed sessions follows the new
+   `publish_sessions` feature toggle (capability `publish_sessions:
+   'push'`), default off since it posts to the user's public Readwise
+   feed.
+4. `ReadwiseSessionsPullService`: runs on the same interval as the S3
+   books pull. Calls `listSessions` with `order=updated`, `updatedAfter`
+   (the per-user watermark) and `include_deleted`. A session is skipped
+   if its ledger row already exists (echo suppression: a session this
+   BookOrbit instance pushed comes back on the next pull and is
+   recognised by the ledger, not re-inserted) or if its book has no
+   Readwise link yet. A genuinely new remote session is inserted with
+   `source: 'readwise'`, `bookFileId: null`, `progressDelta: null`,
+   `endProgress: null` and its ledger row, all in one DB transaction
+   (`ReadwiseSessionsLocalRepository.insertPulledSession`), plus a daily
+   stats row update so streaks/totals count it. A remote delete removes
+   the local session row and marks the ledger entry deleted
+   (`removePulledSession`), idempotently (a second delete event on an
+   already-deleted ledger row is a no-op).
+5. `readwise.module.ts` registers the four new session providers;
+   `readwise-books-migration.service.ts` gained `sessions: 'both'` and
+   `publish_sessions: 'push'` capabilities.
+
+Tests added (all in the server module, mocked DB/HTTP, no live
+Readwise calls): `readwise-sessions-push.service.test.ts` (token/feature
+gating, no-link skip, `remoteDeleted` skip, batch push + ledger write,
+`publish_to_feed` toggle on/off, 403 disables connection),
+`readwise-sessions-pull.service.test.ts` (token/feature gating,
+unlinked-book skip, already-linked-ledger skip = echo suppression, new
+session insert with no position fields, soft-remove on remote delete,
+idempotent re-delete, 403 handling),
+`readwise-sessions-local.repository.test.ts` (ledger + session insert in
+one transaction, defensive no-library skip, remove + ledger
+soft-delete scoped to user/localId),
+`reading-services.repository.test.ts` (new `recordItemLinks`/
+`findItemLinkByExternalId`/`markItemLinkDeleted` ledger methods),
+`readwise-sessions-event-listener.service.test.ts` (bookFileId
+resolution to a push request), plus one new case in
+`reading-session.repository.test.ts` asserting the position query's
+`where` clause carries the `readwise` exclusion.
+
+Verification on Unraid:
+
+- `vitest run src/modules/readwise src/modules/reading-services
+  src/modules/reading-session`: 38 files / 357 tests passed.
+- `eslint --fix` + `prettier --write` (via lint-staged on commit) on
+  every new/changed file: clean, three pre-fix formatting nits
+  resolved (a multi-line object literal, a wrapped function signature,
+  a stray blank line).
+- `tsc --noEmit -p tsconfig.json` (server): zero errors in any file
+  touched by this stage; the ~80 remaining errors are all in unrelated
+  e2e specs and drizzle `ExtractTablesWithRelations<Record<string,
+  unknown>>` generic mismatches that predate this branch (confirmed by
+  grepping the output for this stage's file paths: no matches).
+- Migration 0141 applied cleanly on a disposable `pgvector/pgvector:pg18`
+  container bound to 127.0.0.1:55444; `pnpm db:generate drift_check`
+  reported "No schema changes, nothing to migrate". Container stopped
+  afterwards.
+
+Open questions for the owner / a successor:
+
+- The plan's optional migration-backfill phase (importing a user's
+  full Readwise session history on first connect, analogous to the S2
+  books backfill) was not built. S4 as shipped only syncs sessions
+  going forward from whenever push/pull first run for a user. If a
+  one-time historical import is wanted, it needs its own card.
+- No UI toggle was added for `publish_sessions`; it is set via the
+  existing features PATCH endpoint only (same pattern as other
+  toggles). The client worktree building Readwise settings UI may want
+  to surface this.
+
 ## First commands for a successor agent
 
 ```bash
