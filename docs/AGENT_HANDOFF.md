@@ -30,6 +30,50 @@ Hard requirements:
 
 ---
 
+## Merge: upstream 2026-11-08 into feat-reading-services-core (2026-11-08)
+
+Worktree: `/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-core` (PC mirror: `D:/Development/bookorbit-worktrees/feat-reading-services-core`).
+
+Merged `merge-upstream-2026-11-08` (`43e1dc8a`, upstream's `0138_drop_podcasts`) into `feat-reading-services-core` (`aa43a5e1`, had `0138_reading_services`). Merge commit `fdca1c9f` (parents `aa43a5e1` + `43e1dc8a`).
+
+Conflict resolution:
+
+- `server/.env.example`: took upstream's version (drops the podcast env block, matching `0138_drop_podcasts`), then re-added the `READING_SERVICES_ENCRYPTION_KEY` doc block (right after `BOOK_REQUEST_ENCRYPTION_KEY`, before the metadata provider directory section).
+- `server/src/config/config.ts`: kept `readingServicesConfig`, dropped `podcastConfig` entirely (podcasts are gone upstream; confirmed no other file references `podcastConfig`).
+- `server/src/db/migrations/meta/_journal.json` and `meta/0138_snapshot.json`: took upstream's version wholesale (intended base), so idx 138 is `0138_drop_podcasts` only.
+- Deleted our old `server/src/db/migrations/0138_reading_services.sql` (superseded by a regenerated migration on top of upstream's 0138).
+- Regenerated reading-services as **migration 0139** on Unraid (see below), not 0138. Journal now has idx 139 = `0139_reading_services`.
+- All reading-services schema (`server/src/db/schema/reading-services.ts`, `shared-reading-insights.ts`) and module code under `server/src/modules/reading-services`, `readwise`, `hardcover` merged cleanly with no conflicts.
+
+Migration regeneration (per policy, all done over SSH on Unraid, never on the PC):
+
+1. Created temp integration worktree `/mnt/user/data/Development/bookorbit-worktrees-scratch/merge-integration-temp` off `aa43a5e1` (separate from the canonical `feat-reading-services-core` and `merge-upstream-2026-11-08` worktrees, both clean, to avoid disturbing their passed gates).
+2. Tarred the full resolved merge working tree from the PC (minus `.git`/`node_modules`) and overlaid it onto the temp worktree.
+3. `pnpm install --frozen-lockfile`, `pnpm --filter @bookorbit/types build`, then `cd server && pnpm db:generate reading_services` → produced `src/db/migrations/0139_reading_services.sql` + `meta/0139_snapshot.json`, journal updated to idx 139.
+4. Verified on a disposable, loopback-only `pgvector/pgvector:pg18` container (`127.0.0.1:55440`, container `bo-merge-test-db`, removed after use, never `bookorbit-db`): `pnpm db:migrate` applied 0001-0139 cleanly, then `pnpm db:generate drift_check` reported "No schema changes, nothing to migrate".
+5. Copied `0139_reading_services.sql`, `meta/0139_snapshot.json`, `meta/_journal.json`, `meta/0138_snapshot.json` back to the PC worktree, staged, and ran `git commit --no-edit` there (husky ran prettier/eslint on staged files, no manual edits needed).
+6. Committed merge: `fdca1c9f`. Local only, not pushed.
+
+Independent focused verification (separate worktree `/mnt/user/data/Development/bookorbit-worktrees-scratch/merge-verify`, created by bundling and fetching `fdca1c9f` into the canonical Unraid `bookorbit` repo under a throwaway branch, deleted after use):
+
+- `pnpm install --frozen-lockfile` clean.
+- `pnpm run typecheck:server` (`tsc --noEmit -p tsconfig.build.json`): clean, no errors.
+- Targeted `npx eslint` on `src/modules/reading-services`, `src/modules/readwise`, `src/modules/hardcover`, `src/config/config.ts`, `src/common/guards/library-access.guard.ts`: clean.
+- Targeted `npx vitest run` on the same areas plus `src/config/config.test.ts`, `src/config/env.validation.test.ts`: 32 files, 539 tests, all passed.
+- `npx vitest run src/db/migration-journal.test.ts`: 2/2 passed.
+- Full repo-wide `lint:check` and client typecheck were not run (would duplicate the independent gate already green on this branch pre-merge; deferred to PR per instructions). Full e2e/full test suite also deferred to PR.
+
+Permission/guard review (targeted, as requested): `ReadingServicesController` is class-level `@RequireAnyPermission(ReadwiseSync, HardcoverSync)`, every mutating/reading endpoint re-checks the specific provider permission via `assertProviderAccess`, and all repository/service methods take `userId` and filter by it (`findRun`, `cancelRun`, etc. scoped by `userId`). No security issue found.
+
+Unresolved / notes for the next agent:
+
+- Full project-wide `pnpm run lint:check` (client + server) and `pnpm run typecheck:client`/`:worker` were not run on the merge; run them (or the PR's CI) before considering this merge release-ready.
+- Full `pnpm run test` (client+server+worker) and e2e suites were intentionally deferred to PR per the task; only focused areas were verified above.
+- A harmless 0-byte stray file `server/.env.example.theirs` may still be sitting untracked in the PC worktree (artifact of an open file handle during conflict resolution); it is untracked, excluded from the commit, and safe to delete once the file lock clears.
+- Branch `feat-reading-services-core` now sits at `fdca1c9f`, 10 commits ahead of `origin/development`, not pushed anywhere.
+
+---
+
 ## Latest state (2026-11-05)
 
 Read this section first; the older sections below describe the v3.6.0 merge.
