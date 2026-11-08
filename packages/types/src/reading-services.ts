@@ -86,7 +86,8 @@ export type ReadingServiceAuthMethod =
       kind: "password";
       label: string;
       help?: string;
-      fields: {
+      /** Optional: the host falls back to generic "Email or username" / "Password" labels. */
+      fields?: {
         username: { label: string; placeholder?: string };
         password: { label: string; placeholder?: string };
       };

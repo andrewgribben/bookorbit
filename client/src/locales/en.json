@@ -1766,6 +1766,8 @@
         },
         "password": {
           "submit": "Sign in",
+          "usernameLabel": "Email or username",
+          "passwordLabel": "Password",
           "errors": {
             "invalid": "That username or password wasn't right.",
             "mfa_required": "This account needs two-factor approval before it can sign in here.",
