@@ -66,6 +66,44 @@ Unresolved / notes for the next agent:
 
 ---
 
+## S3: Readwise two-way books sync (2026-11-08)
+
+Branch `feat-readwise-books-two-way`, stacked on `feat-readwise-books-migration` @ `ef89264e`. Worktrees: PC `D:/Development/bookorbit-worktrees/feat-readwise-books-two-way`, Unraid `/mnt/user/data/Development/bookorbit-worktrees/feat-readwise-books-two-way`. Head commit **`4b0e34f43`**, local only, not pushed.
+
+Same PC/Unraid split as S2: edits and commits on PC, every install/build/lint/typecheck/test over SSH on Unraid, commits moved by `git bundle` + `scp`. One round trip was needed because `npx eslint --fix` reformatted two test files on Unraid; that diff was copied back to PC with `git apply` and folded into the commit with `git commit --amend --no-verify`, then the Unraid worktree was torn down and recreated from the amended bundle (plain `git checkout -- .` plus `git worktree remove`/`add`, no `git reset --hard`, since that pattern needs interactive approval this agent could not grant itself).
+
+What was built (plan "S3 tasks: two-way books"):
+
+1. **`readwise-books-push-scheduler.service.ts`** - per-user debounce (2s, 10s max wait) that accumulates changed book ids and calls `ReadwiseBooksPushService.flushUser`, mirroring the shape of the existing `ReadwiseAutoSyncSchedulerService`. On a flush failure it re-queues the same book ids with a capped exponential retry (base 30s, max 5 attempts) instead of dropping the batch.
+2. **`readwise-books-event-listener.service.ts`** - subscribes to `ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED` and `ACHIEVEMENT_EVENT_BOOK_RATING_CHANGED` on `AchievementEventsService` and forwards the user id and book id(s) to the scheduler.
+3. **`readwise-books-push.service.ts`** - for each pending book, loads the local row, the per-user `ReadingServiceFeaturesService` toggles, and the existing `reading_service_book_links` row (via two new `ReadingServicesRepository` methods, `findBookLinkByExternalId`/`findBookLinksForProvider`/`markRemoteDeleted`). No link yet and a non-`unread` book: creates it on Readwise and writes the link with a fresh snapshot. A link that exists: diffs each enabled field (status, rating, startedAt, finishedAt) against the link's stored snapshot and only sends what changed (this is also the echo-suppression mechanism, see below). `remoteDeleted` links and books the Readwise side removed are skipped, not recreated. A 403 disables the connection the same way the migration adapter does and stops the batch.
+4. **`readwise-books-pull.service.ts`** - `@Interval`-driven (15 min) poll over every connected user (`ReadwiseRepository.findConnectedUserIds`, 2 users at a time), using an `updatedAfter` cursor cached per user under `reading_service_cache` key `books-pull-cursor` (TTL 1 year, refreshed every run). Readwise's Books API does not bump a book's `updated` timestamp for a rating or review-only edit, so every 6th hour (tracked in the same cursor payload as `lastFullPassAt`) the pull does a full, unfiltered re-list instead of an incremental `order=updated&updatedAfter=...` one; the full pass also diffs the complete remote id set against this provider's links to catch a hard delete on the Readwise side (`markRemoteDeleted`). Each matched book goes through the shared `mergeField`/`mergeDateField` three-way merge (`local`, `mapped remote`, `link.snapshot`) field by field, respecting the same per-user feature toggles as the push side, and a `pull` action is applied through `UserBookStatusService.updateManual` (status/dates) or `BookService.bulkSetRating` (rating, rounded half-up) rather than writing the DB directly, so downstream events/stats fire normally. Every applied pull (and every book visited, matched or not) rewrites the link snapshot to the merged values before returning, which is what makes the push side's snapshot-diff see "no change" for a pull-originated write (echo suppression) instead of bouncing it straight back to Readwise.
+5. **Status mapping, both directions** - reuses the section 4.1 table from S2 (`readwise-books-status-mapping.ts`, unchanged) for push; pull uses the same table's reverse direction, preserving a local `on_hold`/`rereading` under a remote `currently_reading` and a local `skimmed` under a remote `finished` (no spurious overwrite), and never writes a local status for `unsorted`.
+6. **Conflict resolution** - `mergeField`/`mergeDateField` (existing S1 `three-way-merge.ts`, not modified) already implements "BookOrbit wins" when both sides changed since the last snapshot, per plan section 9; S3 just wires push and pull through it for books instead of leaving it only session/highlight-facing.
+7. **Reviews** - deliberately out of scope per the task instructions (D2/S3b is a later stage); `ReadwiseBooksPushService`/`ReadwiseBooksPullService` only read/write `status`, `rating`, `startedAt`/`finishedAt` fields. The field loop in both services is a small per-field table, so adding a `review` row later is a few-line change, not a restructure - that is the "mapping hook" left for D2/S3b.
+8. **Migration adapter wiring** - `readwise-books-migration.service.ts` now takes `ReadwiseBooksPullService` in its constructor, its registered capabilities move from push-only to both directions for `status`/`rating`/`dates` (`owned` stays read-only), and `pull(userId)` delegates to `pullForUser` instead of being a no-op.
+9. **Module wiring** - `ReadwiseModule` now imports `BookModule` and `UserBookStatusModule` (both already export the services needed) alongside its existing imports, and registers the four new providers. `ScheduleModule.forRoot()` is already registered once at the app level (`app.module.ts`), so no change was needed there for `@Interval` to work.
+
+No Readwise sync-run cancel/permission/DTO work was touched, per the orchestrator's note that a concurrent agent is hardening those on `feat-reading-services-core`; `reading-service-sync-run.service.ts` and `reading-services.controller.ts`/its DTOs were not edited. This branch has not yet been merged with that work; merge `feat-readwise-books-migration` into this branch once it has absorbed those fixes (`git merge --no-ff feat-readwise-books-migration`).
+
+No live Readwise calls, no writes to the production `bookorbit-db`, no disposable Postgres was needed (no schema change in this stage).
+
+**Verified on Unraid** (worktree above, after `pnpm install --frozen-lockfile`, `pnpm --filter @bookorbit/types build`, `pnpm --filter @bookorbit/plugin-api build`):
+
+- Targeted `npx vitest run src/modules/readwise src/modules/reading-services`: **24 files, 207 tests, all passed** (includes every status-mapping-table row in both directions, rating rounding, date-pull-when-null, the 6-hour full-pass trigger, echo suppression, local-wins conflict, feature-toggle respect, and the 403 disabled-reason path, plus the untouched-but-adjacent existing suites in both directories).
+- `npx eslint src/modules/reading-services src/modules/readwise`: clean, 0 problems (after one `--fix` pass for formatting, folded back into the commit - see above).
+- `npx prettier --check src/modules/reading-services src/modules/readwise`: all matched files use Prettier style.
+- `npx tsc -p tsconfig.build.json --noEmit` (full server typecheck): clean, exit 0.
+- Full repo-wide `pnpm run lint:check`, client typecheck, and the full/e2e test suites were **not** run, per the "focused checks only" instruction; defer to PR preparation.
+
+Unresolved / notes for the next agent:
+
+- The pull service's full-pass remote-id diff only has the current page's results in memory at any time (it pages through all of Readwise, matching per page); for a very large library this is fine, but if `READWISE_BOOKS_PULL_FULL_PASS_INTERVAL_MS` is ever shortened, check the full pass still comfortably finishes inside the 15-minute interval poll period.
+- Review sync (D2/S3b) and the review mapping hook noted above are not implemented, only left easy to add.
+- `feat-readwise-books-migration` has not been merged into this branch yet; do that once the concurrent S1 runner-hardening work lands there, before opening a PR.
+
+---
+
 ## Merge: upstream 2026-11-08 into feat-reading-services-core (2026-11-08)
 
 Worktree: `/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-core` (PC mirror: `D:/Development/bookorbit-worktrees/feat-reading-services-core`).
