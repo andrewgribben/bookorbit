@@ -113,7 +113,30 @@ describe('ReadingServiceSignIn', () => {
     expect(wrapper.emitted('changed')).toBeFalsy()
   })
 
-  it('runs the device-code flow from idle to approved', async () => {
+  it('shows the waiting code, link and countdown while a device-code sign-in is pending', async () => {
+    mocks.startReadingServiceDeviceAuth.mockResolvedValue({
+      verificationUrl: 'https://example.com/device',
+      userCode: 'ABCD-1234',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      pollIntervalSeconds: 5,
+    })
+    // Never resolves, so the component stays in 'waiting' for this assertion - a resolved poll
+    // would carry the UI straight through to 'approved' within the same microtask flush.
+    mocks.pollReadingServiceDeviceAuth.mockReturnValue(new Promise(() => {}))
+
+    const wrapper = mountSignIn({ provider: 'fixturewise', authMethods: [DEVICE_METHOD], connected: false })
+
+    await wrapper.get('[data-testid="reading-service-device-start"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reading-service-device-code"]').text()).toBe('ABCD-1234')
+    const link = wrapper.get('a')
+    expect(link.attributes('href')).toBe('https://example.com/device')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(wrapper.get('[data-testid="reading-service-device-countdown"]').text()).toContain('60s')
+  })
+
+  it('emits changed once the device-code poll reports approved', async () => {
     mocks.startReadingServiceDeviceAuth.mockResolvedValue({
       verificationUrl: 'https://example.com/device',
       userCode: 'ABCD-1234',
@@ -127,13 +150,6 @@ describe('ReadingServiceSignIn', () => {
     await wrapper.get('[data-testid="reading-service-device-start"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="reading-service-device-code"]').text()).toBe('ABCD-1234')
-    const link = wrapper.get('a')
-    expect(link.attributes('href')).toBe('https://example.com/device')
-    expect(link.attributes('target')).toBe('_blank')
-
-    // The poll itself is a second await inside `pollOnce`, fired-and-forgotten by `startDevice`.
-    await flushPromises()
     expect(wrapper.emitted('changed')).toBeTruthy()
   })
 
