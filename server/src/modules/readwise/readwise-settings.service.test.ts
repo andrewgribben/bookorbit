@@ -20,6 +20,8 @@ const mockScheduler = {
 
 const mockTokenService = {
   getToken: vi.fn().mockImplementation((row: { apiToken: string | null } | undefined) => Promise.resolve(row?.apiToken ?? null)),
+  isConfigured: vi.fn().mockReturnValue(false),
+  encrypt: vi.fn().mockImplementation((plaintext: string) => `enc:${plaintext}`),
 };
 
 function makeService() {
@@ -33,6 +35,8 @@ describe('ReadwiseSettingsService', () => {
     mockRepo.findLatestAnnotationId.mockResolvedValue(42);
     mockRepo.upsertSettings.mockResolvedValue(undefined);
     mockScheduler.requestSync.mockClear();
+    mockTokenService.isConfigured.mockReturnValue(false);
+    mockTokenService.encrypt.mockImplementation((plaintext: string) => `enc:${plaintext}`);
   });
 
   describe('getSettings', () => {
@@ -166,6 +170,45 @@ describe('ReadwiseSettingsService', () => {
       const result = await makeService().upsertSettings(1, { enabled: true });
       expect(result.enabled).toBe(true);
       expect(result.effectiveEnabled).toBe(true);
+    });
+
+    it('encrypts a new token immediately when an encryption key is configured', async () => {
+      mockTokenService.isConfigured.mockReturnValue(true);
+      mockRepo.findSettings
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ apiToken: null, apiTokenEncrypted: 'enc:fresh-token', enabled: true, disabledReason: null, lastSyncedAt: null });
+
+      await makeService().upsertSettings(1, { apiToken: 'fresh-token' });
+
+      const data = mockRepo.upsertSettings.mock.calls[0][1];
+      expect(mockTokenService.encrypt).toHaveBeenCalledWith('fresh-token');
+      expect(data.apiTokenEncrypted).toBe('enc:fresh-token');
+      expect(data.apiToken).toBeNull();
+    });
+
+    it('stores the token in plaintext when no encryption key is configured', async () => {
+      mockTokenService.isConfigured.mockReturnValue(false);
+      mockRepo.findSettings
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ apiToken: 'fresh-token', enabled: true, disabledReason: null, lastSyncedAt: null });
+
+      await makeService().upsertSettings(1, { apiToken: 'fresh-token' });
+
+      const data = mockRepo.upsertSettings.mock.calls[0][1];
+      expect(mockTokenService.encrypt).not.toHaveBeenCalled();
+      expect(data.apiToken).toBe('fresh-token');
+      expect(data.apiTokenEncrypted).toBeUndefined();
+    });
+
+    it('does not require an existing plaintext token when a row already has an encrypted token', async () => {
+      mockRepo.findSettings.mockResolvedValue({
+        apiToken: null,
+        apiTokenEncrypted: 'enc:existing',
+        enabled: true,
+        disabledReason: null,
+        lastSyncedAt: null,
+      });
+      await expect(makeService().upsertSettings(1, { enabled: false })).resolves.toBeDefined();
     });
   });
 

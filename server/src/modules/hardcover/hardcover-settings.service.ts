@@ -66,15 +66,21 @@ export class HardcoverSettingsService {
 
     const rawToken = payload.apiToken !== undefined ? this.stripBearerPrefix(payload.apiToken.trim()) : undefined;
 
-    if (!existing && !rawToken) {
+    if (!existing?.apiToken && !existing?.apiTokenEncrypted && !rawToken) {
       throw new BadRequestException('API token is required to connect Hardcover');
     }
 
-    const data: Parameters<typeof this.repo.upsertSettings>[1] = {};
-    // Always carry a token into the INSERT side so the NOT NULL constraint is satisfied.
-    // PostgreSQL checks NOT NULL before ON CONFLICT, so even on a conflict-update path
-    // the INSERT values must be valid.
-    data.apiToken = rawToken ?? existing!.apiToken;
+    const data: Parameters<HardcoverRepository['upsertSettings']>[1] = {};
+    if (rawToken) {
+      // Encrypt immediately on write when a key is configured, rather than waiting for the
+      // lazy migrate-on-read path, so a freshly entered token is never persisted in plaintext.
+      if (this.tokenService.isConfigured()) {
+        data.apiTokenEncrypted = this.tokenService.encrypt(rawToken);
+        data.apiToken = null;
+      } else {
+        data.apiToken = rawToken;
+      }
+    }
     if (payload.enabled !== undefined) data.enabled = payload.enabled;
     if (payload.bookSyncMode !== undefined) data.bookSyncMode = payload.bookSyncMode;
     if (payload.autoSyncOnStatusChange !== undefined) data.autoSyncOnStatusChange = payload.autoSyncOnStatusChange;
