@@ -5,9 +5,9 @@ import type { ReadingRecapWidget as ReadingRecapWidgetData } from '@bookorbit/ty
 // Module-level singleton: DashboardWidgetRow needs this widget's data too, to decide whether to
 // render the card shell at all (see useDashboardWidgets.spec / DashboardWidgetRow.spec "hides
 // the card shell"), without triggering a second fetch of the same endpoint.
-let shared: WidgetData<ReadingRecapWidgetData> | null = null
+let shared: WidgetData<ReadingRecapWidgetData | null> | null = null
 
-export function useReadingRecapWidget(): WidgetData<ReadingRecapWidgetData> {
+export function useReadingRecapWidget(): WidgetData<ReadingRecapWidgetData | null> {
   if (!shared) shared = useWidgetData(fetchReadingRecap)
   return shared
 }
