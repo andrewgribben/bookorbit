@@ -96,8 +96,10 @@ describe('ReadingServiceSignIn', () => {
     const wrapper = mountSignIn({ provider: 'fixturewise', authMethods: [PASSWORD_METHOD], connected: false })
 
     const username = wrapper.get('input[autocomplete="username"]')
-    const password = wrapper.get('input[autocomplete="current-password"]')
-    expect(password.attributes('type')).toBe('password')
+    const password = wrapper.get('#reading-service-fixturewise-password')
+    // Masked text, not type=password: only BookOrbit's own login may use a password input.
+    expect(password.attributes('type')).toBe('text')
+    expect(password.classes()).toContain('input-secret')
 
     await username.setValue('reader')
     await password.setValue('wrong-password')
@@ -119,7 +121,7 @@ describe('ReadingServiceSignIn', () => {
     const form = wrapper.find('[data-testid="reading-service-password-form"]')
     expect(form.exists()).toBe(true)
     expect(form.find('input[autocomplete="username"]').exists()).toBe(true)
-    expect(form.find('input[autocomplete="current-password"]').exists()).toBe(true)
+    expect(form.find('#reading-service-fixturewise-password').exists()).toBe(true)
   })
 
   it('shows the waiting code, link and countdown while a device-code sign-in is pending', async () => {
