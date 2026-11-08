@@ -1,3 +1,4 @@
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { ReadingServiceProvider, ReadingServiceShelf, ScrollerConfig, ScrollerType, WidgetType } from '@bookorbit/types'
@@ -52,7 +53,15 @@ const EXTERNAL_SHELF_PROVIDER_KEYS: Record<ReadingServiceProvider, ExternalShelf
 
 export function useDashboardLabels() {
   const { t } = useI18n()
-  const { getSummary } = useReadingServices()
+  const { getSummary, fetchSummaries } = useReadingServices()
+
+  // Needed only for externalShelfProviderName's unknown-provider fallback (a private adapter's
+  // displayName). Harmless no-op network call for the common case where every shelf is
+  // built-in, and consistent with how every other reading-services consumer refreshes this
+  // shared state (see ReadingServiceSettings.vue, usePrivateAdapterNavItems).
+  onMounted(() => {
+    void fetchSummaries()
+  })
 
   function widgetName(type: WidgetType): string {
     return t(`dashboard.settings.widgetNames.${WIDGET_NAME_KEYS[type]}`)
