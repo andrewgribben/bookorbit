@@ -120,7 +120,9 @@ function selectBookSyncMode(mode: 'all_eligible' | 'selected_only') {
     <div v-if="settings?.tokenConfigured && !switching" class="flex items-center justify-between" data-testid="hardcover-connected-row">
       <p class="text-sm text-muted-foreground">{{ t('hardcover.connection.title') }}</p>
       <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" type="button" @click="switching = true">{{ t('settings.readingServices.signIn.connected.switchAccount') }}</Button>
+        <Button variant="outline" size="sm" type="button" @click="switching = true">{{
+          t('settings.readingServices.signIn.connected.switchAccount')
+        }}</Button>
         <Button variant="destructive-ghost" size="sm" type="button" :disabled="saving" @click="handleDisconnect">
           <Unlink class="size-3.5" />
           {{ t('hardcover.connection.disconnect') }}
@@ -129,137 +131,137 @@ function selectBookSyncMode(mode: 'all_eligible' | 'selected_only') {
     </div>
 
     <template v-else>
-    <div class="space-y-2">
-      <label class="text-xs font-medium text-muted-foreground uppercase tracking-wider"> {{ t('hardcover.connection.apiToken') }} </label>
-      <div class="flex gap-2">
-        <input
-          v-model="tokenInput"
-          v-bind="SECRET_INPUT_ATTRS"
-          type="text"
-          :placeholder="t('hardcover.connection.tokenPlaceholder')"
-          class="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-          :class="{ 'input-secret': !tokenVisible }"
-        />
-        <Button variant="outline" size="sm" type="button" @click="toggleTokenVisible">
-          {{ tokenVisible ? t('hardcover.connection.hide') : t('hardcover.connection.show') }}
-        </Button>
-      </div>
-      <p class="text-xs text-muted-foreground">
-        {{ t('hardcover.connection.findTokenAt') }}
-        <a href="https://hardcover.app/account/api" target="_blank" rel="noopener" class="text-primary underline underline-offset-2"
-          >hardcover.app/account/api</a
-        >.
-      </p>
-    </div>
-
-    <div class="flex items-center gap-2">
-      <Button variant="outline" size="sm" type="button" :disabled="validating" @click="handleValidateToken">
-        <Loader2 v-if="validating" class="size-3 animate-spin" />
-        {{ t('hardcover.connection.validateToken') }}
-      </Button>
-      <span
-        v-if="validationResult !== null"
-        class="flex items-center gap-1 text-xs"
-        :class="validationResult.valid ? 'text-green-600' : 'text-destructive'"
-      >
-        <CheckCircle2 v-if="validationResult.valid" class="size-3.5" />
-        <AlertCircle v-else class="size-3.5" />
-        {{
-          validationResult.valid ? t('hardcover.connection.valid', { username: validationResult.username }) : t('hardcover.connection.invalidToken')
-        }}
-      </span>
-    </div>
-
-    <div v-if="settings?.tokenConfigured" class="space-y-3 pt-2 border-t border-border">
-      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{{ t('hardcover.connection.syncOptions') }}</p>
-      <div class="flex items-start gap-2 rounded-md border border-border/70 bg-muted/40 px-2.5 py-2">
-        <Info class="size-3.5 shrink-0 text-muted-foreground mt-0.5" />
-        <p class="text-xs text-muted-foreground leading-relaxed">
-          {{ t('hardcover.connection.syncInfo') }}
+      <div class="space-y-2">
+        <label class="text-xs font-medium text-muted-foreground uppercase tracking-wider"> {{ t('hardcover.connection.apiToken') }} </label>
+        <div class="flex gap-2">
+          <input
+            v-model="tokenInput"
+            v-bind="SECRET_INPUT_ATTRS"
+            type="text"
+            :placeholder="t('hardcover.connection.tokenPlaceholder')"
+            class="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            :class="{ 'input-secret': !tokenVisible }"
+          />
+          <Button variant="outline" size="sm" type="button" @click="toggleTokenVisible">
+            {{ tokenVisible ? t('hardcover.connection.hide') : t('hardcover.connection.show') }}
+          </Button>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          {{ t('hardcover.connection.findTokenAt') }}
+          <a href="https://hardcover.app/account/api" target="_blank" rel="noopener" class="text-primary underline underline-offset-2"
+            >hardcover.app/account/api</a
+          >.
         </p>
       </div>
 
-      <div class="space-y-2">
-        <p class="text-sm">{{ t('hardcover.connection.syncScope.title') }}</p>
-        <div class="grid gap-2 sm:grid-cols-2">
-          <button
-            v-for="option in bookSyncModeOptions"
-            :key="option.id"
-            type="button"
-            class="rounded-md border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            :class="
-              form.bookSyncMode === option.id
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
-            "
-            @click="selectBookSyncMode(option.id)"
-          >
-            <div class="text-sm font-medium">{{ option.label }}</div>
-            <div class="mt-0.5 text-xs leading-relaxed">{{ option.description }}</div>
-          </button>
-        </div>
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm">{{ t('hardcover.connection.enableSync.title') }}</p>
-          <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.enableSync.description') }}</p>
-        </div>
-        <ToggleSwitch v-model="form.enabled" />
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm">{{ t('hardcover.connection.syncOnStatus.title') }}</p>
-          <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.syncOnStatus.description') }}</p>
-        </div>
-        <ToggleSwitch v-model="form.autoSyncOnStatusChange" :disabled="!form.enabled" />
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm">{{ t('hardcover.connection.syncOnProgress.title') }}</p>
-          <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.syncOnProgress.description') }}</p>
-        </div>
-        <ToggleSwitch v-model="form.autoSyncOnProgressUpdate" :disabled="!form.enabled" />
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm">{{ t('hardcover.connection.syncOnRating.title') }}</p>
-          <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.syncOnRating.description') }}</p>
-        </div>
-        <ToggleSwitch v-model="form.autoSyncOnRatingChange" :disabled="!form.enabled" />
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm">{{ t('hardcover.connection.privacy.title') }}</p>
-          <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.privacy.description') }}</p>
-        </div>
-        <select
-          v-model="form.privacySettingId"
-          class="rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-          :disabled="!form.enabled"
+      <div class="flex items-center gap-2">
+        <Button variant="outline" size="sm" type="button" :disabled="validating" @click="handleValidateToken">
+          <Loader2 v-if="validating" class="size-3 animate-spin" />
+          {{ t('hardcover.connection.validateToken') }}
+        </Button>
+        <span
+          v-if="validationResult !== null"
+          class="flex items-center gap-1 text-xs"
+          :class="validationResult.valid ? 'text-green-600' : 'text-destructive'"
         >
-          <option v-for="opt in privacyOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
-        </select>
+          <CheckCircle2 v-if="validationResult.valid" class="size-3.5" />
+          <AlertCircle v-else class="size-3.5" />
+          {{
+            validationResult.valid ? t('hardcover.connection.valid', { username: validationResult.username }) : t('hardcover.connection.invalidToken')
+          }}
+        </span>
       </div>
-    </div>
 
-    <div class="flex items-center justify-between pt-2 border-t border-border gap-2">
-      <Button variant="destructive-ghost" size="sm" v-if="settings?.tokenConfigured" type="button" :disabled="saving" @click="handleDisconnect">
-        <Unlink class="size-3.5" />
-        {{ t('hardcover.connection.disconnect') }}
-      </Button>
-      <Button v-if="settings?.tokenConfigured" variant="ghost" size="sm" type="button" @click="switching = false">{{ t('common.cancel') }}</Button>
-      <div class="flex-1" />
-      <Button size="sm" type="button" :disabled="saving" @click="handleSave">
-        <Loader2 v-if="saving" class="size-3.5 animate-spin" />
-        <Save v-else class="size-3.5" />
-        {{ t('common.save') }}
-      </Button>
-    </div>
+      <div v-if="settings?.tokenConfigured" class="space-y-3 pt-2 border-t border-border">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">{{ t('hardcover.connection.syncOptions') }}</p>
+        <div class="flex items-start gap-2 rounded-md border border-border/70 bg-muted/40 px-2.5 py-2">
+          <Info class="size-3.5 shrink-0 text-muted-foreground mt-0.5" />
+          <p class="text-xs text-muted-foreground leading-relaxed">
+            {{ t('hardcover.connection.syncInfo') }}
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm">{{ t('hardcover.connection.syncScope.title') }}</p>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <button
+              v-for="option in bookSyncModeOptions"
+              :key="option.id"
+              type="button"
+              class="rounded-md border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              :class="
+                form.bookSyncMode === option.id
+                  ? 'border-primary bg-primary/10 text-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+              "
+              @click="selectBookSyncMode(option.id)"
+            >
+              <div class="text-sm font-medium">{{ option.label }}</div>
+              <div class="mt-0.5 text-xs leading-relaxed">{{ option.description }}</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm">{{ t('hardcover.connection.enableSync.title') }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.enableSync.description') }}</p>
+          </div>
+          <ToggleSwitch v-model="form.enabled" />
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm">{{ t('hardcover.connection.syncOnStatus.title') }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.syncOnStatus.description') }}</p>
+          </div>
+          <ToggleSwitch v-model="form.autoSyncOnStatusChange" :disabled="!form.enabled" />
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm">{{ t('hardcover.connection.syncOnProgress.title') }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.syncOnProgress.description') }}</p>
+          </div>
+          <ToggleSwitch v-model="form.autoSyncOnProgressUpdate" :disabled="!form.enabled" />
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm">{{ t('hardcover.connection.syncOnRating.title') }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.syncOnRating.description') }}</p>
+          </div>
+          <ToggleSwitch v-model="form.autoSyncOnRatingChange" :disabled="!form.enabled" />
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm">{{ t('hardcover.connection.privacy.title') }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ t('hardcover.connection.privacy.description') }}</p>
+          </div>
+          <select
+            v-model="form.privacySettingId"
+            class="rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            :disabled="!form.enabled"
+          >
+            <option v-for="opt in privacyOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-2 border-t border-border gap-2">
+        <Button variant="destructive-ghost" size="sm" v-if="settings?.tokenConfigured" type="button" :disabled="saving" @click="handleDisconnect">
+          <Unlink class="size-3.5" />
+          {{ t('hardcover.connection.disconnect') }}
+        </Button>
+        <Button v-if="settings?.tokenConfigured" variant="ghost" size="sm" type="button" @click="switching = false">{{ t('common.cancel') }}</Button>
+        <div class="flex-1" />
+        <Button size="sm" type="button" :disabled="saving" @click="handleSave">
+          <Loader2 v-if="saving" class="size-3.5 animate-spin" />
+          <Save v-else class="size-3.5" />
+          {{ t('common.save') }}
+        </Button>
+      </div>
     </template>
   </div>
 </template>

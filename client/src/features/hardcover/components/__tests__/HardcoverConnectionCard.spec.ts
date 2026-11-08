@@ -66,10 +66,10 @@ describe('HardcoverConnectionCard', () => {
     validating.value = false
     error.value = null
     mocks.saveSettings.mockResolvedValue(true)
-  mocks.disconnect.mockImplementation(async () => {
-    settings.value = null
-  })
-  mocks.validateToken.mockResolvedValue({ valid: true, username: 'neon' })
+    mocks.disconnect.mockImplementation(async () => {
+      settings.value = null
+    })
+    mocks.validateToken.mockResolvedValue({ valid: true, username: 'neon' })
   })
 
   afterEach(() => {

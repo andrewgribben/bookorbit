@@ -104,74 +104,74 @@ function toggleTokenVisible() {
       </div>
 
       <template v-else>
-      <div v-if="error" class="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2">
-        <AlertCircle class="size-3.5 shrink-0 text-destructive mt-0.5" />
-        <p class="text-xs text-destructive leading-relaxed">{{ error }}</p>
-      </div>
+        <div v-if="error" class="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2">
+          <AlertCircle class="size-3.5 shrink-0 text-destructive mt-0.5" />
+          <p class="text-xs text-destructive leading-relaxed">{{ error }}</p>
+        </div>
 
-      <div v-if="settings?.disabledReason" class="flex items-start gap-2 rounded-md border border-border/70 bg-muted/40 px-2.5 py-2">
-        <Info class="size-3.5 shrink-0 text-muted-foreground mt-0.5" />
-        <p class="text-xs text-muted-foreground leading-relaxed">
-          {{ disabledReasonMessages[settings.disabledReason] }}
-        </p>
-      </div>
+        <div v-if="settings?.disabledReason" class="flex items-start gap-2 rounded-md border border-border/70 bg-muted/40 px-2.5 py-2">
+          <Info class="size-3.5 shrink-0 text-muted-foreground mt-0.5" />
+          <p class="text-xs text-muted-foreground leading-relaxed">
+            {{ disabledReasonMessages[settings.disabledReason] }}
+          </p>
+        </div>
 
-      <div class="space-y-2">
-        <label :for="tokenInputId" class="text-xs font-medium text-muted-foreground uppercase tracking-wider"> Access Token </label>
-        <div class="flex gap-2">
-          <input
-            :id="tokenInputId"
-            v-model="tokenInput"
-            v-bind="SECRET_INPUT_ATTRS"
-            type="text"
-            placeholder="Paste your Readwise access token"
-            class="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            :class="{ 'input-secret': !tokenVisible }"
-          />
-          <Button variant="outline" size="sm" type="button" @click="toggleTokenVisible">
-            {{ tokenVisible ? 'Hide' : 'Show' }}
+        <div class="space-y-2">
+          <label :for="tokenInputId" class="text-xs font-medium text-muted-foreground uppercase tracking-wider"> Access Token </label>
+          <div class="flex gap-2">
+            <input
+              :id="tokenInputId"
+              v-model="tokenInput"
+              v-bind="SECRET_INPUT_ATTRS"
+              type="text"
+              placeholder="Paste your Readwise access token"
+              class="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              :class="{ 'input-secret': !tokenVisible }"
+            />
+            <Button variant="outline" size="sm" type="button" @click="toggleTokenVisible">
+              {{ tokenVisible ? 'Hide' : 'Show' }}
+            </Button>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            Find your token at
+            <a href="https://readwise.io/access_token" target="_blank" rel="noopener" class="text-primary underline underline-offset-2"
+              >readwise.io/access_token</a
+            >.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <Button variant="outline" size="sm" type="button" :disabled="validating" @click="handleValidateToken">
+            <Loader2 v-if="validating" class="size-3 animate-spin" />
+            Test
+          </Button>
+          <span
+            v-if="validationResult !== null"
+            class="flex items-center gap-1 text-xs"
+            :class="validationResult.valid ? 'text-primary' : 'text-destructive'"
+          >
+            <CheckCircle2 v-if="validationResult.valid" class="size-3.5" />
+            <AlertCircle v-else class="size-3.5" />
+            {{ validationResult.valid ? 'Valid token' : 'Invalid token' }}
+          </span>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-border">
+          <div>
+            <p class="text-sm">Enable sync</p>
+            <p class="text-xs text-muted-foreground mt-0.5">Automatically send your highlights to Readwise.</p>
+          </div>
+          <ToggleSwitch v-model="form.enabled" />
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+          <Button v-if="settings?.tokenConfigured" variant="ghost" size="sm" type="button" @click="switching = false">Cancel</Button>
+          <Button size="sm" type="button" :disabled="saving" @click="handleSave">
+            <Loader2 v-if="saving" class="size-3.5 animate-spin" />
+            <Save v-else class="size-3.5" />
+            Save
           </Button>
         </div>
-        <p class="text-xs text-muted-foreground">
-          Find your token at
-          <a href="https://readwise.io/access_token" target="_blank" rel="noopener" class="text-primary underline underline-offset-2"
-            >readwise.io/access_token</a
-          >.
-        </p>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" type="button" :disabled="validating" @click="handleValidateToken">
-          <Loader2 v-if="validating" class="size-3 animate-spin" />
-          Test
-        </Button>
-        <span
-          v-if="validationResult !== null"
-          class="flex items-center gap-1 text-xs"
-          :class="validationResult.valid ? 'text-primary' : 'text-destructive'"
-        >
-          <CheckCircle2 v-if="validationResult.valid" class="size-3.5" />
-          <AlertCircle v-else class="size-3.5" />
-          {{ validationResult.valid ? 'Valid token' : 'Invalid token' }}
-        </span>
-      </div>
-
-      <div class="flex items-center justify-between pt-2 border-t border-border">
-        <div>
-          <p class="text-sm">Enable sync</p>
-          <p class="text-xs text-muted-foreground mt-0.5">Automatically send your highlights to Readwise.</p>
-        </div>
-        <ToggleSwitch v-model="form.enabled" />
-      </div>
-
-      <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
-        <Button v-if="settings?.tokenConfigured" variant="ghost" size="sm" type="button" @click="switching = false">Cancel</Button>
-        <Button size="sm" type="button" :disabled="saving" @click="handleSave">
-          <Loader2 v-if="saving" class="size-3.5 animate-spin" />
-          <Save v-else class="size-3.5" />
-          Save
-        </Button>
-      </div>
       </template>
     </div>
 

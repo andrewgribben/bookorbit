@@ -42,7 +42,7 @@ const hasFeatures = computed(() => summary.value && Object.keys(summary.value.ca
 
     <ReadingServiceSignIn
       v-if="summary && authMethods.length > 0"
-      :provider="(provider as ReadingServiceProvider)"
+      :provider="provider as ReadingServiceProvider"
       :auth-methods="authMethods"
       :connected="summary.connected"
       :needs-reconnect="summary.needsReconnect ?? false"
@@ -57,19 +57,17 @@ const hasFeatures = computed(() => summary.value && Object.keys(summary.value.ca
         :title="t('settings.readingServices.whatSyncs.title')"
         :brief="t('settings.readingServices.whatSyncs.subtitle')"
       >
-        <ReadingServiceFeatureList :provider="(provider as ReadingServiceProvider)" :summary="summary" />
+        <ReadingServiceFeatureList :provider="provider as ReadingServiceProvider" :summary="summary" />
       </SettingsSection>
       <p v-else class="text-sm text-muted-foreground">{{ t('settings.readingServices.generic.noFeatures') }}</p>
 
       <SettingsSection :title="t('settings.readingServices.libraries.title')" :brief="t('settings.readingServices.libraries.subtitle')">
-        <ReadingServiceLibraries :provider="(provider as ReadingServiceProvider)" :summary="summary" />
+        <ReadingServiceLibraries :provider="provider as ReadingServiceProvider" :summary="summary" />
       </SettingsSection>
 
       <p class="text-xs text-muted-foreground">
         {{ t('settings.readingServices.generic.shelvesNote') }}
-        <RouterLink to="/" class="text-primary underline underline-offset-2">{{
-          t('settings.readingServices.generic.shelvesNoteLink')
-        }}</RouterLink>
+        <RouterLink to="/" class="text-primary underline underline-offset-2">{{ t('settings.readingServices.generic.shelvesNoteLink') }}</RouterLink>
         .
       </p>
     </template>

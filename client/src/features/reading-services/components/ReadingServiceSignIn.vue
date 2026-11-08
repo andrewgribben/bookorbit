@@ -77,9 +77,7 @@ async function handleTokenSubmit(): Promise<void> {
 const usernameInput = ref('')
 const passwordInput = ref('')
 const passwordVisible = ref(false)
-const passwordSubmitDisabled = computed(
-  () => auth.pending.value || usernameInput.value.trim().length === 0 || passwordInput.value.length === 0,
-)
+const passwordSubmitDisabled = computed(() => auth.pending.value || usernameInput.value.trim().length === 0 || passwordInput.value.length === 0)
 
 const rateLimitCountdown = useCountdown(() => (auth.rateLimitedUntil.value ? new Date(auth.rateLimitedUntil.value).toISOString() : null))
 
@@ -186,7 +184,12 @@ function startSwitching(): void {
 
     <!-- Method picker + forms -->
     <div v-else class="space-y-4" data-testid="reading-service-sign-in-methods">
-      <div v-if="authMethods.length > 1" class="flex flex-wrap gap-1 rounded-md bg-muted/50 p-1" role="radiogroup" :aria-label="t('settings.readingServices.signIn.methodPrompt')">
+      <div
+        v-if="authMethods.length > 1"
+        class="flex flex-wrap gap-1 rounded-md bg-muted/50 p-1"
+        role="radiogroup"
+        :aria-label="t('settings.readingServices.signIn.methodPrompt')"
+      >
         <button
           v-for="method in authMethods"
           :key="method.kind"
@@ -235,7 +238,12 @@ function startSwitching(): void {
       </div>
 
       <!-- Password -->
-      <form v-else-if="activeMethod?.kind === 'password'" class="space-y-3" data-testid="reading-service-password-form" @submit.prevent="handlePasswordSubmit">
+      <form
+        v-else-if="activeMethod?.kind === 'password'"
+        class="space-y-3"
+        data-testid="reading-service-password-form"
+        @submit.prevent="handlePasswordSubmit"
+      >
         <div class="space-y-2">
           <label :for="`reading-service-${provider}-username`" class="settings-label">{{ activeMethod.fields.username.label }}</label>
           <input
@@ -288,7 +296,13 @@ function startSwitching(): void {
             <span class="rounded-md bg-muted px-3 py-2 text-lg font-semibold tracking-widest tabular-nums" data-testid="reading-service-device-code">
               {{ auth.deviceStart.value?.userCode }}
             </span>
-            <Button variant="outline" size="icon-sm" type="button" :aria-label="t('settings.readingServices.signIn.device.copy')" @click="copyDeviceCode">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              type="button"
+              :aria-label="t('settings.readingServices.signIn.device.copy')"
+              @click="copyDeviceCode"
+            >
               <Copy class="size-3.5" />
             </Button>
           </div>
