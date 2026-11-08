@@ -160,12 +160,7 @@ export class HardcoverSocialService {
     }
   }
 
-  private async getFriendsShelf(
-    userId: number,
-    token: string,
-    statusId: number,
-    sinceDays: number | null,
-  ): Promise<ReadingServiceShelfItem[]> {
+  private async getFriendsShelf(userId: number, token: string, statusId: number, sinceDays: number | null): Promise<ReadingServiceShelfItem[]> {
     const sinceDate = sinceDays ? new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : null;
 
     let data: FollowedUserBooksResult;
@@ -286,7 +281,9 @@ export class HardcoverSocialService {
       this.logger.warn(`[hardcover.social_trending] [fail] userId=${userId} errorClass=UnexpectedShape - books_trending did not return an array`);
       return [];
     }
-    return raw.filter((entry): entry is HardcoverSocialBook => typeof entry === 'object' && entry !== null && typeof (entry as { id?: unknown }).id === 'number');
+    return raw.filter(
+      (entry): entry is HardcoverSocialBook => typeof entry === 'object' && entry !== null && typeof (entry as { id?: unknown }).id === 'number',
+    );
   }
 
   private logFail(userId: number, event: string, err: unknown): void {

@@ -88,9 +88,9 @@ describe('HardcoverReadingServicesAdapterService', () => {
   it('pull refreshes every shelf and swallows a single shelf failure', async () => {
     const { adapter, settingsService, socialService, cache } = makeDeps();
     (settingsService.getTokenForUser as any).mockResolvedValue('tok');
-    (socialService.getShelf as any).mockImplementation(async (_userId: number, _token: string, shelf: string) => {
-      if (shelf === 'trending') throw new Error('rate limited');
-      return [{ externalId: shelf }];
+    (socialService.getShelf as any).mockImplementation((_userId: number, _token: string, shelf: string) => {
+      if (shelf === 'trending') return Promise.reject(new Error('rate limited'));
+      return Promise.resolve([{ externalId: shelf }]);
     });
 
     await adapter.pull(1);

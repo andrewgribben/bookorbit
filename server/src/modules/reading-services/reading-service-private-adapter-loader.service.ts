@@ -118,6 +118,8 @@ export class ReadingServicePrivateAdapterLoaderService implements OnModuleInit {
       }
     }
 
-    this.logger.log(`[reading_services.private_adapter] [end] dir="${sanitizeLogValue(dir)}" loaded=${loaded} scanned=${entries.length} - private adapter load finished`);
+    this.logger.log(
+      `[reading_services.private_adapter] [end] dir="${sanitizeLogValue(dir)}" loaded=${loaded} scanned=${entries.length} - private adapter load finished`,
+    );
   }
 }

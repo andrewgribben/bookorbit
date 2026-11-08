@@ -4,7 +4,13 @@ import type { HardcoverClientService } from './hardcover-client.service';
 import type { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 
 function makeClient(impl: (query: string, variables?: Record<string, unknown>) => unknown) {
-  return { query: vi.fn().mockImplementation(async (_userId: number, _token: string, query: string, variables?: Record<string, unknown>) => impl(query, variables)) } as unknown as HardcoverClientService;
+  return {
+    query: vi
+      .fn()
+      .mockImplementation((_userId: number, _token: string, query: string, variables?: Record<string, unknown>) =>
+        Promise.resolve(impl(query, variables)),
+      ),
+  } as unknown as HardcoverClientService;
 }
 
 function makeMatchRepo(result: Awaited<ReturnType<HardcoverSocialMatchRepository['findCandidates']>> = []) {

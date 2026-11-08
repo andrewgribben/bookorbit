@@ -55,8 +55,9 @@ export class HardcoverReadingServicesAdapterService implements ReadingServicePro
   }
 
   // See the class comment: the existing module owns migration and two-way pull.
-  async migratePage(_userId: number, _cursor: Record<string, unknown>, _counters: SyncRunProgressCounters): Promise<Record<string, unknown> | null> {
-    return null;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  migratePage(_userId: number, _cursor: Record<string, unknown>, _counters: SyncRunProgressCounters): Promise<Record<string, unknown> | null> {
+    return Promise.resolve(null);
   }
 
   /** Refreshes the cached social shelves. Nothing else in the registry calls `pull` today. */

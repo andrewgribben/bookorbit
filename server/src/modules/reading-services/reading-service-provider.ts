@@ -1,4 +1,10 @@
-import type { ReadingServiceCapabilities, ReadingServiceProvider, ReadingServiceShelf, ReadingServiceShelfItem, SyncRunProgressCounters } from '@bookorbit/types';
+import type {
+  ReadingServiceCapabilities,
+  ReadingServiceProvider,
+  ReadingServiceShelf,
+  ReadingServiceShelfItem,
+  SyncRunProgressCounters,
+} from '@bookorbit/types';
 
 export interface ReadingServiceProviderAdapter {
   readonly provider: ReadingServiceProvider;
