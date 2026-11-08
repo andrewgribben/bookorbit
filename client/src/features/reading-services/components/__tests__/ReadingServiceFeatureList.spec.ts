@@ -6,12 +6,13 @@ import ReadingServiceFeatureList from '../ReadingServiceFeatureList.vue'
 
 const mocks = vi.hoisted(() => ({
   setFeature: vi.fn<(provider: string, feature: string, enabled: boolean) => Promise<boolean>>().mockResolvedValue(true),
-  savingFeature: ref<string | null>(null),
 }))
+
+const savingFeature = ref<string | null>(null)
 
 vi.mock('../../composables/useReadingServices', () => ({
   useReadingServices: () => ({
-    savingFeature: mocks.savingFeature,
+    savingFeature,
     setFeature: mocks.setFeature,
   }),
 }))
