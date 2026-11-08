@@ -10577,6 +10577,12 @@
         "label": "Hide series not read in",
         "off": "Never hide",
         "months": "{count, plural, one {# month} other {# months}}"
+      },
+      "externalShelvesPicker": {
+        "title": "External shelves",
+        "description": "Shelves from your connected reading services. Turn one on to show it on the dashboard.",
+        "empty": "Connect Readwise or Hardcover to see shelves here.",
+        "notConnected": "Not connected"
       }
     },
     "welcome": {
@@ -10592,6 +10598,21 @@
       "viewAll": "View all {count}",
       "empty": "No owned-elsewhere books to show.",
       "failedToLoad": "Failed to load."
+    },
+    "externalShelves": {
+      "title": "{provider}: {shelf}",
+      "description": "A shelf from your {provider} connection.",
+      "shelfNames": {
+        "friendsReading": "Friends currently reading",
+        "friendsFinished": "Friends recently finished",
+        "trending": "Trending",
+        "recommendations": "Recommended for you",
+        "ownedElsewhere": "Owned elsewhere"
+      },
+      "providerNames": {
+        "readwise": "Readwise",
+        "hardcover": "Hardcover"
+      }
     },
     "widgets": {
       "currentlyReading": {

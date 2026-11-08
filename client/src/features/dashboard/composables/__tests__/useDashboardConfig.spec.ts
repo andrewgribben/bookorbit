@@ -283,7 +283,7 @@ describe('useDashboardConfig', () => {
       { id: '3', type: 'smart-scope', label: 'Favorites', enabled: true, order: 2, limit: 20, rows: 1, smartScopeId: 42 },
     ])
 
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide' })
+    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide', externalShelves: [] })
   })
 
   it('falls back to defaults when stored JSON is malformed', async () => {
@@ -325,7 +325,7 @@ describe('useDashboardConfig', () => {
       { id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 },
       { id: '17', type: 'smart-scope', label: 'Smart Scope', enabled: true, order: 2, limit: 20, rows: 1, smartScopeId: 23 },
     ])
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide' })
+    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: 'wide', externalShelves: [] })
 
     reset()
 
@@ -369,7 +369,7 @@ describe('useDashboardConfig', () => {
     saveShelfSettings(scrollers.value, SHELF_LAYOUT.TWO_COLUMNS)
 
     expect(shelfLayout.value).toBe(SHELF_LAYOUT.TWO_COLUMNS)
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: SHELF_LAYOUT.TWO_COLUMNS })
+    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: SHELF_LAYOUT.TWO_COLUMNS, externalShelves: [] })
   })
 
   it('normalizes an unknown stored shelf layout to wide rows', async () => {

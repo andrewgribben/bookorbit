@@ -1,10 +1,12 @@
 import { useI18n } from 'vue-i18n'
 
-import type { ScrollerConfig, ScrollerType, WidgetType } from '@bookorbit/types'
+import type { ReadingServiceProvider, ReadingServiceShelf, ScrollerConfig, ScrollerType, WidgetType } from '@bookorbit/types'
 import type { MessageSchema } from '@/i18n'
 
 type WidgetNameKey = keyof MessageSchema['dashboard']['settings']['widgetNames']
 type ShelfNameKey = keyof MessageSchema['dashboard']['settings']['shelfNames']
+type ExternalShelfNameKey = keyof MessageSchema['dashboard']['externalShelves']['shelfNames']
+type ExternalShelfProviderKey = keyof MessageSchema['dashboard']['externalShelves']['providerNames']
 
 // Typed against the English catalog so a renamed or removed message fails typecheck
 // instead of silently rendering a raw key path.
@@ -34,6 +36,19 @@ const SHELF_NAME_KEYS: Record<ScrollerType, ShelfNameKey> = {
   'smart-scope': 'smartScope',
 }
 
+const EXTERNAL_SHELF_NAME_KEYS: Record<ReadingServiceShelf, ExternalShelfNameKey> = {
+  'friends-reading': 'friendsReading',
+  'friends-finished': 'friendsFinished',
+  trending: 'trending',
+  recommendations: 'recommendations',
+  'owned-elsewhere': 'ownedElsewhere',
+}
+
+const EXTERNAL_SHELF_PROVIDER_KEYS: Record<ReadingServiceProvider, ExternalShelfProviderKey> = {
+  readwise: 'readwise',
+  hardcover: 'hardcover',
+}
+
 export function useDashboardLabels() {
   const { t } = useI18n()
 
@@ -54,5 +69,30 @@ export function useDashboardLabels() {
     return smartScopeName || shelfTypeName('smart-scope')
   }
 
-  return { widgetName, shelfTypeName, shelfTitle }
+  function externalShelfProviderName(provider: ReadingServiceProvider): string {
+    return t(`dashboard.externalShelves.providerNames.${EXTERNAL_SHELF_PROVIDER_KEYS[provider]}`)
+  }
+
+  function externalShelfName(shelf: ReadingServiceShelf): string {
+    return t(`dashboard.externalShelves.shelfNames.${EXTERNAL_SHELF_NAME_KEYS[shelf]}`)
+  }
+
+  /** Composed title for a generic provider shelf, e.g. "Hardcover: Trending", used by both the dashboard and the picker. */
+  function externalShelfTitle(provider: ReadingServiceProvider, shelf: ReadingServiceShelf): string {
+    return t('dashboard.externalShelves.title', { provider: externalShelfProviderName(provider), shelf: externalShelfName(shelf) })
+  }
+
+  function externalShelfDescription(provider: ReadingServiceProvider): string {
+    return t('dashboard.externalShelves.description', { provider: externalShelfProviderName(provider) })
+  }
+
+  return {
+    widgetName,
+    shelfTypeName,
+    shelfTitle,
+    externalShelfProviderName,
+    externalShelfName,
+    externalShelfTitle,
+    externalShelfDescription,
+  }
 }

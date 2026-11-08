@@ -1,6 +1,15 @@
 import { computed, ref, watch } from 'vue'
 
-import { SCROLLER_TYPES, type DashboardShelfConfig, type DashboardShelfLayout, type ScrollerConfig, type ScrollerType } from '@bookorbit/types'
+import {
+  READING_SERVICE_PROVIDERS,
+  READING_SERVICE_SHELVES,
+  SCROLLER_TYPES,
+  type DashboardShelfConfig,
+  type DashboardShelfLayout,
+  type ExternalShelfConfig,
+  type ScrollerConfig,
+  type ScrollerType,
+} from '@bookorbit/types'
 import { useAuth } from '@/features/auth/composables/useAuth'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { api } from '@/lib/api'
@@ -8,6 +17,7 @@ import { normalizeShelfRows } from '../lib/shelf-rows'
 
 const STORAGE_KEY = 'bookorbit:dashboard:config'
 const MAX_SCROLLERS = 8
+const MAX_EXTERNAL_SHELVES = 16
 
 export const SHELF_LAYOUT = {
   WIDE: 'wide',
@@ -19,6 +29,7 @@ export type { DashboardShelfLayout } from '@bookorbit/types'
 interface StoredDashboardConfig {
   scrollers: ScrollerConfig[]
   shelfLayout: DashboardShelfLayout
+  externalShelves: ExternalShelfConfig[]
 }
 
 export const DEFAULT_SCROLLERS: ScrollerConfig[] = [
@@ -47,6 +58,8 @@ export const UP_NEXT_CUTOFF_MONTHS = [3, 6, 12, 24] as const
 
 /** Stored configs can name shelves this client no longer has; those are dropped on read and never written back. */
 const VALID_SCROLLER_TYPES = new Set<ScrollerType>(SCROLLER_TYPES)
+const VALID_EXTERNAL_PROVIDERS = new Set(READING_SERVICE_PROVIDERS)
+const VALID_EXTERNAL_SHELVES = new Set(READING_SERVICE_SHELVES)
 
 function cloneDefaultScrollers(): ScrollerConfig[] {
   return DEFAULT_SCROLLERS.map((scroller) => ({ ...scroller }))
@@ -136,20 +149,63 @@ function normalizeScrollers(value: unknown): ScrollerConfig[] {
   return normalized.length > 0 ? normalized : cloneDefaultScrollers()
 }
 
+/**
+ * External shelves (owner decision 1, "Customize Dashboard picker for provider shelves"): a
+ * separate persisted list from `scrollers`, since a provider shelf is not a `ScrollerType` and
+ * has no stored label - its title is resolved per (provider, shelf) through
+ * `useDashboardLabels`, not a string written here. Unlike scrollers there is no built-in
+ * default list: which shelves exist depends on which providers the user has connected, so the
+ * picker (`useExternalShelves`) seeds this on first load instead.
+ */
+function normalizeExternalShelf(value: unknown, index: number): ExternalShelfConfig | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<ExternalShelfConfig>
+  if (typeof raw.provider !== 'string' || !VALID_EXTERNAL_PROVIDERS.has(raw.provider as (typeof READING_SERVICE_PROVIDERS)[number])) return null
+  if (typeof raw.shelf !== 'string' || !VALID_EXTERNAL_SHELVES.has(raw.shelf as (typeof READING_SERVICE_SHELVES)[number])) return null
+
+  return {
+    provider: raw.provider as ExternalShelfConfig['provider'],
+    shelf: raw.shelf as ExternalShelfConfig['shelf'],
+    enabled: normalizeBoolean(raw.enabled, false),
+    order: index + 1,
+  }
+}
+
+function normalizeExternalShelves(value: unknown): ExternalShelfConfig[] {
+  if (!Array.isArray(value)) return []
+
+  const seen = new Set<string>()
+  return value
+    .map((shelf, index) => normalizeExternalShelf(shelf, index))
+    .filter((shelf): shelf is ExternalShelfConfig => shelf !== null)
+    .filter((shelf) => {
+      const key = `${shelf.provider}:${shelf.shelf}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, MAX_EXTERNAL_SHELVES)
+    .map((shelf, index) => ({ ...shelf, order: index + 1 }))
+}
+
 function loadConfig(): StoredDashboardConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE }
+    if (!raw) return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE, externalShelves: [] }
 
     const parsed: unknown = JSON.parse(raw)
     const shelfLayout =
       parsed && typeof parsed === 'object' && !Array.isArray(parsed)
         ? normalizeShelfLayout((parsed as { shelfLayout?: unknown }).shelfLayout)
         : SHELF_LAYOUT.WIDE
+    const externalShelves =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? normalizeExternalShelves((parsed as { externalShelves?: unknown }).externalShelves)
+        : []
 
-    return { scrollers: normalizeScrollers(parsed), shelfLayout }
+    return { scrollers: normalizeScrollers(parsed), shelfLayout, externalShelves }
   } catch {
-    return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE }
+    return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE, externalShelves: [] }
   }
 }
 
@@ -175,6 +231,7 @@ function areScrollersEqual(left: ScrollerConfig[], right: ScrollerConfig[]): boo
 const initialConfig = loadConfig()
 const scrollers = ref<ScrollerConfig[]>(initialConfig.scrollers)
 const shelfLayout = ref<DashboardShelfLayout>(initialConfig.shelfLayout)
+const externalShelves = ref<ExternalShelfConfig[]>(initialConfig.externalShelves)
 let hydratedUserId: number | undefined
 let hydratedFromServer = false
 
@@ -189,10 +246,12 @@ export function useDashboardConfig() {
       if (!demoRestricted && config?.syncAcrossSessions === true) {
         scrollers.value = normalizeScrollers(config.scrollers)
         shelfLayout.value = normalizeShelfLayout(config.shelfLayout)
+        externalShelves.value = normalizeExternalShelves(config.externalShelves)
       } else if (hydratedUserId !== userId || hydratedFromServer) {
         const local = loadConfig()
         scrollers.value = local.scrollers
         shelfLayout.value = local.shelfLayout
+        externalShelves.value = local.externalShelves
       }
       hydratedUserId = userId
       hydratedFromServer = !demoRestricted && config?.syncAcrossSessions === true
@@ -203,12 +262,14 @@ export function useDashboardConfig() {
   function save() {
     scrollers.value = normalizeScrollers(scrollers.value)
     shelfLayout.value = normalizeShelfLayout(shelfLayout.value)
+    externalShelves.value = normalizeExternalShelves(externalShelves.value)
     if (syncAcrossSessions.value) return
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         scrollers: scrollers.value,
         shelfLayout: shelfLayout.value,
+        externalShelves: externalShelves.value,
       } satisfies StoredDashboardConfig),
     )
   }
@@ -218,14 +279,25 @@ export function useDashboardConfig() {
     save()
   }
 
-  async function saveShelfSettings(newScrollers: ScrollerConfig[], newShelfLayout: DashboardShelfLayout, sync = syncAcrossSessions.value) {
+  async function saveShelfSettings(
+    newScrollers: ScrollerConfig[],
+    newShelfLayout: DashboardShelfLayout,
+    sync = syncAcrossSessions.value,
+    newExternalShelves: ExternalShelfConfig[] = externalShelves.value,
+  ) {
     sync = sync && !isDemoRestrictedAccount.value
     const nextScrollers = normalizeScrollers(newScrollers)
     const nextLayout = normalizeShelfLayout(newShelfLayout)
+    const nextExternalShelves = normalizeExternalShelves(newExternalShelves)
     if (sync || syncAcrossSessions.value) {
       const currentUser = user.value
       if (!currentUser) throw new Error('Sign in to sync dashboard shelves')
-      const config: DashboardShelfConfig = { syncAcrossSessions: sync, scrollers: nextScrollers, shelfLayout: nextLayout }
+      const config: DashboardShelfConfig = {
+        syncAcrossSessions: sync,
+        scrollers: nextScrollers,
+        shelfLayout: nextLayout,
+        externalShelves: nextExternalShelves,
+      }
       const response = await api('/api/v1/users/me/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -237,6 +309,7 @@ export function useDashboardConfig() {
     }
     scrollers.value = nextScrollers
     shelfLayout.value = nextLayout
+    externalShelves.value = nextExternalShelves
     save()
   }
 
@@ -271,6 +344,20 @@ export function useDashboardConfig() {
     save()
   }
 
+  /**
+   * Adds a default entry for an available (provider, shelf) pair the persisted list does not
+   * have yet, defaulted per owner decision 1: `owned-elsewhere` starts enabled only when
+   * `defaultEnabled` says the provider is connected and its `owned` feature is on; every other
+   * shelf starts off until the user turns it on from the picker. A no-op when the pair is
+   * already present, so re-running this on every available-shelves fetch is safe.
+   */
+  function ensureExternalShelf(provider: ExternalShelfConfig['provider'], shelf: ExternalShelfConfig['shelf'], defaultEnabled: boolean) {
+    const exists = externalShelves.value.some((entry) => entry.provider === provider && entry.shelf === shelf)
+    if (exists) return
+    externalShelves.value = [...externalShelves.value, { provider, shelf, enabled: defaultEnabled, order: externalShelves.value.length + 1 }]
+    save()
+  }
+
   function reset() {
     scrollers.value = cloneDefaultScrollers()
     shelfLayout.value = SHELF_LAYOUT.WIDE
@@ -280,12 +367,15 @@ export function useDashboardConfig() {
   return {
     scrollers,
     shelfLayout,
+    externalShelves,
     syncAcrossSessions,
     saveScrollers,
     saveShelfSettings,
     addScroller,
     pruneDeletedSmartScopeScrollers,
+    ensureExternalShelf,
     reset,
     MAX_SCROLLERS,
+    MAX_EXTERNAL_SHELVES,
   }
 }

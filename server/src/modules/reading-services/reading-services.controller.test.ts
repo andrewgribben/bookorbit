@@ -3,6 +3,7 @@ import { Permission } from '@bookorbit/types';
 
 import { PermissionService } from '../../common/services/permission.service';
 import type { RequestUser } from '../../common/types/request-user';
+import type { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import { ReadingServicesController } from './reading-services.controller';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
@@ -25,8 +26,9 @@ function makeController() {
     resumeMigration: vi.fn(),
     getLatestMigrationSummary: vi.fn().mockResolvedValue({ state: 'never', runId: null, finishedAt: null }),
   } as unknown as ReadingServiceSyncRunService;
-  const controller = new ReadingServicesController(registry, featuresService, syncRunService, new PermissionService());
-  return { controller, registry, featuresService, syncRunService };
+  const matchRepository = { findCandidates: vi.fn().mockResolvedValue([]) } as unknown as ReadingServiceMatchRepository;
+  const controller = new ReadingServicesController(registry, featuresService, syncRunService, new PermissionService(), matchRepository);
+  return { controller, registry, featuresService, syncRunService, matchRepository };
 }
 
 describe('ReadingServicesController', () => {
@@ -343,5 +345,103 @@ describe('ReadingServicesController', () => {
 
     expect(getShelf).toHaveBeenCalledWith(1, 'trending');
     expect(result).toEqual([{ externalId: 'p1' }]);
+  });
+
+  it('resolves bookId server-side for an item an adapter left unmatched by isbn', async () => {
+    const { controller, registry, matchRepository } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([
+      {
+        provider: 'private-service',
+        externalId: 'ext1',
+        title: 'Dune',
+        authors: ['Frank Herbert'],
+        bookId: null,
+        friend: null,
+        isbn: '9780441013593',
+      },
+    ]);
+    registry.register({
+      provider: 'private-service' as never,
+      permission: Permission.KoboSync,
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+    (matchRepository.findCandidates as any).mockResolvedValue([
+      { externalId: '42', isbn13: '9780441013593', isbn10: null, title: 'Dune', author: 'Frank Herbert' },
+    ]);
+    const user = makeUser([Permission.KoboSync]);
+
+    const result = await controller.getShelf(user, 'private-service', 'trending');
+
+    expect(matchRepository.findCandidates).toHaveBeenCalledWith(1, ['9780441013593'], ['dune']);
+    expect(result).toEqual([
+      { provider: 'private-service', externalId: 'ext1', title: 'Dune', authors: ['Frank Herbert'], bookId: 42, friend: null },
+    ]);
+  });
+
+  it('strips isbn/asin hints from a response even when no match was found', async () => {
+    const { controller, registry, matchRepository } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([
+      {
+        provider: 'private-service',
+        externalId: 'ext1',
+        title: 'Unknown Book',
+        authors: ['Nobody'],
+        bookId: null,
+        friend: null,
+        isbn: '0000000000000',
+        asin: 'B000000000',
+      },
+    ]);
+    registry.register({
+      provider: 'private-service' as never,
+      permission: Permission.KoboSync,
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+    (matchRepository.findCandidates as any).mockResolvedValue([]);
+    const user = makeUser([Permission.KoboSync]);
+
+    const result = await controller.getShelf(user, 'private-service', 'trending');
+
+    expect(result).toEqual([
+      { provider: 'private-service', externalId: 'ext1', title: 'Unknown Book', authors: ['Nobody'], bookId: null, friend: null },
+    ]);
+  });
+
+  it('leaves an already-matched item untouched and still strips its hints', async () => {
+    const { controller, registry, matchRepository } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([
+      {
+        provider: 'private-service',
+        externalId: 'ext1',
+        title: 'Dune',
+        authors: ['Frank Herbert'],
+        bookId: 7,
+        friend: null,
+        isbn: '9780441013593',
+      },
+    ]);
+    registry.register({
+      provider: 'private-service' as never,
+      permission: Permission.KoboSync,
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+    const user = makeUser([Permission.KoboSync]);
+
+    const result = await controller.getShelf(user, 'private-service', 'trending');
+
+    expect(matchRepository.findCandidates).not.toHaveBeenCalled();
+    expect(result).toEqual([{ provider: 'private-service', externalId: 'ext1', title: 'Dune', authors: ['Frank Herbert'], bookId: 7, friend: null }]);
   });
 });

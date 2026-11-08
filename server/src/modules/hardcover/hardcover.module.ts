@@ -15,7 +15,6 @@ import { HardcoverQueueService } from './hardcover-queue.service';
 import { HardcoverReadingServicesAdapterService } from './hardcover-reading-services-adapter.service';
 import { HardcoverRepository } from './hardcover.repository';
 import { HardcoverSettingsService } from './hardcover-settings.service';
-import { HardcoverSocialMatchRepository } from './hardcover-social-match.repository';
 import { HardcoverSocialService } from './hardcover-social.service';
 import { HardcoverSyncService } from './hardcover-sync.service';
 
@@ -32,7 +31,6 @@ import { HardcoverSyncService } from './hardcover-sync.service';
     HardcoverImportService,
     HardcoverAutoSyncSchedulerService,
     HardcoverEventListener,
-    HardcoverSocialMatchRepository,
     HardcoverSocialService,
     HardcoverReadingServicesAdapterService,
   ],

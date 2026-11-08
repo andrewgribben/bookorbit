@@ -51,6 +51,21 @@ export type ReadingServiceShelfItem = {
   bookId: number | null;
   /** Present only on friends shelves. */
   friend: ReadingServiceShelfFriend | null;
+  /**
+   * Matching hints an adapter may supply when it cannot resolve `bookId` itself (e.g. a private
+   * adapter with no local database access). Either an ISBN-10 or ISBN-13, digits only or with
+   * standard punctuation; `null`/omitted when the adapter has none. The reading-services
+   * controller uses this (and `title`/`authors` as a fallback) to resolve `bookId` server-side
+   * against the current user's accessible library before the response reaches the client, then
+   * strips both fields - a client never needs to read `isbn`/`asin` itself.
+   */
+  isbn?: string | null;
+  /**
+   * Amazon ASIN hint, same purpose as `isbn`. Not currently used for server-side matching: the
+   * local book schema has no ASIN column, so this is accepted for forward compatibility only
+   * (see docs/AGENT_HANDOFF.md's adapter contract section).
+   */
+  asin?: string | null;
 };
 
 export type ReadingServiceSummary = {

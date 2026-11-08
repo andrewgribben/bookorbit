@@ -6,19 +6,26 @@ import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { LibraryService } from '../library/library.service';
 import type { RequestUser } from '../../common/types/request-user';
-import type { RemoteIndexBook } from '../reading-services/book-matcher';
+import type { RemoteIndexBook } from './book-matcher';
 
 type Db = NodePgDatabase<typeof schema>;
 
 /**
- * Bounded candidate lookup for matching a small batch of external shelf items (friends/trending,
- * at most a few dozen per request) against the user's own library. Scoped by the exact ISBN-13s
- * and lowercased titles the batch asked for, using `bm_title_lower_idx`, instead of paging the
- * whole library the way a migration does: shelves are read on every page load, so this has to
- * stay cheap even for a tens-of-thousands-book library.
+ * Bounded candidate lookup for matching a small batch of reading-service shelf items (friends,
+ * trending, recommendations, owned-elsewhere, at most a few dozen per request) against the
+ * user's own library. Scoped by the exact ISBN-13s and lowercased titles the batch asked for,
+ * using `bm_title_lower_idx`, instead of paging the whole library the way a migration does:
+ * shelves are read on every page load, so this has to stay cheap even for a tens-of-thousands-
+ * book library.
+ *
+ * Shared by every provider adapter that needs local matching (Hardcover's own social shelves,
+ * and `ReadingServicesController`'s generic server-side resolution for adapters, such as a
+ * private one, that return `bookId: null` plus an `isbn`/title+author hint - see
+ * docs/AGENT_HANDOFF.md's adapter contract section). Originally Hardcover-specific
+ * (`HardcoverSocialMatchRepository`), generalised here so it has exactly one implementation.
  */
 @Injectable()
-export class HardcoverSocialMatchRepository {
+export class ReadingServiceMatchRepository {
   constructor(
     @Inject(DB) private readonly db: Db,
     private readonly libraryService: LibraryService,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronLeft, ChevronRight, Library, RefreshCw } from '@lucide/vue'
 import { useRouter } from 'vue-router'
@@ -16,8 +16,10 @@ import { useExternalShelf } from '../composables/useExternalShelf'
 const props = defineProps<{
   provider: ReadingServiceProvider
   shelf: ReadingServiceShelf
-  titleKey: string
-  descriptionKey: string
+  titleKey?: string
+  descriptionKey?: string
+  title?: string
+  description?: string
 }>()
 
 const { items, loading, error, refresh } = useExternalShelf(props.provider, props.shelf)
@@ -25,6 +27,13 @@ const { t } = useI18n()
 const router = useRouter()
 
 const scrollEl = ref<HTMLElement | null>(null)
+
+// A caller passes either a locale key (resolved here) or an already-resolved string (e.g. a
+// generic picker shelf whose title/description is composed per provider+shelf at the call
+// site, see useDashboardLabels). Exactly one of each pair is expected; a caller supplying
+// neither gets an empty heading rather than a crash.
+const titleText = computed(() => props.title ?? (props.titleKey ? t(props.titleKey) : ''))
+const descriptionText = computed(() => props.description ?? (props.descriptionKey ? t(props.descriptionKey) : ''))
 
 function scrollBy(delta: number) {
   scrollEl.value?.scrollBy({ left: delta, behavior: 'smooth' })
@@ -51,7 +60,7 @@ function openCard(item: ReadingServiceShelfItem) {
         <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50">
           <Library :size="14" class="text-foreground" />
         </div>
-        <h2 class="text-[15px] font-bold tracking-tight">{{ t(titleKey) }}</h2>
+        <h2 class="text-[15px] font-bold tracking-tight">{{ titleText }}</h2>
         <span
           v-if="!loading && !error && items.length > 0"
           class="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-foreground"
@@ -74,7 +83,7 @@ function openCard(item: ReadingServiceShelfItem) {
         </button>
       </div>
     </div>
-    <p class="px-5 pb-2 text-xs text-muted-foreground">{{ t(descriptionKey) }}</p>
+    <p class="px-5 pb-2 text-xs text-muted-foreground">{{ descriptionText }}</p>
 
     <div v-if="loading" class="flex gap-3 overflow-hidden px-5 pb-5">
       <div v-for="n in 6" :key="n" class="w-[120px] shrink-0">

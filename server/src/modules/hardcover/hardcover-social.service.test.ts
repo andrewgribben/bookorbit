@@ -1,4 +1,4 @@
-import { HardcoverSocialMatchRepository } from './hardcover-social-match.repository';
+import { ReadingServiceMatchRepository } from '../reading-services/reading-service-match.repository';
 import { HardcoverSocialService } from './hardcover-social.service';
 import type { HardcoverClientService } from './hardcover-client.service';
 import type { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -13,8 +13,8 @@ function makeClient(impl: (query: string, variables?: Record<string, unknown>) =
   } as unknown as HardcoverClientService;
 }
 
-function makeMatchRepo(result: Awaited<ReturnType<HardcoverSocialMatchRepository['findCandidates']>> = []) {
-  return { findCandidates: vi.fn().mockResolvedValue(result) } as unknown as HardcoverSocialMatchRepository;
+function makeMatchRepo(result: Awaited<ReturnType<ReadingServiceMatchRepository['findCandidates']>> = []) {
+  return { findCandidates: vi.fn().mockResolvedValue(result) } as unknown as ReadingServiceMatchRepository;
 }
 
 function makeReadingServicesRepo(links: { externalBookId: string }[] = []) {

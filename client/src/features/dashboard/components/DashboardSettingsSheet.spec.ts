@@ -75,6 +75,17 @@ vi.mock('../composables/useDashboardWidgets', () => ({
   })),
 }))
 
+vi.mock('../composables/useExternalShelvesConfig', () => ({
+  useExternalShelvesConfig: () => ({
+    availableShelves: ref([]),
+    enabledExternalShelves: ref([]),
+    pickerShelves: ref([]),
+    loading: ref(false),
+    loaded: ref(true),
+    fetchAvailableShelves: vi.fn<() => Promise<void>>(),
+  }),
+}))
+
 import DashboardSettingsSheet from './DashboardSettingsSheet.vue'
 import { useDashboardConfig } from '../composables/useDashboardConfig'
 

@@ -16,6 +16,7 @@ import DashboardWidgetRow from '@/features/dashboard/components/DashboardWidgetR
 import OwnedElsewhereShelf from '@/features/dashboard/components/ExternalShelf.vue'
 import { SHELF_LAYOUT, useDashboardConfig } from '@/features/dashboard/composables/useDashboardConfig'
 import { useDashboardLabels } from '@/features/dashboard/composables/useDashboardLabels'
+import { useExternalShelvesConfig } from '@/features/dashboard/composables/useExternalShelvesConfig'
 import { useOnboardingTour } from '@/features/onboarding/composables/useOnboardingTour'
 import { useSmartScopes } from '@/features/smart-scope/composables/useSmartScopes'
 
@@ -24,7 +25,8 @@ const { hasPermission } = usePermissions()
 const { user } = useAuth()
 const { libraries, loading: librariesLoading, loaded: librariesLoaded, error: librariesError, fetchLibraries } = useLibraries()
 const { scrollers, shelfLayout, pruneDeletedSmartScopeScrollers } = useDashboardConfig()
-const { shelfTitle } = useDashboardLabels()
+const { shelfTitle, externalShelfTitle, externalShelfDescription } = useDashboardLabels()
+const { enabledExternalShelves } = useExternalShelvesConfig()
 const { maybeStartTour } = useOnboardingTour()
 const { smartScopes, loaded: smartScopesLoaded, fetchSmartScopes } = useSmartScopes()
 
@@ -165,13 +167,15 @@ onUnmounted(() => {
         <DashboardWelcome v-else-if="libraryState === 'empty'" :can-create="hasPermission('manage_libraries')" />
         <template v-else>
           <DashboardWidgetRow :key="`widgets-${dashboardRevision}`" class="animate-fade-up" />
-          <OwnedElsewhereShelf
-            provider="readwise"
-            shelf="owned-elsewhere"
-            title-key="dashboard.ownedElsewhere.title"
-            description-key="dashboard.ownedElsewhere.description"
-            class="animate-fade-up"
-          />
+          <template v-for="entry in enabledExternalShelves" :key="`${entry.provider}-${entry.shelf}`">
+            <OwnedElsewhereShelf
+              :provider="entry.provider"
+              :shelf="entry.shelf"
+              :title="externalShelfTitle(entry.provider, entry.shelf)"
+              :description="externalShelfDescription(entry.provider)"
+              class="animate-fade-up"
+            />
+          </template>
           <div v-if="enabledScrollers.length > 0" :class="shelfLayoutClass">
             <template v-for="(shelf, index) in shelves" :key="`${dashboardRevision}-${shelf.key}`">
               <DashboardScroller

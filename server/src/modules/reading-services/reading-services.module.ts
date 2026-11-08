@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 
+import { LibraryModule } from '../library/library.module';
 import { ReadingServiceCacheService } from './reading-service-cache.service';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
+import { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import { ReadingServicePrivateAdapterLoaderService } from './reading-service-private-adapter-loader.service';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServiceSyncRunService } from './reading-service-sync-run.service';
@@ -10,6 +12,7 @@ import { ReadingServicesController } from './reading-services.controller';
 import { ReadingServicesRepository } from './reading-services.repository';
 
 @Module({
+  imports: [LibraryModule],
   controllers: [ReadingServicesController],
   providers: [
     ReadingServicesRepository,
@@ -19,6 +22,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceCacheService,
     ReadingServiceSyncRunService,
     ReadingServicePrivateAdapterLoaderService,
+    ReadingServiceMatchRepository,
   ],
   exports: [
     ReadingServiceRegistry,
@@ -26,6 +30,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceCacheService,
     ReadingServiceSyncRunService,
     ReadingServiceFeaturesService,
+    ReadingServiceMatchRepository,
   ],
 })
 export class ReadingServicesModule {}

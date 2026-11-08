@@ -1,5 +1,5 @@
 import type { BookCard } from "./book";
-import type { ReadingRecapWidget } from "./reading-services";
+import type { ReadingRecapWidget, ReadingServiceProvider, ReadingServiceShelf } from "./reading-services";
 
 export const SCROLLER_TYPE = {
   RECENTLY_ADDED: "recently-added",
@@ -85,10 +85,26 @@ export interface ScrollerConfig {
 
 export type DashboardShelfLayout = "wide" | "two-columns";
 
+/**
+ * One provider shelf (e.g. Hardcover's `trending`, Readwise's `owned-elsewhere`) the user has
+ * chosen to show on the dashboard, from the "Customize Dashboard" picker's
+ * `GET /reading-services/shelves/available` list. Deliberately separate from `ScrollerConfig`:
+ * external shelves are not a `ScrollerType` and have no locale-coupled label of their own, since
+ * their title comes from `provider` + `shelf` via `useDashboardLabels` instead of a stored
+ * string (see docs/LOCALIZATION.md - no shelf-specific copy is persisted here).
+ */
+export interface ExternalShelfConfig {
+  provider: ReadingServiceProvider;
+  shelf: ReadingServiceShelf;
+  enabled: boolean;
+  order: number;
+}
+
 export interface DashboardShelfConfig {
   syncAcrossSessions?: boolean;
   scrollers?: ScrollerConfig[];
   shelfLayout?: DashboardShelfLayout;
+  externalShelves?: ExternalShelfConfig[];
 }
 
 export const WIDGET_TYPE = {

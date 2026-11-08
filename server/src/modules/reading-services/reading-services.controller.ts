@@ -29,8 +29,10 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PermissionService } from '../../common/services/permission.service';
 import type { RequestUser } from '../../common/types/request-user';
+import { buildRemoteIndex, isbn10ToIsbn13, matchBook } from './book-matcher';
 import { UpdateReadingServiceFeaturesDto } from './dto';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
+import { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import type { ReadingServiceProviderAdapter } from './reading-service-provider';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServiceSyncRunService } from './reading-service-sync-run.service';
@@ -65,6 +67,7 @@ export class ReadingServicesController {
     private readonly featuresService: ReadingServiceFeaturesService,
     private readonly syncRunService: ReadingServiceSyncRunService,
     private readonly permissionService: PermissionService,
+    private readonly matchRepository: ReadingServiceMatchRepository,
   ) {}
 
   @Get()
@@ -197,7 +200,60 @@ export class ReadingServicesController {
       throw new NotFoundException(`${typedProvider} does not support the "${typedShelf}" shelf`);
     }
 
-    return adapter.getShelf(user.id, typedShelf);
+    const items = await adapter.getShelf(user.id, typedShelf);
+    return this.resolveUnmatchedBookIds(user.id, items);
+  }
+
+  /**
+   * Server-side fallback match (owner decision 2): an adapter - typically a private one with no
+   * local database access - can leave `bookId: null` on a shelf item and pass `isbn`/`title`
+   * +`authors` hints instead. This resolves those against the current user's accessible library
+   * with the shared `ReadingServiceMatchRepository`/`book-matcher`, the same matcher every
+   * built-in provider's own shelf service already uses, then strips `isbn`/`asin` from every
+   * item before the response leaves the server - a client never needs either field (see
+   * `ReadingServiceShelfItem`'s doc comment in @bookorbit/types).
+   */
+  private async resolveUnmatchedBookIds(userId: number, items: ReadingServiceShelfItem[]): Promise<ReadingServiceShelfItem[]> {
+    const unmatched = items.filter((item) => item.bookId == null && (item.isbn || (item.title && item.authors.length > 0)));
+
+    if (unmatched.length === 0) return items.map((item) => this.stripMatchHints(item));
+
+    const isbn13s = new Set<string>();
+    const titlesLower = new Set<string>();
+    for (const item of unmatched) {
+      const isbn13 = this.toIsbn13(item.isbn);
+      if (isbn13) isbn13s.add(isbn13);
+      if (item.title) titlesLower.add(item.title.toLowerCase());
+    }
+
+    const candidates = await this.matchRepository.findCandidates(userId, [...isbn13s], [...titlesLower]);
+    if (candidates.length === 0) return items.map((item) => this.stripMatchHints(item));
+
+    const index = buildRemoteIndex(candidates);
+    return items.map((item) => {
+      if (item.bookId != null) return this.stripMatchHints(item);
+      const isbn13 = this.toIsbn13(item.isbn);
+      const match = matchBook({ isbn13, isbn10: isbn13 ? null : (item.isbn ?? null), title: item.title, author: item.authors[0] ?? null }, index);
+      const bookId = match ? Number(match.externalId) : null;
+      return this.stripMatchHints({ ...item, bookId });
+    });
+  }
+
+  /** Normalizes an adapter-supplied ISBN hint of either length to ISBN-13, or null when it isn't one. */
+  private toIsbn13(rawIsbn: string | null | undefined): string | null {
+    if (!rawIsbn) return null;
+    const digits = rawIsbn.replace(/[^0-9Xx]/g, '');
+    if (digits.length === 13) return digits;
+    if (digits.length === 10) return isbn10ToIsbn13(digits);
+    return null;
+  }
+
+  private stripMatchHints(item: ReadingServiceShelfItem): ReadingServiceShelfItem {
+    if (item.isbn === undefined && item.asin === undefined) return item;
+    const stripped: ReadingServiceShelfItem = { ...item };
+    delete stripped.isbn;
+    delete stripped.asin;
+    return stripped;
   }
 
   /** Built-in providers keep their fixed permission; anything else uses the adapter's own declared one. */

@@ -4,9 +4,9 @@ import type { ReadingServiceShelf, ReadingServiceShelfItem } from '@bookorbit/ty
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { buildRemoteIndex, matchBook } from '../reading-services/book-matcher';
+import { ReadingServiceMatchRepository } from '../reading-services/reading-service-match.repository';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { HardcoverClientService } from './hardcover-client.service';
-import { HardcoverSocialMatchRepository } from './hardcover-social-match.repository';
 
 const SHELF_ITEM_LIMIT = 24;
 const FRIENDS_FINISHED_WINDOW_DAYS = 90;
@@ -141,7 +141,7 @@ export class HardcoverSocialService {
 
   constructor(
     private readonly client: HardcoverClientService,
-    private readonly matchRepo: HardcoverSocialMatchRepository,
+    private readonly matchRepo: ReadingServiceMatchRepository,
     private readonly readingServicesRepo: ReadingServicesRepository,
   ) {}
 
