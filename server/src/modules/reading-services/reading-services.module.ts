@@ -21,6 +21,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServicePrivateAdapterLoaderService,
   ],
   exports: [
+    ReadingServicesRepository,
     ReadingServiceRegistry,
     ReadingServiceTokenService,
     ReadingServiceCacheService,
