@@ -12,7 +12,13 @@ function config(privateAdaptersDir: string | null) {
 }
 
 function makeLoader(dir: string | null, registry = new ReadingServiceRegistry()) {
-  const credentials = { get: vi.fn(), isConnected: vi.fn().mockResolvedValue(false), save: vi.fn(), markNeedsReconnect: vi.fn(), disconnect: vi.fn() };
+  const credentials = {
+    get: vi.fn(),
+    isConnected: vi.fn().mockResolvedValue(false),
+    save: vi.fn(),
+    markNeedsReconnect: vi.fn(),
+    disconnect: vi.fn(),
+  };
   const cache = { get: vi.fn(), set: vi.fn() };
   return {
     registry,

@@ -109,8 +109,7 @@ export type ReadingServiceDeviceAuthPollResult = {
 
 /** Result of `POST /reading-services/:provider/auth/password`. Never carries the password back. */
 export type ReadingServicePasswordLoginResult =
-  | { ok: true; accountLabel?: string | null }
-  | { ok: false; reason: "invalid" | "mfa_required" | "network" | "unsupported"; message?: string | null };
+  { ok: true; accountLabel?: string | null } | { ok: false; reason: "invalid" | "mfa_required" | "network" | "unsupported"; message?: string | null };
 
 export type ReadingServiceSummary = {
   provider: ReadingServiceProvider;

@@ -134,7 +134,10 @@ describe('PrivateAdapterBridge', () => {
     const result = await bridge.loginWithPassword(1, 'user@example.test', 'super-secret');
 
     expect(result).toEqual({ ok: true, credential: 'new-token', accountLabel: 'user@example.test' });
-    expect(loginWithPassword).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }), { username: 'user@example.test', password: 'super-secret' });
+    expect(loginWithPassword).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }), {
+      username: 'user@example.test',
+      password: 'super-secret',
+    });
   });
 
   it('passes through a failed loginWithPassword reason unchanged', async () => {

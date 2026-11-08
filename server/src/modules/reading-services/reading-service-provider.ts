@@ -74,7 +74,10 @@ export interface ReadingServiceProviderAdapter {
   getShelf?(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]>;
 
   /** Validates a pasted token/credential. Only present when `authMethods` includes a `token` entry. */
-  validateCredential?(userId: number, credential: string): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }>;
+  validateCredential?(
+    userId: number,
+    credential: string,
+  ): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }>;
 
   /**
    * Signs in with a username/email + password. Only present when `authMethods` includes a

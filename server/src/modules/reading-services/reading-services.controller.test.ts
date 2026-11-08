@@ -597,7 +597,9 @@ describe('ReadingServicesController', () => {
 
     it('starts and polls device-code auth through the adapter', async () => {
       const { controller, registry } = makeController();
-      const startDeviceAuth = vi.fn().mockResolvedValue({ verificationUrl: 'https://x.test', userCode: 'ABCD', expiresAt: new Date().toISOString(), pollIntervalSeconds: 2 });
+      const startDeviceAuth = vi
+        .fn()
+        .mockResolvedValue({ verificationUrl: 'https://x.test', userCode: 'ABCD', expiresAt: new Date().toISOString(), pollIntervalSeconds: 2 });
       const pollDeviceAuth = vi.fn().mockResolvedValue({ status: 'pending' });
       registerAdapter(registry, { startDeviceAuth, pollDeviceAuth });
       const user = makeUser([Permission.ReadwiseSync]);
@@ -662,7 +664,9 @@ describe('ReadingServicesController', () => {
       registerAdapter(registry);
       const user = makeUser([Permission.ReadwiseSync]);
 
-      await expect(controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'x' })).rejects.toThrow(BadRequestException);
+      await expect(controller.connectWithPassword(user, 'fixturewise', { username: 'user@example.test', password: 'x' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('never logs the raw password, on success or on failure', async () => {
@@ -672,7 +676,7 @@ describe('ReadingServicesController', () => {
       try {
         const { controller, registry } = makeController();
         registerAdapter(registry, {
-          loginWithPassword: vi.fn().mockImplementation(async () => ({ ok: false, reason: 'invalid' })),
+          loginWithPassword: vi.fn().mockResolvedValue({ ok: false, reason: 'invalid' }),
         });
         const user = makeUser([Permission.ReadwiseSync]);
 

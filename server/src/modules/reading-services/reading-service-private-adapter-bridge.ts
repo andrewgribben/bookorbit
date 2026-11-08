@@ -93,12 +93,12 @@ export class PrivateAdapterBridge implements ReadingServiceProviderAdapter {
   // No sync capability for a v2, read-only social adapter. These are only ever reached if a
   // client calls a migration route for a provider that declares no migration-capable feature,
   // which the generic settings UI never offers.
-  async migratePage(): Promise<Record<string, unknown> | null> {
-    throw new Error(`${this.module.provider} does not support migration`);
+  migratePage(): Promise<Record<string, unknown> | null> {
+    return Promise.reject(new Error(`${this.module.provider} does not support migration`));
   }
 
-  async pull(): Promise<void> {
-    throw new Error(`${this.module.provider} does not support pull`);
+  pull(): Promise<void> {
+    return Promise.reject(new Error(`${this.module.provider} does not support pull`));
   }
 
   async getShelf(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]> {
@@ -106,7 +106,9 @@ export class PrivateAdapterBridge implements ReadingServiceProviderAdapter {
     const result = await this.module.getShelf(this.makeCtx(userId, credential?.credential ?? null), shelf);
 
     if (result.error === 'auth_expired') {
-      this.logger.warn(`[reading_services.private_adapter.shelf] [fail] provider=${this.module.provider} error=auth_expired - marking needsReconnect`);
+      this.logger.warn(
+        `[reading_services.private_adapter.shelf] [fail] provider=${this.module.provider} error=auth_expired - marking needsReconnect`,
+      );
       await this.credentials.markNeedsReconnect(userId, this.module.provider);
       return [];
     }
@@ -117,7 +119,10 @@ export class PrivateAdapterBridge implements ReadingServiceProviderAdapter {
     return result.items;
   }
 
-  async validateCredential(userId: number, credential: string): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }> {
+  async validateCredential(
+    userId: number,
+    credential: string,
+  ): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }> {
     if (!this.module.validateCredential) return { ok: false, reason: 'invalid' };
     return this.module.validateCredential(this.makeCtx(userId, null), credential);
   }
