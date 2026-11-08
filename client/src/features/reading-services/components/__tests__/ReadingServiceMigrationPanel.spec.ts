@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { defineComponent, ref } from 'vue'
 import { mount } from '@vue/test-utils'
-import type { ReadingServiceRemoteOnlyBook, SyncRunProgress } from '@bookorbit/types'
+import type { ReadingServiceRemoteOnlyBook, ReadingServiceSummary, SyncRunProgress } from '@bookorbit/types'
 import ReadingServiceMigrationPanel from '../ReadingServiceMigrationPanel.vue'
 
 const ConfirmDialogStub = defineComponent({
@@ -112,7 +112,7 @@ const baseSummary = {
   libraries: [],
 }
 
-function mountPanel(props: { provider: 'readwise'; summary: typeof baseSummary }) {
+function mountPanel(props: { provider: 'readwise'; summary: ReadingServiceSummary }) {
   return mount(ReadingServiceMigrationPanel, { props, global: { stubs: { ConfirmDialog: ConfirmDialogStub } } })
 }
 
