@@ -13,7 +13,7 @@ import {
 } from './readwise.constants';
 import { ReadwiseClientService, ReadwiseUnauthorizedError, type ReadwiseHighlight } from './readwise-client.service';
 import { ReadwiseRepository, type NewHighlightRow } from './readwise.repository';
-import { ReadwiseSettingsService } from './readwise-settings.service';
+import { ReadwiseTokenService } from './readwise-token.service';
 
 const SYNC_EVENT = 'readwise.sync';
 
@@ -28,7 +28,7 @@ export class ReadwiseSyncService {
   constructor(
     private readonly repo: ReadwiseRepository,
     private readonly client: ReadwiseClientService,
-    private readonly settingsService: ReadwiseSettingsService,
+    private readonly tokens: ReadwiseTokenService,
     @Inject(appConfig.KEY) private readonly appConfiguration: ConfigType<typeof appConfig>,
   ) {}
 
@@ -38,7 +38,7 @@ export class ReadwiseSyncService {
     if (!(settings?.apiToken || settings?.apiTokenEncrypted) || !settings.enabled) return;
     const hasPermission = await this.repo.userHasReadwiseSyncPermission(userId);
     if (!hasPermission) return;
-    const token = await this.settingsService.getToken(userId);
+    const token = await this.tokens.getToken(userId);
     if (!token) return;
 
     let watermark = settings.lastSyncedAnnotationId;
