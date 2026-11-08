@@ -78,7 +78,9 @@ export class ReadwiseBooksLocalBooksRepository {
     const attempts = await this.db
       .select({ bookId: schema.readingAttempts.bookId, startedOn: schema.readingAttempts.startedOn, endedOn: schema.readingAttempts.endedOn })
       .from(schema.readingAttempts)
-      .where(and(eq(schema.readingAttempts.userId, userId), inArray(schema.readingAttempts.bookId, bookIds), isNull(schema.readingAttempts.deletedAt)))
+      .where(
+        and(eq(schema.readingAttempts.userId, userId), inArray(schema.readingAttempts.bookId, bookIds), isNull(schema.readingAttempts.deletedAt)),
+      )
       .orderBy(asc(schema.readingAttempts.id));
 
     const latestByBook = new Map<number, { startedOn: string | null; endedOn: string | null }>();

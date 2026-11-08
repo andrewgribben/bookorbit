@@ -22,10 +22,7 @@ const MIGRATION_INDEX_CACHE_KEY = 'migration-remote-index';
 const MIGRATION_MATCHED_CACHE_KEY = 'migration-matched-external-ids';
 const MIGRATION_INDEX_TTL_MS = 60 * 60 * 1000;
 
-type MigrationCursor =
-  | Record<string, never>
-  | { phase: 'index'; next: string | null }
-  | { phase: 'push'; afterBookId: number };
+type MigrationCursor = Record<string, never> | { phase: 'index'; next: string | null } | { phase: 'push'; afterBookId: number };
 
 interface CachedRemoteBook {
   externalId: string;
@@ -61,7 +58,11 @@ function toCreateItem(book: LocalBookForMigration, status: NonNullable<ReturnTyp
   };
 }
 
-function toUpdateItem(externalId: string, book: LocalBookForMigration, status: ReturnType<typeof mapBookOrbitStatusToReadwise>): ReadwiseBookUpdateItem {
+function toUpdateItem(
+  externalId: string,
+  book: LocalBookForMigration,
+  status: ReturnType<typeof mapBookOrbitStatusToReadwise>,
+): ReadwiseBookUpdateItem {
   return {
     id: externalId,
     ...(status ? { status } : {}),
@@ -104,8 +105,9 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     return token !== null;
   }
 
-  async pull(_userId: number): Promise<void> {
+  async pull(userId: number): Promise<void> {
     // Two-way pull lands in stage S3. Migration (this adapter's current job) is push-only.
+    void userId;
     return Promise.resolve();
   }
 
@@ -204,7 +206,12 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       if (result) {
         matchedSoFar.add(result.externalId);
         counters.matched += 1;
-        updateItems.push({ book, externalId: result.externalId, matchMethod: result.method, item: toUpdateItem(result.externalId, book, pushStatus) });
+        updateItems.push({
+          book,
+          externalId: result.externalId,
+          matchMethod: result.method,
+          item: toUpdateItem(result.externalId, book, pushStatus),
+        });
       } else if (pushStatus !== null) {
         createItems.push({ book, item: toCreateItem(book, pushStatus) });
       } else {
@@ -214,7 +221,13 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
 
     try {
       if (updateItems.length > 0) {
-        await this.callReadwise(userId, () => this.client.updateBooks(userId, token, updateItems.map((u) => u.item)));
+        await this.callReadwise(userId, () =>
+          this.client.updateBooks(
+            userId,
+            token,
+            updateItems.map((u) => u.item),
+          ),
+        );
         for (const u of updateItems) {
           await this.readingServicesRepo.upsertBookLink(userId, this.provider, u.book.bookId, {
             externalBookId: u.externalId,
@@ -225,7 +238,13 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
         counters.updated += updateItems.length;
       }
       if (createItems.length > 0) {
-        const results = await this.callReadwise(userId, () => this.client.createBooks(userId, token, createItems.map((c) => c.item)));
+        const results = await this.callReadwise(userId, () =>
+          this.client.createBooks(
+            userId,
+            token,
+            createItems.map((c) => c.item),
+          ),
+        );
         for (let i = 0; i < createItems.length; i++) {
           const created = results[i];
           const entry = createItems[i]!;
@@ -270,7 +289,11 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     // migration-screen list; nothing here is pushed to Readwise or written locally.
     const readwiseOnly = remoteBooks.filter((b) => !matchedExternalIds.has(b.externalId));
     counters.skipped += readwiseOnly.length;
-    const classified = readwiseOnly.map((b) => ({ externalId: b.externalId, title: b.title, ownership: classifyReadwiseOwnership(b.creationOrigin) }));
+    const classified = readwiseOnly.map((b) => ({
+      externalId: b.externalId,
+      title: b.title,
+      ownership: classifyReadwiseOwnership(b.creationOrigin),
+    }));
     await this.cache.set(userId, this.provider, 'migration-readwise-only', classified, MIGRATION_INDEX_TTL_MS);
   }
 

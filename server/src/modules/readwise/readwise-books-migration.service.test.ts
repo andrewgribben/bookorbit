@@ -64,7 +64,10 @@ describe('ReadwiseBooksMigrationService', () => {
   describe('migratePage: index phase', () => {
     it('pages through listBooks and transitions to the push phase once next is null', async () => {
       const { service, client } = makeService();
-      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: { isbn: '9780306406157' }, status: 'finished' }], next: 'cursor2' });
+      (client.listBooks as any).mockResolvedValueOnce({
+        results: [{ id: 'r1', product: { isbn: '9780306406157' }, status: 'finished' }],
+        next: 'cursor2',
+      });
       const first = await service.migratePage(1, {}, emptyCounters());
       expect(first).toEqual({ phase: 'index', next: 'cursor2' });
 
@@ -106,16 +109,19 @@ describe('ReadwiseBooksMigrationService', () => {
       (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
       const indexCursor = await service.migratePage(1, {}, emptyCounters());
 
-      (localBooks.findPage as any)
-        .mockResolvedValueOnce([book({ bookId: 20, title: 'New Book', status: 'want_to_read' })])
-        .mockResolvedValueOnce([]);
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 20, title: 'New Book', status: 'want_to_read' })]).mockResolvedValueOnce([]);
       (client.createBooks as any).mockResolvedValueOnce([{ id: 'r9', status: 'created', book_id: 'r9' }]);
 
       const counters = emptyCounters();
       await service.migratePage(1, indexCursor!, counters);
 
       expect(client.createBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ status: 'want_to_read' })]);
-      expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(1, 'readwise', 20, expect.objectContaining({ externalBookId: 'r9', matchMethod: 'created' }));
+      expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(
+        1,
+        'readwise',
+        20,
+        expect.objectContaining({ externalBookId: 'r9', matchMethod: 'created' }),
+      );
       expect(counters).toMatchObject({ scanned: 1, created: 1 });
     });
 
@@ -166,7 +172,10 @@ describe('ReadwiseBooksMigrationService', () => {
         next: null,
       });
       (localBooks.findPage as any)
-        .mockResolvedValueOnce([book({ bookId: 1, isbn13: '9780306406157', status: 'read' }), book({ bookId: 2, title: 'Fresh Book', status: 'want_to_read' })])
+        .mockResolvedValueOnce([
+          book({ bookId: 1, isbn13: '9780306406157', status: 'read' }),
+          book({ bookId: 2, title: 'Fresh Book', status: 'want_to_read' }),
+        ])
         .mockResolvedValueOnce([]);
 
       const result = await service.previewMigration(1);

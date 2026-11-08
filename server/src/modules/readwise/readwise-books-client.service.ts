@@ -184,7 +184,11 @@ export class ReadwiseBooksClientService {
     return result.items;
   }
 
-  async listSessions(userId: number, token: string, params: ReadwiseListSessionsParams = {}): Promise<{ results: ReadwiseSession[]; next: string | null }> {
+  async listSessions(
+    userId: number,
+    token: string,
+    params: ReadwiseListSessionsParams = {},
+  ): Promise<{ results: ReadwiseSession[]; next: string | null }> {
     const query = toQueryString({
       updated_after: params.updatedAfter,
       order: params.order,

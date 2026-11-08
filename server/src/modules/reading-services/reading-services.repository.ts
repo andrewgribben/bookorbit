@@ -6,7 +6,13 @@ import type { ReadingServiceFeature, ReadingServiceProvider, SyncRunProgressCoun
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import type { NewReadingServiceBookLink, NewReadingServiceRun, ReadingServiceBookLink, ReadingServiceCacheRow, ReadingServiceRun } from '../../db/schema';
+import type {
+  NewReadingServiceBookLink,
+  NewReadingServiceRun,
+  ReadingServiceBookLink,
+  ReadingServiceCacheRow,
+  ReadingServiceRun,
+} from '../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
 
