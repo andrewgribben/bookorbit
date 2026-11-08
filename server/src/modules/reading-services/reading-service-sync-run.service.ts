@@ -111,9 +111,7 @@ export class ReadingServiceSyncRunService implements OnModuleInit {
 
     await this.repo.updateRun(id, { status: 'running', error: null, finishedAt: null });
     const resumed: ReadingServiceRun = { ...run, status: 'running', error: null, finishedAt: null };
-    this.logger.log(
-      `[${EVENT}] [start] userId=${resumed.userId} provider=${resumed.provider} runId=${resumed.id} - migration resumed from cursor`,
-    );
+    this.logger.log(`[${EVENT}] [start] userId=${resumed.userId} provider=${resumed.provider} runId=${resumed.id} - migration resumed from cursor`);
     void this.runLoop(resumed).catch((err) => this.logFailure(resumed, err, Date.now()));
     return toProgress(resumed);
   }

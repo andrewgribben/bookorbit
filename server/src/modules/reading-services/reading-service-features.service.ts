@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 
-import { READING_SERVICE_FEATURES, READING_SERVICE_FEATURES_DEFAULT_OFF, type ReadingServiceFeature, type ReadingServiceProvider } from '@bookorbit/types';
+import {
+  READING_SERVICE_FEATURES,
+  READING_SERVICE_FEATURES_DEFAULT_OFF,
+  type ReadingServiceFeature,
+  type ReadingServiceProvider,
+} from '@bookorbit/types';
 
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServicesRepository } from './reading-services.repository';

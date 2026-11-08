@@ -152,7 +152,11 @@ describe('ReadingServicesController', () => {
   it('lists readwise-only books for a permitted provider via the adapter', async () => {
     const { controller, registry } = makeController();
     const user = makeUser([Permission.ReadwiseSync]);
-    const listRemoteOnlyBooks = vi.fn().mockResolvedValue({ items: [{ externalId: 'rw1', title: 'A', author: 'B', coverImageUrl: null, ownership: 'unknown', externalUrl: null }], next: null, total: 1 });
+    const listRemoteOnlyBooks = vi.fn().mockResolvedValue({
+      items: [{ externalId: 'rw1', title: 'A', author: 'B', coverImageUrl: null, ownership: 'unknown', externalUrl: null }],
+      next: null,
+      total: 1,
+    });
     registry.register({
       provider: 'readwise',
       capabilities: {},

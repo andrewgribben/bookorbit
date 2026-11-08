@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
-import type { ReadingServiceCapabilities, ReadingServiceProvider, ReadingServiceRemoteOnlyBooksPage, SyncRunProgressCounters } from '@bookorbit/types';
+import type {
+  ReadingServiceCapabilities,
+  ReadingServiceProvider,
+  ReadingServiceRemoteOnlyBooksPage,
+  SyncRunProgressCounters,
+} from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
@@ -337,11 +342,16 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
    */
   async listRemoteOnlyBooks(userId: number, offset: number, limit: number): Promise<ReadingServiceRemoteOnlyBooksPage> {
     const classified =
-      (await this.cache.get<Array<{ externalId: string; title: string | null; author: string | null; externalUrl: string | null; coverImageUrl: string | null; ownership: 'owned' | 'not_owned' | 'unknown' }>>(
-        userId,
-        this.provider,
-        MIGRATION_READWISE_ONLY_CACHE_KEY,
-      )) ?? [];
+      (await this.cache.get<
+        Array<{
+          externalId: string;
+          title: string | null;
+          author: string | null;
+          externalUrl: string | null;
+          coverImageUrl: string | null;
+          ownership: 'owned' | 'not_owned' | 'unknown';
+        }>
+      >(userId, this.provider, MIGRATION_READWISE_ONLY_CACHE_KEY)) ?? [];
     const page = classified.slice(offset, offset + limit);
     const next = offset + limit < classified.length ? offset + limit : null;
     return { items: page, next, total: classified.length };
