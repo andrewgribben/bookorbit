@@ -6,7 +6,7 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
@@ -151,11 +151,19 @@ export class ReadwiseSessionsPushService {
     publishToFeed: boolean,
   ): Promise<number> {
     const items = batch.map((session) => toCreateItem(session, externalBookId, timezone, publishToFeed));
+    let results: Awaited<ReturnType<ReadwiseBooksClientService['createSessions']>>;
     try {
-      const results = await this.client.createSessions(userId, token, items);
-      return this.recordSessionResults(userId, batch, results);
+      results = await this.client.createSessions(userId, token, items);
     } catch (err) {
       if (err instanceof ReadwiseUnauthorizedError || err instanceof ReadwiseBooksForbiddenError) throw err;
+      // Readwise does not dedupe sessions: only resend when it rejected the request outright (4xx).
+      if (!(err instanceof ReadwiseBooksHttpError && err.status >= 400 && err.status < 500)) {
+        const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
+        this.logger.error(
+          `[${EVENT}] [fail] userId=${userId} bookId=${bookId} sessions=${batch.length} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - session batch outcome unknown, not resent`,
+        );
+        return 0;
+      }
       let pushed = 0;
       for (const session of batch) {
         try {
@@ -171,6 +179,7 @@ export class ReadwiseSessionsPushService {
       }
       return pushed;
     }
+    return this.recordSessionResults(userId, batch, results);
   }
 
   private async recordSessionResults(userId: number, batch: PushableSession[], results: { id: string }[]): Promise<number> {

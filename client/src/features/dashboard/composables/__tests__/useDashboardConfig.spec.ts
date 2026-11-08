@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { Permission, type AuthUser, type ScrollerConfig } from '@bookorbit/types'
+import { Permission, type AuthUser, type ExternalShelfConfig, type ScrollerConfig } from '@bookorbit/types'
 import { effectScope, ref } from 'vue'
 import type { api } from '@/lib/api'
 
@@ -15,8 +15,12 @@ function signedIn(settings: AuthUser['settings'] = {}, id = 1) {
 
 const STORAGE_KEY = 'bookorbit:dashboard:config'
 
-function storedConfig(): { scrollers: ScrollerConfig[]; shelfLayout: string } {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { scrollers: ScrollerConfig[]; shelfLayout: string }
+function storedConfig(): { scrollers: ScrollerConfig[]; shelfLayout: string; externalShelves?: ExternalShelfConfig[] } {
+  return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as {
+    scrollers: ScrollerConfig[]
+    shelfLayout: string
+    externalShelves?: ExternalShelfConfig[]
+  }
 }
 
 describe('useDashboardConfig', () => {
@@ -370,6 +374,20 @@ describe('useDashboardConfig', () => {
 
     expect(shelfLayout.value).toBe(SHELF_LAYOUT.TWO_COLUMNS)
     expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: SHELF_LAYOUT.TWO_COLUMNS, externalShelves: [] })
+  })
+
+  it('keeps external shelves from private adapter providers when saving', async () => {
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const { scrollers, shelfLayout, externalShelves, saveShelfSettings } = useDashboardConfig()
+    const shelves = [
+      { provider: 'readwise-social', shelf: 'friends-reading', enabled: true, order: 1 },
+      { provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 2 },
+    ] as unknown as ExternalShelfConfig[]
+
+    await saveShelfSettings(scrollers.value, shelfLayout.value, false, shelves)
+
+    expect(externalShelves.value).toEqual(shelves)
+    expect(storedConfig().externalShelves).toEqual(shelves)
   })
 
   it('normalizes an unknown stored shelf layout to wide rows', async () => {

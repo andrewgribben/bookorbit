@@ -18,7 +18,7 @@ import { ReadingServicesRepository } from '../reading-services/reading-services.
 import { buildRemoteIndex, matchBook, type RemoteIndexBook } from '../reading-services/book-matcher';
 import { classifyReadwiseOwnership } from './readwise-book-ownership';
 import type { ReadwiseBook, ReadwiseBookCreateItem, ReadwiseBookStatus, ReadwiseBookUpdateItem } from './readwise-books-client.service';
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
@@ -218,7 +218,8 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     const page = await this.callReadwise(userId, () =>
       this.client.listBooks(userId, token, { limit: READWISE_BOOKS_LIST_LIMIT, cursor: cursor.next ?? undefined }),
     );
-    const existing = (await this.cache.get<CachedRemoteBook[]>(userId, this.provider, MIGRATION_INDEX_CACHE_KEY)) ?? [];
+    // A fresh run starts at next=null; drop any index left by an earlier run so books are not listed twice.
+    const existing = cursor.next === null ? [] : ((await this.cache.get<CachedRemoteBook[]>(userId, this.provider, MIGRATION_INDEX_CACHE_KEY)) ?? []);
     const accumulated = [...existing, ...page.results.map(toRemoteIndexBook)];
     await this.cache.set(userId, this.provider, MIGRATION_INDEX_CACHE_KEY, accumulated, MIGRATION_INDEX_TTL_MS);
 
@@ -326,7 +327,8 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   ): Promise<void> {
     // D1: Readwise-only books are counted as skipped and classified by ownership for the
     // migration-screen list; nothing here is pushed to Readwise or written locally.
-    const readwiseOnly = remoteBooks.filter((b) => !matchedExternalIds.has(b.externalId));
+    const seen = new Set<string>();
+    const readwiseOnly = remoteBooks.filter((b) => !matchedExternalIds.has(b.externalId) && !seen.has(b.externalId) && seen.add(b.externalId));
     counters.skipped += readwiseOnly.length;
     const classified = readwiseOnly.map((b) => ({
       externalId: b.externalId,
@@ -388,6 +390,11 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   }
 
   /** Account-level failures (bad token, no Readwise Books) must still abort the whole run. */
+  /** True only when Readwise answered with a 4xx, i.e. it rejected the request and wrote nothing. */
+  private isRejectedRequest(err: unknown): boolean {
+    return err instanceof ReadwiseBooksHttpError && err.status >= 400 && err.status < 500;
+  }
+
   private isAbortingError(err: unknown): boolean {
     return err instanceof ReadwiseUnauthorizedError || err instanceof ReadwiseBooksForbiddenError;
   }
@@ -430,12 +437,16 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
             batch.map((u) => u.item),
           ),
         );
-        for (const u of batch) {
-          await this.recordUpdateSuccess(userId, u);
-          counters.updated += 1;
-        }
       } catch (err) {
         if (this.isAbortingError(err)) throw err;
+        if (!this.isRejectedRequest(err)) {
+          // The request may have been applied (bad response body, network drop): never resend blind.
+          for (const u of batch) {
+            counters.failed += 1;
+            this.logItemFailure(userId, 'update', u.book.bookId, u.externalId, err);
+          }
+          continue;
+        }
         for (const u of batch) {
           try {
             await this.callReadwise(userId, () => this.client.updateBooks(userId, token, [u.item]));
@@ -447,6 +458,11 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
             this.logItemFailure(userId, 'update', u.book.bookId, u.externalId, itemErr);
           }
         }
+        continue;
+      }
+      for (const u of batch) {
+        await this.recordUpdateSuccess(userId, u);
+        counters.updated += 1;
       }
     }
   }
@@ -496,28 +512,40 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   ): Promise<void> {
     for (let i = 0; i < createItems.length; i += READWISE_BOOKS_CREATE_BATCH) {
       const batch = createItems.slice(i, i + READWISE_BOOKS_CREATE_BATCH);
+      let results: Awaited<ReturnType<ReadwiseBooksClientService['createBooks']>>;
       try {
-        const results = await this.callReadwise(userId, () =>
+        results = await this.callReadwise(userId, () =>
           this.client.createBooks(
             userId,
             token,
             batch.map((c) => c.item),
           ),
         );
-        await this.recordCreateResults(userId, batch, results, counters, matchedSoFar);
       } catch (err) {
         if (this.isAbortingError(err)) throw err;
+        if (!this.isRejectedRequest(err)) {
+          // The books may have been created already; resending could add copies, so fail the batch instead.
+          for (const c of batch) {
+            counters.failed += 1;
+            this.logItemFailure(userId, 'create', c.book.bookId, null, err);
+          }
+          continue;
+        }
         for (const c of batch) {
+          let singleResult: typeof results;
           try {
-            const singleResult = await this.callReadwise(userId, () => this.client.createBooks(userId, token, [c.item]));
-            await this.recordCreateResults(userId, [c], singleResult, counters, matchedSoFar);
+            singleResult = await this.callReadwise(userId, () => this.client.createBooks(userId, token, [c.item]));
           } catch (itemErr) {
             if (this.isAbortingError(itemErr)) throw itemErr;
             counters.failed += 1;
             this.logItemFailure(userId, 'create', c.book.bookId, null, itemErr);
+            continue;
           }
+          await this.recordCreateResults(userId, [c], singleResult, counters, matchedSoFar);
         }
+        continue;
       }
+      await this.recordCreateResults(userId, batch, results, counters, matchedSoFar);
     }
   }
 

@@ -253,6 +253,35 @@ describe('ReadwiseBooksMigrationService', () => {
       expect(result).toBeNull();
     });
 
+    it('never resends a create batch whose outcome is unknown, so books are not added to Readwise twice', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      const localPage = [book({ bookId: 1, title: 'A', status: 'want_to_read' }), book({ bookId: 2, title: 'B', status: 'want_to_read' })];
+      (localBooks.findPage as any).mockResolvedValueOnce(localPage).mockResolvedValueOnce([]);
+      (client.createBooks as any).mockRejectedValueOnce(new Error('Readwise POST /books returned an unexpected response shape'));
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).toHaveBeenCalledTimes(1);
+      expect(counters.failed).toBe(2);
+    });
+
+    it('starts a fresh run with an empty remote index so Readwise-only books are not listed twice', async () => {
+      const { service, client, localBooks } = makeService();
+      for (let run = 0; run < 2; run++) {
+        (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: { title: 'Only Remote' } }], next: null });
+        const indexCursor = await service.migratePage(1, {}, emptyCounters());
+        (localBooks.findPage as any).mockResolvedValueOnce([]);
+        await service.migratePage(1, indexCursor!, emptyCounters());
+      }
+
+      const page = await service.listRemoteOnlyBooks(1, 0, 50);
+      expect(page.total).toBe(1);
+    });
+
     it('retries a 400 update batch item by item and keeps the run from aborting', async () => {
       const { service, client, localBooks } = makeService();
       (client.listBooks as any).mockResolvedValueOnce({

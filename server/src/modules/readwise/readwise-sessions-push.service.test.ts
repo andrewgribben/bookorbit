@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseSessionsLocalRepository, type PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
@@ -144,9 +144,9 @@ describe('ReadwiseSessionsPushService', () => {
     (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
     (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 400 }), session({ id: 401 })]);
     (client.createSessions as any)
-      .mockRejectedValueOnce(new Error('Readwise Books API error: PATCH /books/api/v1/sessions -> 400'))
+      .mockRejectedValueOnce(new ReadwiseBooksHttpError('POST', '/books/api/v1/sessions', 400, ''))
       .mockResolvedValueOnce([{ id: 'ext-400' }])
-      .mockRejectedValueOnce(new Error('Readwise Books API error: PATCH /books/api/v1/sessions -> 400'));
+      .mockRejectedValueOnce(new ReadwiseBooksHttpError('POST', '/books/api/v1/sessions', 400, ''));
 
     await service.flushUser(1, [10]);
 
@@ -154,5 +154,16 @@ describe('ReadwiseSessionsPushService', () => {
     expect(readingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
       { userId: 1, provider: 'readwise', kind: 'session', localId: 400, externalId: 'ext-400' },
     ]);
+  });
+
+  it('does not resend a session batch when the outcome is unknown, since Readwise would record duplicates', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 400 }), session({ id: 401 })]);
+    (client.createSessions as any).mockRejectedValueOnce(new Error('Readwise POST /sessions returned an unexpected response shape'));
+
+    await service.flushUser(1, [10]);
+
+    expect(client.createSessions).toHaveBeenCalledTimes(1);
   });
 });

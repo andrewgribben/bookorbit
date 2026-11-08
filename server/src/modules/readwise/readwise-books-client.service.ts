@@ -192,6 +192,38 @@ function toQueryString(params: Record<string, string | number | undefined>): str
   return query ? `?${query}` : '';
 }
 
+/** Readwise Books write endpoints answer `{ results: [...] }`, one entry per request item, in order. */
+interface ReadwiseWriteResponse<T> {
+  results?: T[];
+  items?: T[];
+}
+
+type RawBookWriteResult = Omit<ReadwiseBookCreateResult, 'book_id' | 'id'> & { book_id?: string | number | null; id?: string | number | null };
+type RawSessionWriteResult = { status?: string; session_id?: string | number | null; id?: string | number | null; error?: string | null };
+
+/** Thrown when a write call succeeded at HTTP level but the body is not the documented shape; the write may have landed, so callers must not blindly retry. */
+export class ReadwiseUnexpectedResponseError extends Error {
+  constructor(operation: string) {
+    super(`Readwise ${operation} returned an unexpected response shape`);
+    this.name = 'ReadwiseUnexpectedResponseError';
+  }
+}
+
+function readWriteResults<T>(body: ReadwiseWriteResponse<T> | null | undefined, expected: number, operation: string): T[] {
+  const results = body?.results ?? body?.items;
+  if (!Array.isArray(results) || results.length !== expected) throw new ReadwiseUnexpectedResponseError(operation);
+  return results;
+}
+
+function normalizeBookWriteResult(r: RawBookWriteResult): ReadwiseBookCreateResult {
+  return {
+    ...r,
+    id: r.id != null ? String(r.id) : '',
+    book_id: r.book_id != null ? String(r.book_id) : undefined,
+    error: r.error ?? undefined,
+  };
+}
+
 @Injectable()
 export class ReadwiseBooksClientService {
   private readonly logger = new Logger(ReadwiseBooksClientService.name);
@@ -217,14 +249,14 @@ export class ReadwiseBooksClientService {
 
   async createBooks(userId: number, token: string, items: ReadwiseBookCreateItem[]): Promise<ReadwiseBookCreateResult[]> {
     if (items.length === 0) return [];
-    const result = await this.request<{ items: ReadwiseBookCreateResult[] }>(userId, token, 'POST', READWISE_BOOKS_URL, { items });
-    return result.items;
+    const result = await this.request<ReadwiseWriteResponse<RawBookWriteResult>>(userId, token, 'POST', READWISE_BOOKS_URL, { items });
+    return readWriteResults(result, items.length, 'POST /books').map(normalizeBookWriteResult);
   }
 
   async updateBooks(userId: number, token: string, items: ReadwiseBookUpdateItem[]): Promise<ReadwiseBookCreateResult[]> {
     if (items.length === 0) return [];
-    const result = await this.request<{ items: ReadwiseBookCreateResult[] }>(userId, token, 'PATCH', READWISE_BOOKS_URL, { items });
-    return result.items;
+    const result = await this.request<ReadwiseWriteResponse<RawBookWriteResult>>(userId, token, 'PATCH', READWISE_BOOKS_URL, { items });
+    return readWriteResults(result, items.length, 'PATCH /books').map(normalizeBookWriteResult);
   }
 
   async listSessions(
@@ -243,8 +275,11 @@ export class ReadwiseBooksClientService {
 
   async createSessions(userId: number, token: string, items: ReadwiseCreateSessionItem[]): Promise<{ id: string }[]> {
     if (items.length === 0) return [];
-    const result = await this.request<{ items: { id: string }[] }>(userId, token, 'POST', READWISE_SESSIONS_URL, { items });
-    return result.items;
+    const result = await this.request<ReadwiseWriteResponse<RawSessionWriteResult>>(userId, token, 'POST', READWISE_SESSIONS_URL, { items });
+    return readWriteResults(result, items.length, 'POST /sessions').map((r) => ({
+      ...r,
+      id: r.session_id != null ? String(r.session_id) : r.id != null ? String(r.id) : '',
+    }));
   }
 
   async deleteSessions(userId: number, token: string, ids: string[]): Promise<void> {

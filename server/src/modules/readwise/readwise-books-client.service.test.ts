@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
+import {
+  ReadwiseBooksClientService,
+  ReadwiseBooksForbiddenError,
+  ReadwiseBooksHttpError,
+  ReadwiseUnexpectedResponseError,
+} from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { ReadwiseQueueService } from './readwise-queue.service';
 import { READWISE_BOOKS_URL, READWISE_SESSIONS_BY_DAY_URL, READWISE_SESSIONS_URL, READWISE_STATS_SUMMARY_URL } from './readwise.constants';
@@ -71,20 +76,27 @@ describe('ReadwiseBooksClientService', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('posts items to the books URL and returns the result items', async () => {
-      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { items: [{ id: '1', status: 'created' }] }));
+    it('posts items to the books URL and returns the documented results with string book ids', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [{ status: 'created', matched_by: null, book_id: 4815163, error: null }] }));
       const result = await service.createBooks(1, 'tok', [{ product: { title: 'A Book' }, status: 'want_to_read' }]);
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe(READWISE_BOOKS_URL);
       expect(init.method).toBe('POST');
       expect(JSON.parse(init.body)).toEqual({ items: [{ product: { title: 'A Book' }, status: 'want_to_read' }] });
-      expect(result).toEqual([{ id: '1', status: 'created' }]);
+      expect(result).toEqual([{ id: '', status: 'created', matched_by: null, book_id: '4815163', error: undefined }]);
+    });
+
+    it('throws ReadwiseUnexpectedResponseError instead of crashing when the body has no results', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { items: undefined }));
+      await expect(service.createBooks(1, 'tok', [{ product: { title: 'A Book' }, status: 'want_to_read' }])).rejects.toBeInstanceOf(
+        ReadwiseUnexpectedResponseError,
+      );
     });
   });
 
   describe('updateBooks', () => {
     it('sends a PATCH to the books URL', async () => {
-      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { items: [{ id: '1', status: 'existing' }] }));
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [{ status: 'existing', book_id: 1, error: null }] }));
       await service.updateBooks(1, 'tok', [{ id: '1', status: 'finished' }]);
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe(READWISE_BOOKS_URL);
@@ -160,12 +172,12 @@ describe('ReadwiseBooksClientService', () => {
       expect(url).toBe(`${READWISE_SESSIONS_URL}?updated_after=2026-01-01&include_deleted=true`);
     });
 
-    it('posts sessions and returns created ids', async () => {
-      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { items: [{ id: 's1' }] }));
+    it('posts sessions and returns created session ids', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [{ status: 'created', session_id: 90211876, error: null }] }));
       const result = await service.createSessions(1, 'tok', [
         { book_id: 'b1', started_at: '2026-01-01T00:00:00Z', ended_at: '2026-01-01T00:30:00Z', format: 'ebook' },
       ]);
-      expect(result).toEqual([{ id: 's1' }]);
+      expect(result).toEqual([{ status: 'created', session_id: 90211876, error: null, id: '90211876' }]);
     });
 
     it('builds the stats summary URL with period and year', async () => {

@@ -1,8 +1,6 @@
 import { computed, ref, watch } from 'vue'
 
 import {
-  READING_SERVICE_PROVIDERS,
-  READING_SERVICE_SHELVES,
   SCROLLER_TYPES,
   type DashboardShelfConfig,
   type DashboardShelfLayout,
@@ -58,8 +56,9 @@ export const UP_NEXT_CUTOFF_MONTHS = [3, 6, 12, 24] as const
 
 /** Stored configs can name shelves this client no longer has; those are dropped on read and never written back. */
 const VALID_SCROLLER_TYPES = new Set<ScrollerType>(SCROLLER_TYPES)
-const VALID_EXTERNAL_PROVIDERS = new Set(READING_SERVICE_PROVIDERS)
-const VALID_EXTERNAL_SHELVES = new Set(READING_SERVICE_SHELVES)
+// Private adapters (for example `readwise-social`) register their own provider and shelf ids at
+// runtime, so persisted entries are checked for shape, not against the built-in lists.
+const EXTERNAL_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 function cloneDefaultScrollers(): ScrollerConfig[] {
   return DEFAULT_SCROLLERS.map((scroller) => ({ ...scroller }))
@@ -160,8 +159,8 @@ function normalizeScrollers(value: unknown): ScrollerConfig[] {
 function normalizeExternalShelf(value: unknown, index: number): ExternalShelfConfig | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Partial<ExternalShelfConfig>
-  if (typeof raw.provider !== 'string' || !VALID_EXTERNAL_PROVIDERS.has(raw.provider as (typeof READING_SERVICE_PROVIDERS)[number])) return null
-  if (typeof raw.shelf !== 'string' || !VALID_EXTERNAL_SHELVES.has(raw.shelf as (typeof READING_SERVICE_SHELVES)[number])) return null
+  if (typeof raw.provider !== 'string' || !EXTERNAL_ID_PATTERN.test(raw.provider)) return null
+  if (typeof raw.shelf !== 'string' || !EXTERNAL_ID_PATTERN.test(raw.shelf)) return null
 
   return {
     provider: raw.provider as ExternalShelfConfig['provider'],
