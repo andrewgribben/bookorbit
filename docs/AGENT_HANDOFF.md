@@ -776,6 +776,41 @@ Open questions for the owner / a successor:
   (not even a disabled feature flag) since Readwise's v2 highlights API
   has nothing to map a bookmark to.
 
+## S6: Readwise web settings UI (2026-11-08)
+
+Branch `feat-readwise-web-settings`, stacked on `feat-readwise-books-two-way` @ `13370231f`. Worktrees: PC `D:/Development/bookorbit-worktrees/feat-readwise-web-settings`, Unraid `/mnt/user/data/Development/bookorbit-worktrees/feat-readwise-web-settings`. Final hash **`f10f4573be`**, local only, not pushed.
+
+Implements the approved mockups (`settings-readwise.html`, `design-notes.md`) against the real S1/S2 reading-services API as it exists on this branch, not as the mockup imagined it:
+
+1. **`client/src/features/reading-services/`** - new feature folder, reused by Hardcover in phase 2 per the plan.
+   - `api/reading-services.api.ts` - thin `fetch` wrappers for every endpoint in `reading-services.controller.ts` (`GET /`, `PATCH /:provider/features`, `POST /:provider/migration/preview`, `POST /:provider/migration`, `GET /runs/:id`, `DELETE /runs/:id`).
+   - `composables/useReadingServices.ts` - module-level shared state (matches `useReadwiseSettings`'s pattern): `fetchSummaries`, `getSummary(provider)`, optimistic `setFeature` with rollback on failure.
+   - `composables/useReadingServiceMigration.ts` - per-mount state (not shared, since only one migration panel is ever on screen): preview, start, cancel, and 2s polling of `GET /runs/:id` while a run is `running`.
+   - `components/ReadingServiceFeatureList.vue` - one row per `ReadingServiceFeature`, built on `SettingsRow` + `ToggleSwitch`. A feature renders as a live toggle only when `capabilities[feature]` is set; otherwise it renders disabled with a one-line reason (there is no server-side "provider never supports this" string, so these are implementer copy per the design notes).
+   - `components/ReadingServiceMigrationPanel.vue` - never-run / previewed / running / completed / failed states.
+2. **`ReadwiseSettings.vue`** - mounts both new components below the existing connection card, calling `fetchSummaries()` alongside the existing `fetchSettings()` on mount.
+3. **Locale** - new `settings.readingServices.*` namespace added only to `en.json`, per `docs/LOCALIZATION.md` ("Adding User-Facing Copy"); `validate:locales` passes (25 catalogs, 12156 English messages).
+4. Component tests: `ReadingServiceFeatureList.spec.ts` (5 cases: full capability render, disabled-with-reason row, missing-flag-reads-as-on, explicit-false-reads-as-off, toggle calls `setFeature`) and `ReadingServiceMigrationPanel.spec.ts` (8 cases, one per state transition plus resuming an already-running run on mount). 13/13 pass; the pre-existing 29 Readwise tests still pass (42 total in the two feature folders).
+
+**Deliberate deviations from the mockup, all because the real branch doesn't have the data yet (not invented):**
+
+- **No Readwise-only books list.** The mockup's 8-row sample list isn't backed by any controller endpoint: `finishMigration()` in `readwise-books-migration.service.ts` caches a classified list under `reading_service_cache` key `migration-readwise-only`, but nothing exposes it over HTTP. Building this against invented data would violate "use the S1/S2 endpoints as they exist; don't invent", so it's left out. **Open item for a future stage:** add a `GET /:provider/migration/readwise-only` endpoint (paginated; 166+ rows per the mockup) before this list can be built, ideally virtualised with `@tanstack/vue-virtual` (already a client dependency, used elsewhere e.g. `VirtualBookGrid.vue`).
+- **Migration preview counters are 3, not 4.** The real `previewMigration()` response is `{ matched, toCreate, readwiseOnly }` with no owned/not-owned split (that split is computed internally in `finishMigration`, not exposed). The panel shows exactly those 3 fields; the mockup's 4-cell preview grid assumed the split was already wired through.
+- **No progress fraction while running.** `SyncRunProgress` has no `total` field, so there's no "1,068 / 1,842" style fraction to show. The running state shows the four live counters (`updated`, `created`, `skipped`, `failed`, matching the orchestrator's review note) without a percentage bar.
+- **"Retry migration", not "Resume migration".** `startMigration()` only resumes a run's cursor when the server process crashes while a run is still `status: 'running'` (the boot-time sweep in `reading-service-sync-run.service.ts`). Calling it again after an explicit `failed` status creates a brand-new run with an empty cursor, it does not continue from where the old one stopped. The failed-state button is labelled accordingly rather than overclaiming a resume the API doesn't do.
+- **`capabilities.owned` is `'read'`** on this branch (no `review`, `sessions`, `highlights`, `publish_sessions`, `recap_widget`, `friends_shelf`, `discover_shelf` yet - those land in S3b/S4/S5/S7). The feature list therefore shows `status`, `rating`, `dates` and `owned` as live toggles and the rest disabled with a reason. This is correct for the current branch state, not a bug; re-check this list after S4/S5/S3b/S7 land, since each should flip one more row from disabled to live.
+
+**Not done - screenshots.** No Chromium/Playwright binary is available on the Unraid host (`which chromium chromium-browser google-chrome` all empty; no `playwright` package in `client/node_modules`), so the page could not be rendered and screenshotted at 1440/390 as the task asked. Installing a browser binary on the shared Unraid host wasn't done without the owner's say, since it's outside "focused checks" scope. Flag this to whoever reviews: either approve installing Playwright/Chromium on Unraid, or do the visual QA pass from a machine that already has a browser.
+
+**Verified on Unraid** (after `pnpm install`):
+
+- `pnpm --filter client run type-check`: clean (`tsc` + `vue-tsc --build`).
+- `pnpm --filter server run type-check`: clean (unaffected by this stage; confirms the stack still typechecks together).
+- `npx vitest run src/features/reading-services src/features/readwise` (client): **5 files, 42 tests, all passed.**
+- `npx prettier --check` / `npx eslint` on every changed file: clean (one prettier fix committed separately, `f10f4573be`).
+- `pnpm run validate:locales` (client): 25 catalogs validated against 12156 English messages.
+- Full repo-wide lint/typecheck and e2e were **not** run, per the "focused checks only" instruction for this stage.
+
 ## First commands for a successor agent
 
 ```bash
