@@ -92,6 +92,13 @@ export const READWISE_SESSIONS_PULL_USER_CONCURRENCY = READWISE_BOOKS_PULL_USER_
 export const READWISE_SESSIONS_PULL_CURSOR_CACHE_KEY = 'sessions-pull-cursor';
 export const READWISE_SESSIONS_PULL_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
 
+// Reconnect-safe first-connect reconcile (see readwise-sessions-reconcile.service.ts): how close
+// a local session's start time and duration need to be to a remote one to count as the same
+// session, and the cache key/TTL gating the one-time reconcile pass per user.
+export const READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS = 60;
+export const READWISE_SESSIONS_RECONCILED_CACHE_KEY = 'sessions-reconciled';
+export const READWISE_SESSIONS_RECONCILED_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+
 // S5 highlights two-way: create/update/delete push is folded into the existing
 // ReadwiseSyncService.flush() debounce (READWISE_AUTO_SYNC_* above), triggered now by
 // annotation.created/updated/deleted. Pull runs on the same interval cadence as books/sessions.

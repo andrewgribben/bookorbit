@@ -13,6 +13,7 @@ import {
   READWISE_SESSIONS_PULL_CURSOR_TTL_MS,
   READWISE_SESSIONS_PULL_INTERVAL_MS,
   READWISE_SESSIONS_PULL_USER_CONCURRENCY,
+  READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS,
 } from './readwise.constants';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
@@ -104,12 +105,29 @@ export class ReadwiseSessionsPullService {
     const bookLink = await this.readingServicesRepo.findBookLinkByExternalId(userId, 'readwise', session.book_id);
     if (!bookLink) return false; // the book isn't migrated/linked yet; S4 only syncs sessions on linked books
 
+    // Reconnect-safe: a session that originated in BookOrbit - pushed to Readwise by this
+    // instance or by a different one connected to the same account - must link to its own local
+    // row here, never be imported as a second `source='readwise'` duplicate.
+    const startedAt = new Date(session.started_at);
+    const durationSeconds = Math.max(0, Math.round((new Date(session.ended_at).getTime() - startedAt.getTime()) / 1000));
+    const localMatch = await this.sessionsRepo.findUnlinkedSessionMatch(
+      userId,
+      bookLink.bookId,
+      startedAt,
+      durationSeconds,
+      READWISE_SESSIONS_RECONCILE_TOLERANCE_SECONDS,
+    );
+    if (localMatch) {
+      await this.readingServicesRepo.recordItemLinks([{ userId, provider: 'readwise', kind: 'session', localId: localMatch.id, externalId: session.id }]);
+      return false; // linked, not imported as a new row - no new stats to add
+    }
+
     const result = await this.sessionsRepo.insertPulledSession(
       userId,
       {
         externalId: session.id,
         bookId: bookLink.bookId,
-        startedAt: new Date(session.started_at),
+        startedAt,
         endedAt: new Date(session.ended_at),
         format: session.format,
       },
