@@ -148,8 +148,10 @@ Fixes made directly on the release branch after that:
 ## 8. Private Readwise friends adapter
 
 - Separate local repo `C:/Users/grib/Development/readwise-accessibility-poc/bookorbit-adapter` (commit
-  `87a63f5`, no remote; keep it out of both BookOrbit forks). Contract v2: device-code, pasted session
-  token, and password sign-in (exact `/bookwise/api/login/` request from the Readwise app; password never
+  `87a63f5`). Its repo, private `andrewgribben/readwise-accessibility-poc` (branch `master`, adapter in
+  `bookorbit-adapter/`), is pinned in this fork as the git submodule `private/readwise-accessibility-poc`.
+  `.dockerignore` keeps it out of the image; deploy still copies `bookorbit-adapter/` to the mount below.
+  Contract v2: device-code, pasted session token, and password sign-in (exact `/bookwise/api/login/` request from the Readwise app; password never
   stored or logged). Deployed copy: `/mnt/user/appdata/bookorbit-private-adapters/readwise-social`.
 - Never print credentials, session tokens, or friends' personal data in logs, chats or docs.
 

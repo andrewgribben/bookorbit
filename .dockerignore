@@ -13,3 +13,5 @@ docker/postgres/data
 /coverage
 /test-results
 **/*.tsbuildinfo
+# private git submodule (personal Readwise adapter): never ship it in the image
+/private
