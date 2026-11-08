@@ -18,6 +18,7 @@ import { AchievementEventsService } from '../src/modules/achievement/achievement
 
 import { UserStatisticsService } from '../src/modules/user-statistics/user-statistics.service';
 import { UserStatisticsRepository } from '../src/modules/user-statistics/user-statistics.repository';
+import { ReadwiseRecapService } from '../src/modules/readwise/readwise-recap.service';
 
 import { makeFakeRepo } from './helpers/reading-attempt-repository.fake';
 
@@ -90,6 +91,7 @@ describe('Reading attempt cache integration', () => {
         { provide: ReadingAttemptRepository, useValue: fake.repo },
         { provide: DashboardWidgetRepository, useValue: { countCompletedBooks, getCurrentlyReadingBooks: vi.fn().mockResolvedValue({ books: [] }) } },
         { provide: LibraryService, useValue: { findAccessibleLibraryIds: vi.fn().mockResolvedValue([1, 2]) } },
+        { provide: ReadwiseRecapService, useValue: {} },
       ],
     }).compile();
     await module.init();

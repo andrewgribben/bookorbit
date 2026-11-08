@@ -265,10 +265,11 @@ function startSwitching(): void {
             <input
               :id="`reading-service-${provider}-password`"
               v-model="passwordInput"
-              :type="passwordVisible ? 'text' : 'password'"
-              autocomplete="current-password"
+              v-bind="SECRET_INPUT_ATTRS"
+              type="text"
               :placeholder="activeMethod.fields?.password?.placeholder"
               class="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              :class="{ 'input-secret': !passwordVisible }"
             />
             <Button variant="outline" size="sm" type="button" @click="passwordVisible = !passwordVisible">
               {{ passwordVisible ? t('common.hide') : t('common.show') }}
