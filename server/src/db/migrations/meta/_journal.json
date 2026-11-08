@@ -1009,6 +1009,13 @@
       "when": 1794128970899,
       "tag": "0143_reading_service_library_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1794138512917,
+      "tag": "0144_add_reading_service_private_credentials",
+      "breakpoints": true
     }
   ]
 }
