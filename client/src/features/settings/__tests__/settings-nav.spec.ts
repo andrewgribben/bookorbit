@@ -8,8 +8,10 @@ import { SETTINGS_NAV, findSettingsNavItem, firstVisibleSettingsRoute, visibleSe
 const NOBODY: SettingsNavContext = { isSuperuser: false, permissions: [], isDemoRestricted: false }
 const SUPERUSER: SettingsNavContext = { isSuperuser: true, permissions: [], isDemoRestricted: false }
 
-/** Detail pages reached from a list, not destinations in the rail. */
-const NON_NAV_ROUTES = new Set(['settings-admin-shared-insights'])
+/** Detail pages reached from a list, or routes whose nav entry is built at runtime (one shared
+ * `settings-reading-service` route serves every private adapter, via `mergeDynamicAccountItems`
+ * in `settings-nav.ts` - there is no static nav item for it to be an "orphan" of). */
+const NON_NAV_ROUTES = new Set(['settings-admin-shared-insights', 'settings-reading-service'])
 
 function settingsRouteNames(): string[] {
   const settingsRoot = routes.flatMap((route) => route.children ?? []).find((route: RouteRecordRaw) => route.path === '/settings')

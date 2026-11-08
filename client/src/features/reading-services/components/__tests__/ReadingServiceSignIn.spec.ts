@@ -126,12 +126,14 @@ describe('ReadingServiceSignIn', () => {
 
     await wrapper.get('[data-testid="reading-service-device-start"]').trigger('click')
     await flushPromises()
-    await flushPromises()
 
     expect(wrapper.get('[data-testid="reading-service-device-code"]').text()).toBe('ABCD-1234')
     const link = wrapper.get('a')
     expect(link.attributes('href')).toBe('https://example.com/device')
     expect(link.attributes('target')).toBe('_blank')
+
+    // The poll itself is a second await inside `pollOnce`, fired-and-forgotten by `startDevice`.
+    await flushPromises()
     expect(wrapper.emitted('changed')).toBeTruthy()
   })
 
@@ -157,7 +159,7 @@ describe('ReadingServiceSignIn', () => {
     await wrapper.get('[data-testid="reading-service-disconnect"]').trigger('click')
     await flushPromises()
 
-    expect(document.body.textContent).toContain('Disconnect fixturewise')
+    expect(document.body.textContent).toContain('Disconnect Fixturewise?')
   })
 
   it('shows a calm reconnect notice and reopens the sign-in methods when needsReconnect is true', () => {

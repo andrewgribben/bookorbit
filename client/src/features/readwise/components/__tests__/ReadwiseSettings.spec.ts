@@ -128,6 +128,7 @@ describe('ReadwiseSettings', () => {
   it('validates the saved token when the token input is empty', async () => {
     settings.value = baseSettings({ tokenConfigured: true })
     const wrapper = await mountPage()
+    await wrapper.get('[data-testid="readwise-connected-row"] button').trigger('click')
 
     await testButton(wrapper, 'Test').trigger('click')
     await flushPromises()
