@@ -136,6 +136,35 @@ export const readingServiceLibrarySettings = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.provider, t.libraryId] })],
 );
 
+/**
+ * Encrypted per-user, per-provider credential for a private adapter (token or device-code
+ * result). Built-in providers keep their own dedicated `apiToken`/`apiTokenEncrypted` columns
+ * (see `ReadingServiceTokenService`); a private adapter has no such column, so it gets one row
+ * here instead. `credentialEncrypted` is always AES-GCM ciphertext (never plaintext) once
+ * `READING_SERVICES_ENCRYPTION_KEY` is configured - see `ReadingServicePrivateCredentialService`.
+ * `needsReconnect` flips true the moment an adapter's `getShelf` reports `auth_expired`, giving
+ * the same "needs reconnect" status built-in providers already show for an expired token.
+ */
+export const readingServicePrivateCredentials = pgTable(
+  'reading_service_private_credentials',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 64 }).notNull(),
+    credentialEncrypted: text('credential_encrypted').notNull(),
+    accountLabel: varchar('account_label', { length: 255 }),
+    needsReconnect: boolean('needs_reconnect').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('rs_private_credentials_user_provider').on(t.userId, t.provider)],
+);
+
+export type ReadingServicePrivateCredentialRow = typeof readingServicePrivateCredentials.$inferSelect;
+export type NewReadingServicePrivateCredentialRow = typeof readingServicePrivateCredentials.$inferInsert;
+
 export type ReadingServiceFeatureRow = typeof readingServiceFeatures.$inferSelect;
 export type NewReadingServiceFeatureRow = typeof readingServiceFeatures.$inferInsert;
 export type ReadingServiceBookLink = typeof readingServiceBookLinks.$inferSelect;

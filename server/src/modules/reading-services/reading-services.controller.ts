@@ -18,6 +18,8 @@ import {
   READING_SERVICE_SHELVES,
   Permission,
   type ReadingServiceAvailableShelf,
+  type ReadingServiceDeviceAuthPollResult,
+  type ReadingServiceDeviceAuthStart,
   type ReadingServiceFeature,
   type ReadingServiceProvider,
   type ReadingServiceRemoteOnlyBooksPage,
@@ -31,10 +33,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PermissionService } from '../../common/services/permission.service';
 import type { RequestUser } from '../../common/types/request-user';
 import { buildRemoteIndex, isbn10ToIsbn13, matchBook } from './book-matcher';
-import { UpdateReadingServiceFeaturesDto, UpdateReadingServiceLibraryDto } from './dto';
+import { ConnectTokenDto, UpdateReadingServiceFeaturesDto, UpdateReadingServiceLibraryDto } from './dto';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
 import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 import { ReadingServiceMatchRepository } from './reading-service-match.repository';
+import { ReadingServicePrivateCredentialService } from './reading-service-private-credential.service';
 import type { ReadingServiceProviderAdapter } from './reading-service-provider';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServiceSyncRunService } from './reading-service-sync-run.service';
@@ -71,6 +74,7 @@ export class ReadingServicesController {
     private readonly syncRunService: ReadingServiceSyncRunService,
     private readonly permissionService: PermissionService,
     private readonly matchRepository: ReadingServiceMatchRepository,
+    private readonly credentials: ReadingServicePrivateCredentialService,
   ) {}
 
   @Get()
@@ -86,6 +90,8 @@ export class ReadingServicesController {
         this.libraryScopeService.getLibrarySummaries(user, adapter.provider as ReadingServiceProvider),
       ]);
 
+      const credential = adapter.authMethods ? await this.credentials.get(user.id, adapter.provider) : null;
+
       summaries.push({
         provider: adapter.provider,
         connected,
@@ -95,6 +101,11 @@ export class ReadingServicesController {
         lastPullAt: null,
         disabledReason: null,
         libraries,
+        displayName: adapter.displayName,
+        description: adapter.description ?? null,
+        iconUrl: adapter.iconUrl ?? null,
+        authMethods: adapter.authMethods,
+        needsReconnect: credential?.needsReconnect ?? false,
       });
     }
     return summaries;
@@ -126,6 +137,62 @@ export class ReadingServicesController {
     const typedProvider = this.assertProviderAccess(user, provider) as ReadingServiceProvider;
     await this.featuresService.setFeatures(user.id, typedProvider, dto.features);
     return this.featuresService.getFeatures(user.id, typedProvider);
+  }
+
+  /** Submits a `token`-method credential, validates it against the adapter, then stores it encrypted. */
+  @Post(':provider/auth/token')
+  async connectWithToken(
+    @CurrentUser() user: RequestUser,
+    @Param('provider') provider: string,
+    @Body() dto: ConnectTokenDto,
+  ): Promise<{ ok: boolean; accountLabel: string | null }> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    if (!adapter?.validateCredential) {
+      throw new BadRequestException(`${typedProvider} does not support a token sign-in`);
+    }
+
+    const result = await adapter.validateCredential(user.id, dto.credential);
+    if (!result.ok) {
+      throw new BadRequestException(`Could not validate the ${typedProvider} token: ${result.reason ?? 'invalid'}`);
+    }
+
+    await this.credentials.save(user.id, typedProvider, dto.credential, result.accountLabel ?? null);
+    return { ok: true, accountLabel: result.accountLabel ?? null };
+  }
+
+  /** Starts a `device_code`-method sign-in. The handle never reaches the response. */
+  @Post(':provider/auth/device/start')
+  async startDeviceAuth(@CurrentUser() user: RequestUser, @Param('provider') provider: string): Promise<ReadingServiceDeviceAuthStart> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    if (!adapter?.startDeviceAuth) {
+      throw new BadRequestException(`${typedProvider} does not support device-code sign-in`);
+    }
+    return adapter.startDeviceAuth(user.id);
+  }
+
+  /** Polls the sign-in started by `startDeviceAuth`. Approval stores the resulting credential server-side. */
+  @Post(':provider/auth/device/poll')
+  async pollDeviceAuth(@CurrentUser() user: RequestUser, @Param('provider') provider: string): Promise<ReadingServiceDeviceAuthPollResult> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    if (!adapter?.pollDeviceAuth) {
+      throw new BadRequestException(`${typedProvider} does not support device-code sign-in`);
+    }
+    return adapter.pollDeviceAuth(user.id);
+  }
+
+  /** Deletes the stored credential for this provider (private adapters; built-ins have their own disconnect). */
+  @Delete(':provider/auth')
+  async disconnect(@CurrentUser() user: RequestUser, @Param('provider') provider: string): Promise<{ ok: true }> {
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    if (!adapter?.disconnect) {
+      throw new BadRequestException(`${typedProvider} does not support disconnecting through this endpoint`);
+    }
+    await adapter.disconnect(user.id);
+    return { ok: true };
   }
 
   /**

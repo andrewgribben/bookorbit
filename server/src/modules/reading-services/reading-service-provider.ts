@@ -1,6 +1,9 @@
 import type {
   Permission,
+  ReadingServiceAuthMethod,
   ReadingServiceCapabilities,
+  ReadingServiceDeviceAuthPollResult,
+  ReadingServiceDeviceAuthStart,
   ReadingServiceProvider,
   ReadingServiceRemoteOnlyBooksPage,
   ReadingServiceShelf,
@@ -11,6 +14,18 @@ import type {
 export interface ReadingServiceProviderAdapter {
   readonly provider: ReadingServiceProvider;
   readonly capabilities: ReadingServiceCapabilities;
+
+  /** Shown in Settings next to Readwise/Hardcover. Private adapters always set this; built-ins leave it undefined. */
+  readonly displayName?: string;
+  readonly description?: string | null;
+  readonly iconUrl?: string | null;
+
+  /**
+   * How a user connects this provider. Absent for the two built-ins, which keep their own
+   * dedicated settings sections; a private adapter declares at least one method here and the
+   * generic reading-service settings UI renders a matching control per entry.
+   */
+  readonly authMethods?: ReadingServiceAuthMethod[];
 
   /**
    * The permission that gates every HTTP route for this provider. Built-in providers (Readwise,
@@ -57,4 +72,16 @@ export interface ReadingServiceProviderAdapter {
    * implement this.
    */
   getShelf?(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]>;
+
+  /** Validates a pasted token/credential. Only present when `authMethods` includes a `token` entry. */
+  validateCredential?(userId: number, credential: string): Promise<{ ok: boolean; accountLabel?: string | null; reason?: 'invalid' | 'expired' | 'network' }>;
+
+  /** Starts a device-code sign-in. Only present when `authMethods` includes a `device_code` entry. */
+  startDeviceAuth?(userId: number): Promise<ReadingServiceDeviceAuthStart>;
+
+  /** Polls a device-code sign-in started by `startDeviceAuth`; never exposes the raw handle to the client. */
+  pollDeviceAuth?(userId: number): Promise<ReadingServiceDeviceAuthPollResult>;
+
+  /** Deletes the stored credential, if any. Private adapters always get this via the loader's bridge. */
+  disconnect?(userId: number): Promise<void>;
 }

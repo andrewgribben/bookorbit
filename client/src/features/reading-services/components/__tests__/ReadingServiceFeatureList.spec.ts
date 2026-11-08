@@ -32,37 +32,60 @@ function makeSummary(overrides: Partial<ReadingServiceSummary> = {}): ReadingSer
 }
 
 describe('ReadingServiceFeatureList', () => {
-  it('renders a toggle for every capability the provider declares', () => {
+  it('renders a toggle for every capability the provider declares, and nothing else', () => {
     const wrapper = mount(ReadingServiceFeatureList, {
       props: { provider: 'readwise', summary: makeSummary() },
     })
 
     const switches = wrapper.findAll('[role="switch"]')
-    expect(switches.length).toBeGreaterThanOrEqual(12)
+    expect(switches.length).toBe(4)
 
     const statusSwitch = wrapper.get('#reading-service-readwise-status')
     expect(statusSwitch.attributes('disabled')).toBeUndefined()
   })
 
-  it('disables the bookmarks row with a reason, since no provider declares that capability', () => {
+  it('does not render a row at all for a feature the platform does not have', () => {
     const wrapper = mount(ReadingServiceFeatureList, {
       props: { provider: 'readwise', summary: makeSummary() },
     })
 
-    const bookmarksSwitch = wrapper.get('#reading-service-readwise-bookmarks')
-    expect(bookmarksSwitch.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('Readwise has no bookmarks API.')
+    expect(wrapper.find('#reading-service-readwise-bookmarks').exists()).toBe(false)
+    expect(wrapper.find('#reading-service-readwise-review').exists()).toBe(false)
+    expect(wrapper.find('#reading-service-readwise-highlights').exists()).toBe(false)
   })
 
-  it('disables rows for features the provider has no capability for, with a reason shown', () => {
+  it('renders a row for a feature once the provider declares that capability', () => {
     const wrapper = mount(ReadingServiceFeatureList, {
-      props: { provider: 'readwise', summary: makeSummary() },
+      props: { provider: 'readwise', summary: makeSummary({ capabilities: { status: 'both', bookmarks: 'push' } }) },
     })
 
-    const reviewSwitch = wrapper.get('#reading-service-readwise-review')
-    expect(reviewSwitch.attributes('disabled')).toBeDefined()
-    expect(reviewSwitch.attributes('aria-checked')).toBe('false')
-    expect(wrapper.text()).toContain("Reviews aren't synced yet.")
+    expect(wrapper.find('#reading-service-readwise-bookmarks').exists()).toBe(true)
+    expect(wrapper.find('#reading-service-readwise-status').exists()).toBe(true)
+  })
+
+  it('greys and disables publish_sessions while sessions is off, with a dependency hint', () => {
+    const wrapper = mount(ReadingServiceFeatureList, {
+      props: {
+        provider: 'readwise',
+        summary: makeSummary({ capabilities: { sessions: 'both', publish_sessions: 'push' }, features: { sessions: false } }),
+      },
+    })
+
+    const toggle = wrapper.get('#reading-service-readwise-publish_sessions')
+    expect(toggle.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Needs session sync turned on first.')
+  })
+
+  it('enables publish_sessions once sessions is on', () => {
+    const wrapper = mount(ReadingServiceFeatureList, {
+      props: {
+        provider: 'readwise',
+        summary: makeSummary({ capabilities: { sessions: 'both', publish_sessions: 'push' }, features: { sessions: true } }),
+      },
+    })
+
+    const toggle = wrapper.get('#reading-service-readwise-publish_sessions')
+    expect(toggle.attributes('disabled')).toBeUndefined()
   })
 
   it('reads a missing feature flag as on, since capabilities are opt-out', () => {

@@ -4,6 +4,7 @@ import { Permission } from '@bookorbit/types';
 import { PermissionService } from '../../common/services/permission.service';
 import type { RequestUser } from '../../common/types/request-user';
 import type { ReadingServiceMatchRepository } from './reading-service-match.repository';
+import type { ReadingServicePrivateCredentialService } from './reading-service-private-credential.service';
 import { ReadingServicesController } from './reading-services.controller';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
 import type { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
@@ -33,6 +34,13 @@ function makeController() {
     getLatestMigrationSummary: vi.fn().mockResolvedValue({ state: 'never', runId: null, finishedAt: null }),
   } as unknown as ReadingServiceSyncRunService;
   const matchRepository = { findCandidates: vi.fn().mockResolvedValue([]) } as unknown as ReadingServiceMatchRepository;
+  const credentials = {
+    get: vi.fn().mockResolvedValue(null),
+    isConnected: vi.fn().mockResolvedValue(false),
+    save: vi.fn().mockResolvedValue(undefined),
+    markNeedsReconnect: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ReadingServicePrivateCredentialService;
   const controller = new ReadingServicesController(
     registry,
     featuresService,
@@ -40,8 +48,9 @@ function makeController() {
     syncRunService,
     new PermissionService(),
     matchRepository,
+    credentials,
   );
-  return { controller, registry, featuresService, libraryScopeService, syncRunService, matchRepository };
+  return { controller, registry, featuresService, libraryScopeService, syncRunService, matchRepository, credentials };
 }
 
 describe('ReadingServicesController', () => {
@@ -527,6 +536,89 @@ describe('ReadingServicesController', () => {
       const [summary] = await controller.list(user);
 
       expect(summary?.libraries).toEqual([{ libraryId: 1, enabled: true, features: {} }]);
+    });
+  });
+
+  describe('private adapter connect flow', () => {
+    function registerAdapter(registry: ReadingServiceRegistry, overrides: Record<string, unknown> = {}) {
+      registry.register({
+        provider: 'fixturewise' as never,
+        permission: Permission.ReadwiseSync,
+        capabilities: { friends_shelf: 'read' },
+        displayName: 'Fixturewise',
+        authMethods: [{ kind: 'device_code', label: 'Sign in' }],
+        isConnected: () => Promise.resolve(false),
+        migratePage: () => Promise.resolve(null),
+        pull: () => Promise.resolve(undefined),
+        ...overrides,
+      });
+    }
+
+    it('includes displayName, authMethods and needsReconnect on the summary', async () => {
+      const { controller, registry, credentials } = makeController();
+      registerAdapter(registry);
+      vi.mocked(credentials.get).mockResolvedValue({ credential: 'tok', accountLabel: 'user@example.test', needsReconnect: true });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const [summary] = await controller.list(user);
+
+      expect(summary?.displayName).toBe('Fixturewise');
+      expect(summary?.authMethods).toEqual([{ kind: 'device_code', label: 'Sign in' }]);
+      expect(summary?.needsReconnect).toBe(true);
+    });
+
+    it('rejects a token submission when the adapter has no validateCredential', async () => {
+      const { controller, registry } = makeController();
+      registerAdapter(registry);
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      await expect(controller.connectWithToken(user, 'fixturewise', { credential: 'abc' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('stores the credential after a successful token validation', async () => {
+      const { controller, registry, credentials } = makeController();
+      registerAdapter(registry, { validateCredential: vi.fn().mockResolvedValue({ ok: true, accountLabel: 'user@example.test' }) });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const result = await controller.connectWithToken(user, 'fixturewise', { credential: 'abc' });
+
+      expect(result).toEqual({ ok: true, accountLabel: 'user@example.test' });
+      expect(credentials.save).toHaveBeenCalledWith(1, 'fixturewise', 'abc', 'user@example.test');
+    });
+
+    it('rejects an invalid token without storing anything', async () => {
+      const { controller, registry, credentials } = makeController();
+      registerAdapter(registry, { validateCredential: vi.fn().mockResolvedValue({ ok: false, reason: 'invalid' }) });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      await expect(controller.connectWithToken(user, 'fixturewise', { credential: 'bad' })).rejects.toThrow(BadRequestException);
+      expect(credentials.save).not.toHaveBeenCalled();
+    });
+
+    it('starts and polls device-code auth through the adapter', async () => {
+      const { controller, registry } = makeController();
+      const startDeviceAuth = vi.fn().mockResolvedValue({ verificationUrl: 'https://x.test', userCode: 'ABCD', expiresAt: new Date().toISOString(), pollIntervalSeconds: 2 });
+      const pollDeviceAuth = vi.fn().mockResolvedValue({ status: 'pending' });
+      registerAdapter(registry, { startDeviceAuth, pollDeviceAuth });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const started = await controller.startDeviceAuth(user, 'fixturewise');
+      expect(started.userCode).toBe('ABCD');
+
+      const polled = await controller.pollDeviceAuth(user, 'fixturewise');
+      expect(polled.status).toBe('pending');
+    });
+
+    it('disconnects through the adapter and deletes the stored credential', async () => {
+      const { controller, registry } = makeController();
+      const disconnect = vi.fn().mockResolvedValue(undefined);
+      registerAdapter(registry, { disconnect });
+      const user = makeUser([Permission.ReadwiseSync]);
+
+      const result = await controller.disconnect(user, 'fixturewise');
+
+      expect(result).toEqual({ ok: true });
+      expect(disconnect).toHaveBeenCalledWith(1);
     });
   });
 });

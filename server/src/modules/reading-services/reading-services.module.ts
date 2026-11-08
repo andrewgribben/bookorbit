@@ -7,6 +7,7 @@ import { ReadingServiceFeaturesService } from './reading-service-features.servic
 import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 import { ReadingServiceMatchRepository } from './reading-service-match.repository';
 import { ReadingServicePrivateAdapterLoaderService } from './reading-service-private-adapter-loader.service';
+import { ReadingServicePrivateCredentialService } from './reading-service-private-credential.service';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServiceSyncRunService } from './reading-service-sync-run.service';
 import { ReadingServiceTokenService } from './reading-service-token.service';
@@ -20,6 +21,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServicesRepository,
     ReadingServiceRegistry,
     ReadingServiceTokenService,
+    ReadingServicePrivateCredentialService,
     ReadingServiceFeaturesService,
     ReadingServiceCacheService,
     ReadingServiceSyncRunService,
@@ -31,6 +33,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServicesRepository,
     ReadingServiceRegistry,
     ReadingServiceTokenService,
+    ReadingServicePrivateCredentialService,
     ReadingServiceCacheService,
     ReadingServiceSyncRunService,
     ReadingServiceFeaturesService,

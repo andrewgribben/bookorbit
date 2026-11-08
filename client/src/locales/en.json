@@ -1785,8 +1785,7 @@
         },
         "review": {
           "label": "Review",
-          "hint": "Your written review, synced alongside the rating.",
-          "unavailable": "Reviews aren't synced yet."
+          "hint": "Your written review, synced alongside the rating."
         },
         "dates": {
           "label": "Started / finished dates",
@@ -1794,42 +1793,40 @@
         },
         "sessions": {
           "label": "Reading sessions",
-          "hint": "Sessions over 60 seconds. Pulled sessions count towards stats only.",
-          "unavailable": "Session sync isn't available yet."
+          "hint": "Sessions over 60 seconds. Pulled sessions count towards stats only."
         },
         "publish_sessions": {
           "label": "Share sessions to my {provider} feed",
           "hint": "Off by default. Only your own feed.",
-          "unavailable": "Needs session sync first."
+          "dependencyHint": "Needs session sync turned on first."
         },
         "highlights": {
           "label": "Highlights",
-          "hint": "New highlights, edits and deletes, both directions.",
-          "unavailable": "Highlights sync through a separate connection for now."
+          "hint": "New highlights, edits and deletes, both directions."
         },
         "bookmarks": {
           "label": "Bookmarks",
-          "hint": "These stay BookOrbit-only.",
-          "unavailable": "{provider} has no bookmarks API."
+          "hint": "These stay BookOrbit-only."
         },
         "owned": {
           "label": "Owned books",
-          "hint": "Marks which of the provider's books you own. The shelf that uses this is coming soon."
+          "hint": "Marks which of the provider's books you own."
         },
         "recap_widget": {
           "label": "Reading recap widget",
-          "hint": "Year stats on your dashboard.",
-          "unavailable": "The recap widget isn't available yet."
+          "hint": "Year stats on your dashboard."
         },
         "friends_shelf": {
           "label": "Friends' reading activity",
-          "hint": "Shelves and widgets built from a follow graph.",
-          "unavailable": "Needs a provider follow graph, coming later."
+          "hint": "Shelves and widgets built from a follow graph."
         },
-        "discover_shelf": {
-          "label": "Discover shelf",
-          "hint": "Trending and recommended titles from the provider.",
-          "unavailable": "Not available yet."
+        "trending_shelf": {
+          "label": "Trending shelf",
+          "hint": "Trending titles from the provider."
+        },
+        "recommendations_shelf": {
+          "label": "Recommendations shelf",
+          "hint": "Recommended titles from the provider."
         }
       },
       "migration": {

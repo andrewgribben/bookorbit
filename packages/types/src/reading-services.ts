@@ -13,7 +13,6 @@ export const READING_SERVICE_FEATURES = [
   "owned",
   "recap_widget",
   "friends_shelf",
-  "discover_shelf",
   "trending_shelf",
   "recommendations_shelf",
 ] as const;
@@ -74,6 +73,31 @@ export type ReadingServiceLibrarySetting = {
   features: Partial<Record<ReadingServiceFeature, boolean>>;
 };
 
+/**
+ * How a provider wants the user to authenticate. Built-in providers (Readwise, Hardcover) keep
+ * their existing dedicated token fields and don't need this; a private adapter declares one or
+ * more of these in its `auth.methods` and the generic reading-service settings UI renders the
+ * matching control for each.
+ */
+export type ReadingServiceAuthMethod =
+  | { kind: "token"; label: string; help?: string; placeholder?: string }
+  | { kind: "device_code"; label: string; help?: string };
+
+export type ReadingServiceDeviceAuthStart = {
+  verificationUrl: string;
+  userCode: string | null;
+  expiresAt: string;
+  pollIntervalSeconds: number;
+};
+
+export type ReadingServiceDeviceAuthPollStatus = "pending" | "approved" | "expired" | "denied" | "error";
+
+export type ReadingServiceDeviceAuthPollResult = {
+  status: ReadingServiceDeviceAuthPollStatus;
+  accountLabel?: string | null;
+  message?: string | null;
+};
+
 export type ReadingServiceSummary = {
   provider: ReadingServiceProvider;
   connected: boolean;
@@ -92,6 +116,18 @@ export type ReadingServiceSummary = {
    * items already synced for a library that drops out of scope simply stop syncing.
    */
   libraries: ReadingServiceLibrarySetting[];
+  /**
+   * The following four are only populated for providers that declare them (currently private
+   * adapters only; built-ins render through their own existing settings UI and leave these
+   * null/empty). They give the generic `ReadingServiceSettings` component everything it needs to
+   * render a provider it has never heard of: identity, how to connect, and the current state.
+   */
+  displayName?: string;
+  description?: string | null;
+  iconUrl?: string | null;
+  authMethods?: ReadingServiceAuthMethod[];
+  /** True when a stored credential exists but the provider reported it expired/invalid (`auth_expired`). */
+  needsReconnect?: boolean;
 };
 
 export type SyncRunProgressCounters = {

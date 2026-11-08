@@ -1,4 +1,4 @@
-import { IsObject, registerDecorator, ValidationOptions } from 'class-validator';
+import { IsObject, IsString, MinLength, registerDecorator, ValidationOptions } from 'class-validator';
 
 import { READING_SERVICE_FEATURES, type ReadingServiceFeature } from '@bookorbit/types';
 
@@ -28,4 +28,11 @@ export class UpdateReadingServiceFeaturesDto {
   @IsObject()
   @IsReadingServiceFeatureMap()
   features!: Partial<Record<ReadingServiceFeature, boolean>>;
+}
+
+/** Body for `POST /reading-services/:provider/auth/token` (the `token` auth method). */
+export class ConnectTokenDto {
+  @IsString()
+  @MinLength(1)
+  credential!: string;
 }

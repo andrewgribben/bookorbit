@@ -39,22 +39,35 @@ function featureHint(feature: ReadingServiceFeature): string {
   return t(`settings.readingServices.features.${feature}.hint`)
 }
 
-function unavailableReason(feature: ReadingServiceFeature): string {
-  return t(`settings.readingServices.features.${feature}.unavailable`, { provider: providerLabel.value })
-}
-
 /**
- * A feature is a toggle row when the provider declares a capability for it. Otherwise it's a
- * disabled row with a one-line reason, since there's no server-side "this provider never
- * supports this" string to render (only `disabledReason` on the connection, which is different).
+ * A feature the platform does not have is not rendered at all (owner rule: no "unavailable"
+ * rows for missing capabilities). Only a feature the provider actually declares in its
+ * `capabilities` map becomes a row.
  */
 function isSupported(feature: ReadingServiceFeature): boolean {
   return Boolean(props.summary?.capabilities[feature])
 }
 
+/** Rows the provider declares, in the library's fixed display order. */
+const supportedFeatures = computed(() => READING_SERVICE_FEATURES.filter((feature) => isSupported(feature)))
+
 function isEnabled(feature: ReadingServiceFeature): boolean {
   // Missing means "not toggled yet"; capabilities are opt-out, so an absent key reads as on.
   return props.summary?.features[feature] !== false
+}
+
+/**
+ * A supported feature can still be greyed for *state*: `publish_sessions` depends on
+ * `sessions` being on. This is the only remaining disabled-with-reason case; everything else
+ * that used to show a disabled "not available yet" row is gone because the row itself is gone.
+ */
+function isDependencyBlocked(feature: ReadingServiceFeature): boolean {
+  return feature === 'publish_sessions' && !isEnabled('sessions')
+}
+
+function rowHint(feature: ReadingServiceFeature): string {
+  if (isDependencyBlocked(feature)) return t('settings.readingServices.features.publish_sessions.dependencyHint')
+  return featureHint(feature)
 }
 
 async function handleToggle(feature: ReadingServiceFeature, value: boolean): Promise<void> {
@@ -65,18 +78,18 @@ async function handleToggle(feature: ReadingServiceFeature, value: boolean): Pro
 <template>
   <div class="border border-border rounded-lg bg-card px-4 py-2 md:px-5 shadow-xs divide-y divide-border">
     <SettingsRow
-      v-for="feature in READING_SERVICE_FEATURES"
+      v-for="feature in supportedFeatures"
       :key="feature"
       :label="featureLabel(feature)"
-      :hint="isSupported(feature) ? featureHint(feature) : unavailableReason(feature)"
+      :hint="rowHint(feature)"
       :control-id="`reading-service-${provider}-${feature}`"
-      :class="{ 'opacity-60': !isSupported(feature), 'pl-6': feature === 'publish_sessions' }"
+      :class="{ 'opacity-60': isDependencyBlocked(feature), 'pl-6': feature === 'publish_sessions' }"
     >
       <span class="text-xs text-muted-foreground whitespace-nowrap">{{ directionLabel(summary?.capabilities[feature]) }}</span>
       <ToggleSwitch
         :id="`reading-service-${provider}-${feature}`"
-        :model-value="isSupported(feature) && isEnabled(feature)"
-        :disabled="!isSupported(feature) || savingFeature === feature"
+        :model-value="isEnabled(feature) && !isDependencyBlocked(feature)"
+        :disabled="isDependencyBlocked(feature) || savingFeature === feature"
         @update:model-value="(value) => handleToggle(feature, value)"
       />
     </SettingsRow>

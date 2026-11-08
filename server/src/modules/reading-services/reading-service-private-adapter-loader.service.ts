@@ -8,6 +8,10 @@ import { Permission, READING_SERVICE_PROVIDERS } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { readingServicesConfig } from '../../config/config';
+import { ReadingServiceCacheService } from './reading-service-cache.service';
+import { ReadingServicePrivateCredentialService } from './reading-service-private-credential.service';
+import type { PrivateAdapterV2Module } from './reading-service-private-adapter-bridge';
+import { PrivateAdapterBridge } from './reading-service-private-adapter-bridge';
 import type { ReadingServiceProviderAdapter } from './reading-service-provider';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 
@@ -28,18 +32,44 @@ async function importModule(specifier: string): Promise<unknown> {
   }
 }
 
-function hasAdapterShape(value: unknown): value is ReadingServiceProviderAdapter {
+function isValidPermission(value: unknown): value is Permission {
+  return typeof value === 'string' && (Object.values(Permission) as string[]).includes(value);
+}
+
+/** Contract v1: a sync-capable adapter (isConnected/migratePage/pull), registered as-is. */
+function hasV1AdapterShape(value: unknown): value is ReadingServiceProviderAdapter {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<ReadingServiceProviderAdapter>;
   return (
     typeof candidate.provider === 'string' &&
     typeof candidate.capabilities === 'object' &&
     candidate.capabilities !== null &&
-    typeof candidate.permission === 'string' &&
-    (Object.values(Permission) as string[]).includes(candidate.permission) &&
+    isValidPermission(candidate.permission) &&
     typeof candidate.isConnected === 'function' &&
     typeof candidate.migratePage === 'function' &&
     typeof candidate.pull === 'function'
+  );
+}
+
+/**
+ * Contract v2: a read-only, auth-first adapter (e.g. the personal Readwise-friends module) with
+ * no sync/migration surface at all - just `capabilities`, `auth.methods`, and `getShelf`. Wrapped
+ * in `PrivateAdapterBridge` before registration so the rest of the host never has to branch on
+ * which contract a given adapter speaks.
+ */
+function hasV2AdapterShape(value: unknown): value is PrivateAdapterV2Module {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<PrivateAdapterV2Module>;
+  return (
+    typeof candidate.provider === 'string' &&
+    typeof candidate.capabilities === 'object' &&
+    candidate.capabilities !== null &&
+    isValidPermission(candidate.permission) &&
+    typeof candidate.auth === 'object' &&
+    candidate.auth !== null &&
+    Array.isArray(candidate.auth.methods) &&
+    candidate.auth.methods.length > 0 &&
+    typeof candidate.getShelf === 'function'
   );
 }
 
@@ -65,6 +95,8 @@ export class ReadingServicePrivateAdapterLoaderService implements OnModuleInit {
   constructor(
     @Inject(readingServicesConfig.KEY) private readonly config: ConfigType<typeof readingServicesConfig>,
     private readonly registry: ReadingServiceRegistry,
+    private readonly credentials: ReadingServicePrivateCredentialService,
+    private readonly cache: ReadingServiceCacheService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -99,13 +131,20 @@ export class ReadingServicePrivateAdapterLoaderService implements OnModuleInit {
       try {
         const url = `${pathToFileURL(path).href}?loaded=${Date.now()}`;
         const module = (await importModule(url)) as { default?: unknown };
-        const adapter = module.default;
+        const exported = module.default;
 
-        if (!hasAdapterShape(adapter)) {
+        let adapter: ReadingServiceProviderAdapter;
+        if (hasV1AdapterShape(exported)) {
+          adapter = exported;
+        } else if (hasV2AdapterShape(exported)) {
+          adapter = new PrivateAdapterBridge(exported, this.credentials, this.cache);
+        } else {
           throw new Error(
-            'the module has no default export shaped like a ReadingServiceProviderAdapter, or its `permission` is not an existing Permission enum member',
+            'the module has no default export shaped like a v1 (isConnected/migratePage/pull) or v2 (auth.methods/getShelf) ' +
+              'ReadingServiceProviderAdapter, or its `permission` is not an existing Permission enum member',
           );
         }
+
         if (READING_SERVICE_PROVIDERS.includes(adapter.provider)) {
           throw new Error(`"${adapter.provider}" is already a built-in provider and cannot be overridden`);
         }
