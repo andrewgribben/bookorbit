@@ -14,6 +14,7 @@ import { ReadwiseQueueService } from './readwise-queue.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
+import { ReadwiseTokenService } from './readwise-token.service';
 
 @Module({
   imports: [AchievementModule, ReadingServicesModule, LibraryModule],
@@ -23,6 +24,7 @@ import { ReadwiseSyncService } from './readwise-sync.service';
     ReadwiseClientService,
     ReadwiseRepository,
     ReadwiseSettingsService,
+    ReadwiseTokenService,
     ReadwiseSyncService,
     ReadwiseAutoSyncSchedulerService,
     ReadwiseEventListener,
