@@ -69,14 +69,14 @@ export class ReadingServicesController {
   }
 
   @Post(':provider/migration/preview')
-  previewMigration(
+  async previewMigration(
     @CurrentUser() user: RequestUser,
     @Param('provider') provider: string,
   ): Promise<{ matched: number; toCreate: number; readwiseOnly: number }> {
-    this.assertProviderAccess(user, provider);
-    // The dry-run pass comes with each provider's migration adapter in stage S2; the shared core
-    // only has to expose a stable contract for it here.
-    return Promise.resolve({ matched: 0, toCreate: 0, readwiseOnly: 0 });
+    const typedProvider = this.assertProviderAccess(user, provider);
+    const adapter = this.registry.get(typedProvider);
+    if (!adapter?.previewMigration) return { matched: 0, toCreate: 0, readwiseOnly: 0 };
+    return adapter.previewMigration(user.id);
   }
 
   @Post(':provider/migration')

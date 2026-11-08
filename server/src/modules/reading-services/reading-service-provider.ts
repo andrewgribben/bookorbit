@@ -14,4 +14,11 @@ export interface ReadingServiceProviderAdapter {
 
   /** Incremental pull since the stored cursor. */
   pull(userId: number): Promise<void>;
+
+  /**
+   * Read-only dry run used by the migration preview screen: how many local books already have a
+   * remote match, how many would be created, and how many remote-only books would not be
+   * touched. Optional because not every stage of every provider implements it yet.
+   */
+  previewMigration?(userId: number): Promise<{ matched: number; toCreate: number; readwiseOnly: number }>;
 }

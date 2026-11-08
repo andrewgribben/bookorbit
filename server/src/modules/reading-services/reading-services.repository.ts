@@ -6,7 +6,7 @@ import type { ReadingServiceFeature, ReadingServiceProvider, SyncRunProgressCoun
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import type { NewReadingServiceRun, ReadingServiceCacheRow, ReadingServiceRun } from '../../db/schema';
+import type { NewReadingServiceBookLink, NewReadingServiceRun, ReadingServiceBookLink, ReadingServiceCacheRow, ReadingServiceRun } from '../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
 
@@ -101,5 +101,47 @@ export class ReadingServicesRepository {
       ),
       orderBy: desc(schema.readingServiceRuns.id),
     });
+  }
+
+  // ---- Book links ----
+
+  async findBookLink(userId: number, provider: ReadingServiceProvider, bookId: number): Promise<ReadingServiceBookLink | undefined> {
+    return this.db.query.readingServiceBookLinks.findFirst({
+      where: and(
+        eq(schema.readingServiceBookLinks.userId, userId),
+        eq(schema.readingServiceBookLinks.provider, provider),
+        eq(schema.readingServiceBookLinks.bookId, bookId),
+      ),
+    });
+  }
+
+  async upsertBookLink(
+    userId: number,
+    provider: ReadingServiceProvider,
+    bookId: number,
+    data: Pick<NewReadingServiceBookLink, 'externalBookId' | 'matchMethod' | 'snapshot'> & { lastSyncedAt?: Date },
+  ): Promise<void> {
+    const values: NewReadingServiceBookLink = {
+      userId,
+      provider,
+      bookId,
+      externalBookId: data.externalBookId,
+      matchMethod: data.matchMethod,
+      snapshot: data.snapshot,
+      lastSyncedAt: data.lastSyncedAt ?? new Date(),
+    };
+    await this.db
+      .insert(schema.readingServiceBookLinks)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [schema.readingServiceBookLinks.userId, schema.readingServiceBookLinks.provider, schema.readingServiceBookLinks.bookId],
+        set: {
+          externalBookId: values.externalBookId,
+          matchMethod: values.matchMethod,
+          snapshot: values.snapshot,
+          lastSyncedAt: values.lastSyncedAt,
+          syncError: null,
+        },
+      });
   }
 }
