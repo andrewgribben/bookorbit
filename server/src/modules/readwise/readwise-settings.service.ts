@@ -46,12 +46,19 @@ export class ReadwiseSettingsService {
   async upsertSettings(userId: number, payload: UpsertReadwiseSettingsPayload): Promise<ReadwiseSettings> {
     const existing = await this.repo.findSettings(userId);
     const rawToken = payload.apiToken !== undefined ? payload.apiToken.trim() : undefined;
-    if (!existing?.apiToken && !rawToken) {
+    if (!existing?.apiToken && !existing?.apiTokenEncrypted && !rawToken) {
       throw new BadRequestException('API token is required to connect Readwise');
     }
     const data: Parameters<ReadwiseRepository['upsertSettings']>[1] = {};
     if (rawToken) {
-      data.apiToken = rawToken;
+      // Encrypt immediately on write when a key is configured, rather than waiting for the
+      // lazy migrate-on-read path, so a freshly entered token is never persisted in plaintext.
+      if (this.tokenService.isConfigured()) {
+        data.apiTokenEncrypted = this.tokenService.encrypt(rawToken);
+        data.apiToken = null;
+      } else {
+        data.apiToken = rawToken;
+      }
       data.disabledReason = null; // clear auto-disable reason on new token
     }
     if (payload.enabled !== undefined) {
@@ -78,11 +85,11 @@ export class ReadwiseSettingsService {
     rawToken: string | undefined,
     payload: UpsertReadwiseSettingsPayload,
   ): boolean {
-    const nextTokenConfigured = Boolean(rawToken || existing?.apiToken);
+    const nextTokenConfigured = Boolean(rawToken || existing?.apiToken || existing?.apiTokenEncrypted);
     const nextEnabled = payload.enabled ?? existing?.enabled ?? true;
     if (!nextTokenConfigured || !nextEnabled) return false;
     if (!existing) return true;
-    if (!existing.apiToken) return true;
+    if (!existing.apiToken && !existing.apiTokenEncrypted) return true;
     if (!existing.enabled && payload.enabled === true && existing.disabledReason !== 'invalid_token') return true;
     return false;
   }

@@ -26,6 +26,24 @@ function toProgress(run: ReadingServiceRun): SyncRunProgress {
   };
 }
 
+function isUniqueRunningRunViolation(err: unknown): boolean {
+  let current: unknown = err;
+  const seen = new Set<unknown>();
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const entry = current as Record<string, unknown>;
+    if (entry['code'] === '23505') {
+      const constraint = typeof entry['constraint'] === 'string' ? entry['constraint'] : '';
+      const message = entry instanceof Error ? entry.message : '';
+      if (constraint.includes('rs_runs_user_provider_kind_running') || message.includes('rs_runs_user_provider_kind_running')) {
+        return true;
+      }
+    }
+    current = (entry as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 /**
  * Runs one provider migration page at a time, persisting progress after every page so a run
  * resumes from its cursor after a restart rather than starting over.
@@ -51,7 +69,25 @@ export class ReadingServiceSyncRunService implements OnModuleInit {
     if (!this.registry.has(provider)) {
       throw new BadRequestException(`Unknown reading-service provider: ${provider}`);
     }
-    const run = await this.repo.createRun(userId, provider, 'migration', emptyCounters());
+
+    const existing = await this.repo.findRunningRun(userId, provider, 'migration');
+    if (existing) return toProgress(existing);
+
+    let run: ReadingServiceRun;
+    try {
+      run = await this.repo.createRun(userId, provider, 'migration', emptyCounters());
+    } catch (err) {
+      // Two concurrent requests can both pass the findRunningRun check above before either
+      // insert commits. The partial unique index on (userId, provider, kind) WHERE status =
+      // 'running' catches the loser here; fetch and return the run the race actually created
+      // instead of starting a second, duplicate one.
+      if (isUniqueRunningRunViolation(err)) {
+        const racedRun = await this.repo.findRunningRun(userId, provider, 'migration');
+        if (racedRun) return toProgress(racedRun);
+      }
+      throw err;
+    }
+
     void this.runLoop(run).catch((err) => this.logFailure(run, err, Date.now()));
     return toProgress(run);
   }
@@ -103,6 +139,15 @@ export class ReadingServiceSyncRunService implements OnModuleInit {
         }
 
         const next = await adapter.migratePage(run.userId, cursor, counters);
+
+        // Re-check after the await: cancel() can land while this page's migratePage call was
+        // in flight, including on what turns out to be the final page. Without this check the
+        // completed write below would silently overwrite the cancellation that already happened.
+        if (this.cancelled.has(run.id)) {
+          await this.repo.updateRun(run.id, { status: 'cancelled', finishedAt: new Date(), cursor: next ?? cursor, counters });
+          return;
+        }
+
         await this.repo.updateRun(run.id, { cursor: next ?? cursor, counters });
         if (next === null) break;
         cursor = next;

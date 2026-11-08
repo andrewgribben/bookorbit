@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
 import type { SyncRunProgressCounters } from '@bookorbit/types';
@@ -83,7 +84,16 @@ export const readingServiceRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
-  (t) => [index('rs_runs_user_provider').on(t.userId, t.provider, t.startedAt)],
+  (t) => [
+    index('rs_runs_user_provider').on(t.userId, t.provider, t.startedAt),
+    // Partial unique index: at most one 'running' run per (userId, provider, kind). This is the
+    // DB-level guard against the race where two concurrent startMigration calls both pass the
+    // in-process findRunningRun check before either insert commits; the second insert fails this
+    // constraint and the service catches it to return the run the race actually created.
+    uniqueIndex('rs_runs_user_provider_kind_running_uidx')
+      .on(t.userId, t.provider, t.kind)
+      .where(sql`${t.status} = 'running'`),
+  ],
 );
 
 export const readingServiceCache = pgTable(
