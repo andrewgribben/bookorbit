@@ -103,6 +103,14 @@ export const bookRequestConfig = registerAs('bookRequest', () => ({
   encryptionKey: process.env.BOOK_REQUEST_ENCRYPTION_KEY ?? '',
 }));
 
+/**
+ * Encrypts Readwise and Hardcover tokens at rest. Dev falls back to JWT_SECRET, same as the
+ * podcast key, so a fresh checkout still encrypts tokens without extra setup.
+ */
+export const readingServicesConfig = registerAs('readingServices', () => ({
+  encryptionKey: process.env.READING_SERVICES_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
+}));
+
 export const podcastConfig = registerAs('podcast', () => ({
   encryptionKey: process.env.PODCAST_ENCRYPTION_KEY?.trim() || process.env.JWT_SECRET || 'change-me-in-production',
   maxFeedBytes: parsePositiveInteger(process.env.PODCAST_MAX_FEED_BYTES, 10 * 1024 * 1024),

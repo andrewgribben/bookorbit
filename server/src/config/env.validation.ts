@@ -127,6 +127,7 @@ const envSchema = z.object({
   EMAIL_ENCRYPTION_KEY: z.string().optional(),
   MIGRATION_ENCRYPTION_KEY: z.string().optional(),
   BOOK_REQUEST_ENCRYPTION_KEY: z.string().optional(),
+  READING_SERVICES_ENCRYPTION_KEY: z.string().optional(),
   MIGRATION_IMPORT_ROOT: z
     .string()
     .transform((val) => val.trim())
