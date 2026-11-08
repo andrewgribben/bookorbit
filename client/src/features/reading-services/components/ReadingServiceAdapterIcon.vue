@@ -10,6 +10,11 @@ import { Link2 } from '@lucide/vue'
 
 const props = defineProps<{ iconUrl?: string | null; size?: number | string }>()
 
+const pixelSize = computed(() => {
+  const value = Number(props.size)
+  return Number.isFinite(value) && value > 0 ? value : 16
+})
+
 const src = computed(() => {
   const raw = props.iconUrl?.trim()
   if (!raw) return null
@@ -19,6 +24,6 @@ const src = computed(() => {
 </script>
 
 <template>
-  <img v-if="src" :src="src" :width="size ?? 16" :height="size ?? 16" alt="" />
+  <img v-if="src" :src="src" :width="pixelSize" :height="pixelSize" alt="" />
   <Link2 v-else :size="size" />
 </template>

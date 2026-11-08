@@ -40,7 +40,10 @@ const showMethods = computed(() => !props.connected || props.needsReconnect || s
 watch(
   () => props.authMethods,
   (methods) => {
-    if (methods.length === 1 && !auth.selectedMethod.value) auth.selectMethod(methods[0].kind)
+    if (methods.length === 1 && !auth.selectedMethod.value) {
+      const only = methods[0]
+      if (only) auth.selectMethod(only.kind)
+    }
   },
   { immediate: true },
 )

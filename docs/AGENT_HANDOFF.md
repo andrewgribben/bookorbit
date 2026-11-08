@@ -2030,17 +2030,62 @@ require-await fixes", "feat(db): migration 0144".
 - New test `reading-service-feature-locales.spec.ts`: fails if any
   `READING_SERVICE_FEATURES` id ever ships without an en.json label+hint, or keeps a
   stale `unavailable` key - regression guard for the raw-key bug above.
-- **Not built yet**: the generic `ReadingServiceSettings` page/section that lists a
-  private adapter in Settings next to Readwise/Hardcover, with a "Sign-in" method
-  picker (token / password / device-code) at the top collapsing to account label +
-  status + Switch account + Disconnect once connected. The server side (all three auth
-  routes, summaries, disconnect) is implemented and tested; a successor needs to
-  build the Vue component(s) following `design-taste-frontend`'s app-screen rules (see
-  that skill's "Page or app screen" + "component or single section" special case) -
-  write the device-code/password/token state design (idle, waiting with copyable code
-  + link + live polling + cancel + expiry, approved, expired/denied/error with retry)
-  into this file *before* implementing, then run the skill's `lint.mjs` on the new
-  `.vue` files and fix findings before handoff.
+- **Built in this continuation** (client UI for the server-side auth routes above):
+  the generic `ReadingServiceSettings` page, the shared `ReadingServiceSignIn`
+  section, and dynamic nav entries for private adapters. Design note (per
+  `design-taste-frontend`'s app-screen rules, written before building):
+  - **Layout**: `ReadingServiceSettings.vue` is the page a private adapter's nav
+    entry routes to (`/settings/integrations/:provider`), reusing the existing
+    `SettingsSection` card pattern: Sign-in at the top (unconditionally first, per
+    spec), then "What syncs" (`ReadingServiceFeatureList`, unchanged, already hides
+    unsupported features), then "Libraries" (`ReadingServiceLibraries`, unchanged),
+    then a plain sentence linking to Customize Dashboard for shelves - no new
+    component needed there, shelves aren't configured on this page.
+  - **Sign-in states** (`ReadingServiceSignIn.vue`, one card, `data-testid`s on every
+    state for tests): method picker as a segmented control only when
+    `authMethods.length > 1`, in declared order; a single method skips the picker
+    and shows its form directly. Token: single input (`SECRET_INPUT_ATTRS`, matches
+    Readwise/Hardcover's existing pattern) + Show/Hide + disabled-while-empty submit.
+    Password: username (`autocomplete=username`) + password
+    (`autocomplete=current-password`, Show/Hide, type toggles), submit disabled
+    while pending or either field empty, per-reason error text below the form
+    (`invalid`/`mfa_required`/`network`/`unsupported`/`rate_limited` with a
+    countdown built from the `Retry-After` header). Device code: idle (one primary
+    button) -> waiting (large monospace code + copy button, "Open the sign-in page"
+    link with `target=_blank`, live "expires in Ns" countdown, cancel) -> approved
+    (collapses immediately) / expired / denied / error (each a calm one-line
+    message + retry). Connected: collapses to an account-label row with "Switch
+    account" (reopens the picker without disconnecting) and "Disconnect" (behind the
+    existing `ConfirmDialog`). `needsReconnect`: a calm banner above the (always
+    reopened) picker - no colour alarm, just a plain sentence naming the provider.
+  - **Components reused, none new beyond the above**: `Button`, `ConfirmDialog`,
+    `SettingsSection`, `ToggleSwitch`'s sibling pattern (`settings-label`/
+    `settings-title` CSS classes), `SECRET_INPUT_ATTRS`. New:
+    `ReadingServiceSignIn.vue`, `ReadingServiceSettings.vue` +
+    `ReadingServiceSettingsPage.vue` (route wrapper reading `:provider`),
+    `ReadingServiceAdapterIcon.vue` (renders `iconUrl`: http(s)/data URL straight
+    into `<img src>`; a raw inline `<svg>` string re-encoded as a
+    `data:image/svg+xml` source - never `v-html` - fallback a plain `Link2` glyph,
+    no tinted square), `useReadingServiceAuth.ts` (per-mount sign-in state + device
+    poll loop; the password field itself never touches this composable's state past
+    the one `submitPassword(username, password)` call), `reading-service-auth.api.ts`,
+    `usePrivateAdapterNavItems.ts` + `createAdapterIconComponent` (wraps the icon
+    component for use as a `SettingsNavItem.icon`).
+  - **Nav wiring**: `settings-nav.ts` gained `SettingsNavItem.routeParams` (for the
+    one shared `settings-reading-service` route serving every private adapter) and
+    `mergeDynamicAccountItems(groups, items)`, appending private-adapter items into
+    the "accounts" group (creating it if every static account item is hidden).
+    `SettingsNav.vue`/`SettingsSidebar.vue` call `usePrivateAdapterNavItems` and
+    merge its items in; `router/index.ts` added the
+    `/settings/integrations/:provider` route.
+  - **Readwise/Hardcover**: both adopted the connected/collapsed treatment (account
+    row + "Switch account" revealing the existing unchanged form) without any
+    behavioural change to their save/validate/disconnect flows; Hardcover's existing
+    `disconnect()` now also closes the reopened form.
+  - Tests: `ReadingServiceSignIn.spec.ts` (every auth method and state, password
+    cleared from the DOM input synchronously on submit, connected collapse,
+    `needsReconnect`, confirm-before-disconnect), `usePrivateAdapterNavItems.spec.ts`
+    (nav lists only adapters with `authMethods`, built-ins absent, label fallback).
 
 ### Auth method contract (packages/types)
 
