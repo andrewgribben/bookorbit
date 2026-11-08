@@ -35,9 +35,76 @@ export class ReadwiseBooksLocalBooksRepository {
 
   /** Resolves the accessible libraries for a user from only their id, for adapters that only get a userId. */
   private async accessibleLibraryIds(userId: number): Promise<number[]> {
-    const [user] = await this.db.select({ isSuperuser: schema.users.isSuperuser }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
-    const pseudoUser = { id: userId, isSuperuser: user?.isSuperuser ?? false } as RequestUser;
+    const pseudoUser = await this.resolveUser(userId);
     return this.libraryService.findAccessibleLibraryIds(pseudoUser);
+  }
+
+  /**
+   * Builds a minimal `RequestUser` from only an id, for background jobs (push/pull) that call
+   * into `BookService`/library-scoped services outside an HTTP request context.
+   */
+  async resolveUser(userId: number): Promise<RequestUser> {
+    const [user] = await this.db.select({ isSuperuser: schema.users.isSuperuser }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    return { id: userId, isSuperuser: user?.isSuperuser ?? false } as RequestUser;
+  }
+
+  /** Single-book lookup for the push/pull flows, which already know the bookId from a link or event. */
+  async findOne(userId: number, bookId: number): Promise<LocalBookForMigration | null> {
+    const libraryIds = await this.accessibleLibraryIds(userId);
+    if (libraryIds.length === 0) return null;
+
+    const rows = await this.db
+      .select({
+        bookId: schema.books.id,
+        isbn13: schema.bookMetadata.isbn13,
+        isbn10: schema.bookMetadata.isbn10,
+        title: schema.bookMetadata.title,
+        status: schema.userBookStatus.status,
+        rating: schema.userBookRatings.rating,
+        authorsCsv: sql<string>`coalesce(string_agg(${schema.authors.name}, '||' order by ${schema.bookAuthors.displayOrder}, ${schema.bookAuthors.authorId}), '')`,
+      })
+      .from(schema.books)
+      .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
+      .leftJoin(schema.userBookStatus, and(eq(schema.userBookStatus.bookId, schema.books.id), eq(schema.userBookStatus.userId, userId)))
+      .leftJoin(schema.userBookRatings, and(eq(schema.userBookRatings.bookId, schema.books.id), eq(schema.userBookRatings.userId, userId)))
+      .leftJoin(schema.bookAuthors, eq(schema.bookAuthors.bookId, schema.books.id))
+      .leftJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
+      .where(and(inArray(schema.books.libraryId, libraryIds), eq(schema.books.id, bookId)))
+      .groupBy(
+        schema.books.id,
+        schema.bookMetadata.isbn13,
+        schema.bookMetadata.isbn10,
+        schema.bookMetadata.title,
+        schema.userBookStatus.status,
+        schema.userBookRatings.rating,
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const [attempt] = await this.db
+      .select({ startedOn: schema.readingAttempts.startedOn, endedOn: schema.readingAttempts.endedOn })
+      .from(schema.readingAttempts)
+      .where(and(eq(schema.readingAttempts.userId, userId), eq(schema.readingAttempts.bookId, bookId), isNull(schema.readingAttempts.deletedAt)))
+      .orderBy(asc(schema.readingAttempts.id));
+
+    return {
+      bookId: row.bookId,
+      isbn13: row.isbn13,
+      isbn10: row.isbn10,
+      title: row.title ?? '',
+      author: row.authorsCsv
+        ? row.authorsCsv
+            .split('||')
+            .filter((a: string) => a.length > 0)
+            .join(', ')
+        : null,
+      status: (row.status as ReadStatus) ?? 'unread',
+      rating: row.rating ?? null,
+      startedAt: toIsoMidnight(attempt?.startedOn ?? null),
+      finishedAt: toIsoMidnight(attempt?.endedOn ?? null),
+    };
   }
 
   async findPage(userId: number, afterBookId: number, limit: number): Promise<LocalBookForMigration[]> {

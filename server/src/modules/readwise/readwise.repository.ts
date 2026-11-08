@@ -31,6 +31,21 @@ export class ReadwiseRepository {
     });
   }
 
+  /** Users with Readwise enabled and a token configured, for the books pull interval job. */
+  async findConnectedUserIds(): Promise<number[]> {
+    const rows = await this.db
+      .select({ userId: schema.readwiseUserSettings.userId })
+      .from(schema.readwiseUserSettings)
+      .where(
+        and(
+          eq(schema.readwiseUserSettings.enabled, true),
+          isNull(schema.readwiseUserSettings.disabledReason),
+          sql`(${schema.readwiseUserSettings.apiToken} is not null or ${schema.readwiseUserSettings.apiTokenEncrypted} is not null)`,
+        ),
+      );
+    return rows.map((r) => r.userId);
+  }
+
   async findLatestAnnotationId(userId: number): Promise<number> {
     const [row] = await this.db
       .select({ latestAnnotationId: sql<number>`coalesce(max(${schema.annotations.id}), 0)::int` })

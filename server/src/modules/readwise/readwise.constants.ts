@@ -54,3 +54,19 @@ export const READWISE_SESSIONS_CREATE_BATCH = 10;
 
 // How many local books the migration push phase handles per run page.
 export const READWISE_MIGRATION_PUSH_PAGE_SIZE = 200;
+
+// S3 two-way books sync: event-driven push debounce (mirrors READWISE_AUTO_SYNC_* above, kept
+// separate because it carries per-user pending book ids rather than a single flush flag).
+export const READWISE_BOOKS_PUSH_DEBOUNCE_MS = 2000;
+export const READWISE_BOOKS_PUSH_MAX_WAIT_MS = 10_000;
+export const READWISE_BOOKS_PUSH_RETRY_BASE_MS = 30_000;
+export const READWISE_BOOKS_PUSH_MAX_RETRIES = 5;
+
+// S3 interval pull: incremental poll cadence, and how often a full re-list runs to catch
+// rating/review changes that don't bump Readwise's `updated` field (readwise-api.md §3).
+export const READWISE_BOOKS_PULL_INTERVAL_MS = 15 * 60_000;
+export const READWISE_BOOKS_FULL_PASS_INTERVAL_MS = 6 * 60 * 60_000;
+export const READWISE_BOOKS_PULL_USER_CONCURRENCY = 2;
+export const READWISE_BOOKS_PULL_CURSOR_CACHE_KEY = 'books-pull-cursor';
+// The cursor cache entry has no natural expiry; set a far-future TTL so `ReadingServiceCacheService` keeps it.
+export const READWISE_BOOKS_PULL_CURSOR_TTL_MS = 365 * 24 * 60 * 60_000;

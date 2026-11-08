@@ -121,6 +121,39 @@ export class ReadingServicesRepository {
     });
   }
 
+  async findBookLinkByExternalId(
+    userId: number,
+    provider: ReadingServiceProvider,
+    externalBookId: string,
+  ): Promise<ReadingServiceBookLink | undefined> {
+    return this.db.query.readingServiceBookLinks.findFirst({
+      where: and(
+        eq(schema.readingServiceBookLinks.userId, userId),
+        eq(schema.readingServiceBookLinks.provider, provider),
+        eq(schema.readingServiceBookLinks.externalBookId, externalBookId),
+      ),
+    });
+  }
+
+  async findBookLinksForProvider(userId: number, provider: ReadingServiceProvider): Promise<ReadingServiceBookLink[]> {
+    return this.db.query.readingServiceBookLinks.findMany({
+      where: and(eq(schema.readingServiceBookLinks.userId, userId), eq(schema.readingServiceBookLinks.provider, provider)),
+    });
+  }
+
+  async markRemoteDeleted(userId: number, provider: ReadingServiceProvider, bookId: number): Promise<void> {
+    await this.db
+      .update(schema.readingServiceBookLinks)
+      .set({ remoteDeleted: true })
+      .where(
+        and(
+          eq(schema.readingServiceBookLinks.userId, userId),
+          eq(schema.readingServiceBookLinks.provider, provider),
+          eq(schema.readingServiceBookLinks.bookId, bookId),
+        ),
+      );
+  }
+
   async upsertBookLink(
     userId: number,
     provider: ReadingServiceProvider,

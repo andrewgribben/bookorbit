@@ -6,6 +6,7 @@ import { ReadingServicesRepository } from '../reading-services/reading-services.
 import { ReadwiseBooksMigrationService } from './readwise-books-migration.service';
 import { ReadwiseBooksClientService } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
+import { ReadwiseBooksPullService } from './readwise-books-pull.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
@@ -43,9 +44,19 @@ function makeService() {
   const readwiseRepo = { upsertSettings: vi.fn(), findSettings: vi.fn() } as unknown as ReadwiseRepository;
   const readwiseSettings = { getToken: vi.fn().mockResolvedValue('tok') } as unknown as ReadwiseSettingsService;
   const readingServicesRepo = { upsertBookLink: vi.fn() } as unknown as ReadingServicesRepository;
+  const pullService = { pullForUser: vi.fn() } as unknown as ReadwiseBooksPullService;
 
-  const service = new ReadwiseBooksMigrationService(registry, client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, cache);
-  return { service, client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, registry };
+  const service = new ReadwiseBooksMigrationService(
+    registry,
+    client,
+    localBooks,
+    readwiseRepo,
+    readwiseSettings,
+    readingServicesRepo,
+    cache,
+    pullService,
+  );
+  return { service, client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, registry, pullService };
 }
 
 function emptyCounters() {
@@ -191,6 +202,12 @@ describe('ReadwiseBooksMigrationService', () => {
       (readwiseSettings.getToken as any).mockResolvedValueOnce(null);
       await expect(service.previewMigration(1)).resolves.toEqual({ matched: 0, toCreate: 0, readwiseOnly: 0 });
     });
+  });
+
+  it('delegates pull(userId) to the two-way pull service', async () => {
+    const { service, pullService } = makeService();
+    await service.pull(7);
+    expect(pullService.pullForUser).toHaveBeenCalledWith(7);
   });
 
   describe('isConnected', () => {

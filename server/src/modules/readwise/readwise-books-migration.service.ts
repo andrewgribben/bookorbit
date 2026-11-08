@@ -13,6 +13,7 @@ import type { ReadwiseBook, ReadwiseBookCreateItem, ReadwiseBookUpdateItem } fro
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
+import { ReadwiseBooksPullService } from './readwise-books-pull.service';
 import { READWISE_BOOKS_LIST_LIMIT, READWISE_MIGRATION_PUSH_PAGE_SIZE } from './readwise.constants';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseRepository } from './readwise.repository';
@@ -82,7 +83,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   private readonly logger = new Logger(ReadwiseBooksMigrationService.name);
 
   readonly provider: ReadingServiceProvider = 'readwise';
-  readonly capabilities: ReadingServiceCapabilities = { status: 'push', rating: 'push', dates: 'push', owned: 'read' };
+  readonly capabilities: ReadingServiceCapabilities = { status: 'both', rating: 'both', dates: 'both', owned: 'read' };
 
   constructor(
     private readonly registry: ReadingServiceRegistry,
@@ -92,6 +93,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     private readonly readwiseSettings: ReadwiseSettingsService,
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly cache: ReadingServiceCacheService,
+    private readonly pullService: ReadwiseBooksPullService,
   ) {}
 
   onModuleInit(): void {
@@ -106,9 +108,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   }
 
   async pull(userId: number): Promise<void> {
-    // Two-way pull lands in stage S3. Migration (this adapter's current job) is push-only.
-    void userId;
-    return Promise.resolve();
+    await this.pullService.pullForUser(userId);
   }
 
   async previewMigration(userId: number): Promise<{ matched: number; toCreate: number; readwiseOnly: number }> {
