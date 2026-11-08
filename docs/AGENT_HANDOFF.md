@@ -521,6 +521,81 @@ Open questions for the owner / a successor:
   toggles). The client worktree building Readwise settings UI may want
   to surface this.
 
+## S3b: Book reviews (2026-11-08)
+
+Branch `feat-book-review`, stacked on `feat-readwise-sessions` @ `b835cd1d`.
+Worktrees: PC `D:/Development/bookorbit-worktrees/feat-book-review`, Unraid
+`/mnt/user/data/Development/bookorbit-worktrees/feat-book-review`.
+
+Implements plan section 9 D2: a `review` field distinct from the existing
+private `personalNote`, synced both ways with Readwise's `review` field.
+
+What was built:
+
+1. **Schema** - new `user_book_reviews` table (`server/src/db/schema/reader.ts`),
+   same shape as `user_book_notes` (composite PK `user_id, book_id`), with a
+   check constraint capping `review` at 10,000 characters (mirrors Readwise's
+   own documented limit, see `readwise-api.md`).
+2. **Server module** - `server/src/modules/user-book-review/` (service,
+   repository, module), mirroring `user-book-note` exactly: `findOne`,
+   `findByBookIds`, `setReview`, `setReviews`, with blank-to-null
+   normalization and truncation at `USER_BOOK_REVIEW_MAX_LENGTH`.
+3. **API** - `PATCH /api/v1/books/:id/review` (`UpdateReviewDto`, same
+   `@RequirePermission(Permission.LibraryEditMetadata)` as rating). Omitted
+   `review` key leaves it unchanged; `null` clears it, matching the
+   personal-note contract.
+4. **Achievement event** - `book.review-changed` (`ACHIEVEMENT_EVENT_BOOK_REVIEW_CHANGED`,
+   payload `{ userId, bookId, review }`), emitted from `BookService.updateReview`
+   and consumed by `ReadwiseBooksEventListener` to queue a push, same as rating.
+5. **Readwise two-way sync** - `review` is now a `'both'` capability
+   (`READING_SERVICE_FEATURES` already had the key from an earlier stage;
+   this stage wires it up). Push (`readwise-books-push.service.ts`), pull
+   (`readwise-books-pull.service.ts`, using the existing `mergeField`
+   three-way merge so BookOrbit wins on conflict, same as rating) and the
+   one-time migration (`readwise-books-migration.service.ts`) all read/write
+   `review` alongside status/rating/dates. `readwise-books-local-books.repository.ts`
+   joins `user_book_reviews` into `LocalBookForMigration`.
+6. **Web UI** - a new review editor next to the rating in
+   `client/src/features/book/components/detail/tabs/DetailsTab.vue`
+   (composable `client/src/features/book/composables/useBookReview.ts`),
+   following the approved mockup
+   `designs/bookorbit-reading-services/book-review-editor.html`: a toggle
+   button beside the existing Personal Review toggle, a collapsible panel
+   with a textarea, live char count (warns near the 10,000 limit), a
+   "Synced to Readwise" hint, and a quick-access row under the synopsis
+   (mirroring the existing "Your Review"/personal-note row). Locale strings
+   under `book.detail.details.review.*` in `en.json` only (other locales
+   untouched, as usual for an English-authored feature pending translation).
+7. **Shared types** - `BookDetail.review` / `reviewUpdatedAt` added to
+   `packages/types/src/book.ts` as optional fields (so servers predating this
+   stage don't break existing clients). **For the Android stage**: the API
+   shape is
+   `PATCH /api/v1/books/:id/review` body `{ "review": string | null }` (omit
+   key to leave unchanged), and `GET` book detail now also returns
+   `"review": string | null, "reviewUpdatedAt": string | null` (ISO 8601,
+   absent/undefined on servers older than this stage). Same permission as
+   rating edits.
+
+Deliberately out of scope: the S5 highlights/annotation work on the sibling
+branch was not touched (no files under annotation/highlight code paths).
+
+Migration: not yet generated/applied on this PC-only commit; running
+`pnpm db:generate` and the disposable-Postgres drift check is the next step
+on Unraid before this branch is considered checks-complete. See the commit
+history on this branch for the exact migration file name once generated.
+
+Open questions for the owner / a successor:
+
+- The existing "Personal Review" UI block is actually the private
+  `personalNote` field (never synced), labelled "Personal Review" in the
+  product copy. This stage deliberately did not rename it (out of scope,
+  risk of confusing an in-flight UI contract) but the two side-by-side
+  "review" labels (synced vs private) in the detail view may read
+  confusingly to users; worth a copy pass before ship.
+- No UI toggle was added to disable the `review` sync specifically; it rides
+  the same per-feature toggle plumbing already built for rating/status in
+  the Readwise settings screen (`features.review`).
+
 ## First commands for a successor agent
 
 ```bash
