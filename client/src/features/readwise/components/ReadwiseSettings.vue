@@ -11,6 +11,7 @@ import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { SECRET_INPUT_ATTRS } from '@/lib/secret-input'
 import { useReadwiseSettings } from '../composables/useReadwiseSettings'
 import ReadingServiceFeatureList from '@/features/reading-services/components/ReadingServiceFeatureList.vue'
+import ReadingServiceLibraries from '@/features/reading-services/components/ReadingServiceLibraries.vue'
 import ReadingServiceMigrationPanel from '@/features/reading-services/components/ReadingServiceMigrationPanel.vue'
 import { useReadingServices } from '@/features/reading-services/composables/useReadingServices'
 
@@ -169,6 +170,14 @@ function toggleTokenVisible() {
       :brief="t('settings.readingServices.whatSyncs.subtitle')"
     >
       <ReadingServiceFeatureList provider="readwise" :summary="readingServiceSummary" />
+    </SettingsSection>
+
+    <SettingsSection
+      v-if="readingServiceSummary"
+      :title="t('settings.readingServices.libraries.title')"
+      :brief="t('settings.readingServices.libraries.subtitle')"
+    >
+      <ReadingServiceLibraries provider="readwise" :summary="readingServiceSummary" />
     </SettingsSection>
 
     <ReadingServiceMigrationPanel v-if="readingServiceSummary" provider="readwise" :summary="readingServiceSummary" />

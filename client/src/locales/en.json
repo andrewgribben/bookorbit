@@ -1757,6 +1757,14 @@
       }
     },
     "readingServices": {
+      "libraries": {
+        "title": "Libraries",
+        "subtitle": "Choose which libraries sync. Turning a library off, or narrowing one of its features, never deletes anything already synced - it just stops syncing from there on.",
+        "customise": "Customise",
+        "reset": "Reset",
+        "inherits": "Follows the settings above.",
+        "customised": "Some features are turned off just for this library."
+      },
       "whatSyncs": {
         "title": "What syncs",
         "subtitle": "Generated from what the provider actually supports. Direction is fixed per item, not user-chosen.",

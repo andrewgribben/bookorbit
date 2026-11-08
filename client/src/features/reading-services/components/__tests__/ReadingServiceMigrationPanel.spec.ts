@@ -69,6 +69,7 @@ const baseSummary = {
   migration: { state: 'never' as const, runId: null, finishedAt: null },
   lastPullAt: null,
   disabledReason: null,
+  libraries: [],
 }
 
 beforeEach(() => {

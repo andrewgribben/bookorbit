@@ -26,6 +26,7 @@ function makeSummary(overrides: Partial<ReadingServiceSummary> = {}): ReadingSer
     migration: { state: 'never', runId: null, finishedAt: null },
     lastPullAt: null,
     disabledReason: null,
+    libraries: [],
     ...overrides,
   }
 }
