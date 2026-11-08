@@ -35,9 +35,18 @@ const PASSWORD_METHOD: ReadingServiceAuthMethod = {
 }
 const DEVICE_METHOD: ReadingServiceAuthMethod = { kind: 'device_code', label: 'Device code' }
 
+type SignInProps = {
+  provider: string
+  authMethods: ReadingServiceAuthMethod[]
+  connected: boolean
+  needsReconnect?: boolean
+  accountLabel?: string | null
+  displayName?: string | null
+}
+
 let wrappers: ReturnType<typeof mount>[] = []
 
-function mountSignIn(props: Record<string, unknown>, options: Record<string, unknown> = {}) {
+function mountSignIn(props: SignInProps, options: Record<string, unknown> = {}) {
   const wrapper = mount(ReadingServiceSignIn, { props, ...options })
   wrappers.push(wrapper)
   return wrapper

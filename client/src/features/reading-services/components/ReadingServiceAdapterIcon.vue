@@ -25,5 +25,5 @@ const src = computed(() => {
 
 <template>
   <img v-if="src" :src="src" :width="pixelSize" :height="pixelSize" alt="" />
-  <Link2 v-else :size="size" />
+  <Link2 v-else :size="pixelSize" />
 </template>
