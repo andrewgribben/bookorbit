@@ -182,9 +182,7 @@ describe('ReadwiseSyncService', () => {
       mockRepo.findPushableHighlights.mockResolvedValueOnce([makeRow({ annotationId: 5 }), makeRow({ annotationId: 6 })]);
       mockClient.createHighlights.mockResolvedValueOnce([999]); // only one id for two highlights
       await makeService().flush(1);
-      expect(mockReadingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
-        expect.objectContaining({ localId: 5, externalId: '999' }),
-      ]);
+      expect(mockReadingServicesRepo.recordItemLinks).toHaveBeenCalledWith([expect.objectContaining({ localId: 5, externalId: '999' })]);
     });
 
     it('loops again on a full page, stops on a partial page', async () => {

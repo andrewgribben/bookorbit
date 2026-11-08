@@ -144,7 +144,10 @@ describe('ReadwiseClientService', () => {
         status: 200,
         ok: true,
         headers: { get: vi.fn().mockReturnValue(null) },
-        json: vi.fn().mockResolvedValue([{ id: 'b1', highlights: [{ id: 201 }] }, { id: 'b2', highlights: [{ id: 202 }] }]),
+        json: vi.fn().mockResolvedValue([
+          { id: 'b1', highlights: [{ id: 201 }] },
+          { id: 'b2', highlights: [{ id: 202 }] },
+        ]),
       });
       await expect(service.createHighlights(1, 'tok', [makeHighlight(), makeHighlight()])).resolves.toEqual([201, 202]);
     });

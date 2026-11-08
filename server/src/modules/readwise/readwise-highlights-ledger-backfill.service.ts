@@ -43,7 +43,10 @@ export class ReadwiseHighlightsLedgerBackfillService {
         for (const book of page.results) {
           const parsed = this.parseAnnotationIds(book.highlights);
           if (parsed.length === 0) continue;
-          const localRows = await this.readwiseRepo.findAnnotationsByIds(userId, parsed.map((p) => p.annotationId));
+          const localRows = await this.readwiseRepo.findAnnotationsByIds(
+            userId,
+            parsed.map((p) => p.annotationId),
+          );
           const localById = new Map(localRows.map((r) => [r.id, r]));
           const items = parsed.flatMap(({ annotationId, highlight }) => {
             const local = localById.get(annotationId);

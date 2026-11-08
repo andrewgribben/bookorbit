@@ -177,9 +177,7 @@ describe('ReadwiseRepository', () => {
     const createdAt = new Date('2026-01-01T00:00:00Z');
     db.select.mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue('subquery') }) });
     db.select.mockReturnValueOnce(
-      makeSelectChain([
-        { annotationId: 20, bookId: 1, text: 'new', note: null, createdAt, title: null, isbn13: null, isbn10: null, authorsCsv: '' },
-      ]),
+      makeSelectChain([{ annotationId: 20, bookId: 1, text: 'new', note: null, createdAt, title: null, isbn13: null, isbn10: null, authorsCsv: '' }]),
     );
 
     await expect(repo.findPushableHighlights(7, 100)).resolves.toEqual([

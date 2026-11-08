@@ -222,9 +222,7 @@ export class ReadwiseRepository {
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.annotations.bookId))
       .leftJoin(schema.bookAuthors, eq(schema.bookAuthors.bookId, schema.annotations.bookId))
       .leftJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
-      .where(
-        and(eq(schema.annotations.userId, userId), ne(schema.annotations.text, ''), isNull(schema.annotations.deletedAt), extraWhere),
-      )
+      .where(and(eq(schema.annotations.userId, userId), ne(schema.annotations.text, ''), isNull(schema.annotations.deletedAt), extraWhere))
       .groupBy(
         schema.annotations.id,
         schema.annotations.bookId,
