@@ -50,7 +50,12 @@ function handleLoadMoreReadwiseOnlyBooks(): void {
   void loadReadwiseOnlyBooks()
 }
 
-function candidateFor(book: { externalId: string; title: string | null; author: string | null; coverImageUrl: string | null }): ExternalBookRequestCandidate {
+function candidateFor(book: {
+  externalId: string
+  title: string | null
+  author: string | null
+  coverImageUrl: string | null
+}): ExternalBookRequestCandidate {
   return { externalId: book.externalId, title: book.title, author: book.author, coverUrl: book.coverImageUrl }
 }
 
@@ -266,7 +271,12 @@ onMounted(() => {
             variant="outline"
             size="sm"
             type="button"
-            :disabled="stateFor(book.externalId) === 'checking' || stateFor(book.externalId) === 'requesting' || stateFor(book.externalId) === 'requested' || stateFor(book.externalId) === 'already-requested'"
+            :disabled="
+              stateFor(book.externalId) === 'checking' ||
+              stateFor(book.externalId) === 'requesting' ||
+              stateFor(book.externalId) === 'requested' ||
+              stateFor(book.externalId) === 'already-requested'
+            "
             @click="requestOne(candidateFor(book))"
           >
             <Loader2 v-if="stateFor(book.externalId) === 'checking' || stateFor(book.externalId) === 'requesting'" class="size-3.5 animate-spin" />

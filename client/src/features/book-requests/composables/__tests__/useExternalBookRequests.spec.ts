@@ -32,14 +32,13 @@ describe('useExternalBookRequests', () => {
     await checkMany([{ externalId: 'rw-1', title: 'Dune', author: 'Frank Herbert' }])
 
     expect(stateFor('rw-1')).toBe('requestable')
-    expect(apiMock).toHaveBeenCalledWith(
-      '/api/v1/book-requests/availability',
-      expect.objectContaining({ method: 'POST' }),
-    )
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/book-requests/availability', expect.objectContaining({ method: 'POST' }))
   })
 
   it('marks a candidate already-requested when availability finds an active request', async () => {
-    apiMock.mockResolvedValue(makeResponse([{ ownedBookId: null, existingRequestId: 42, existingRequestStatus: 'pending', alreadySubscribed: false }]))
+    apiMock.mockResolvedValue(
+      makeResponse([{ ownedBookId: null, existingRequestId: 42, existingRequestStatus: 'pending', alreadySubscribed: false }]),
+    )
     const { useExternalBookRequests } = await loadComposable()
     const { stateFor, requestIdFor, checkMany } = useExternalBookRequests()
 

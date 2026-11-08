@@ -155,12 +155,21 @@ function handleRequest(item: ReadingServiceShelfItem) {
             <p v-if="item.authors.length > 0" class="truncate text-[11px] text-muted-foreground">{{ item.authors.join(', ') }}</p>
             <!-- Friends shelves (friends-reading/friends-finished): who is reading it and their status. -->
             <div v-if="item.friend" class="mt-1 flex items-center gap-1">
-              <img v-if="item.friend.avatarUrl" :src="item.friend.avatarUrl" :alt="item.friend.displayName" class="h-4 w-4 rounded-full object-cover" />
+              <img
+                v-if="item.friend.avatarUrl"
+                :src="item.friend.avatarUrl"
+                :alt="item.friend.displayName"
+                class="h-4 w-4 rounded-full object-cover"
+              />
               <span class="truncate text-[10px] text-muted-foreground">{{ item.friend.displayName }} &middot; {{ item.friend.status }}</span>
             </div>
           </button>
 
-          <DropdownMenu v-if="canRequest && !item.bookId" :open="openMenuKey === cardKey(item)" @update:open="(open) => (openMenuKey = open ? cardKey(item) : null)">
+          <DropdownMenu
+            v-if="canRequest && !item.bookId"
+            :open="openMenuKey === cardKey(item)"
+            @update:open="(open) => (openMenuKey = open ? cardKey(item) : null)"
+          >
             <DropdownMenuTrigger as-child>
               <button
                 type="button"
@@ -177,10 +186,7 @@ function handleRequest(item: ReadingServiceShelfItem) {
                 :disabled="['checking', 'requesting', 'requested', 'already-requested'].includes(stateFor(cardKey(item)))"
                 @click="handleRequest(item)"
               >
-                <Loader2
-                  v-if="['checking', 'requesting'].includes(stateFor(cardKey(item)))"
-                  class="mr-2 h-4 w-4 animate-spin"
-                />
+                <Loader2 v-if="['checking', 'requesting'].includes(stateFor(cardKey(item)))" class="mr-2 h-4 w-4 animate-spin" />
                 {{
                   stateFor(cardKey(item)) === 'checking'
                     ? t('bookRequests.externalRequest.checkingButton')

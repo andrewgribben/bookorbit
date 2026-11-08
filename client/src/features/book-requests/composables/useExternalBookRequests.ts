@@ -7,15 +7,7 @@ import type { BookRequestAvailability, BulkSubmitBookRequestItem, BulkSubmitBook
  * What one row's Request control shows. `idle` is before anything has been checked; `checking` and
  * `requesting` are in flight; the rest are settled answers.
  */
-export type ExternalBookRequestState =
-  | 'idle'
-  | 'checking'
-  | 'requestable'
-  | 'already-requested'
-  | 'owned'
-  | 'requesting'
-  | 'requested'
-  | 'error'
+export type ExternalBookRequestState = 'idle' | 'checking' | 'requestable' | 'already-requested' | 'owned' | 'requesting' | 'requested' | 'error'
 
 export interface ExternalBookRequestCandidate {
   externalId: string
@@ -71,7 +63,11 @@ export function useExternalBookRequests() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            items: batch.map((candidate) => ({ title: candidate.title, mediaKind: 'ebook', ...(candidate.author ? { author: candidate.author } : {}) })),
+            items: batch.map((candidate) => ({
+              title: candidate.title,
+              mediaKind: 'ebook',
+              ...(candidate.author ? { author: candidate.author } : {}),
+            })),
           }),
         })
         const availability: BookRequestAvailability[] = res.ok ? await res.json() : []

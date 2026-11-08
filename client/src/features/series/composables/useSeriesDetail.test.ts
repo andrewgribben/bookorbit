@@ -36,7 +36,16 @@ describe('useSeriesDetail', () => {
       total: 1,
       page: 0,
       size: 50,
-      seriesInfo: { id: 42, name: 'Dune', bookCount: 6, readCount: 2, authors: ['Frank Herbert'], possibleGaps: [3], expectedBookCount: null, followStatus: null },
+      seriesInfo: {
+        id: 42,
+        name: 'Dune',
+        bookCount: 6,
+        readCount: 2,
+        authors: ['Frank Herbert'],
+        possibleGaps: [3],
+        expectedBookCount: null,
+        followStatus: null,
+      },
     })
 
     const { seriesInfo, items, total, load } = useSeriesDetail(seriesId)
@@ -167,7 +176,16 @@ describe('useSeriesDetail', () => {
       total: 5,
       page: 0,
       size: 50,
-      seriesInfo: { id: 42, name: 'Test', bookCount: 5, readCount: 2, authors: ['Author'], possibleGaps: [], expectedBookCount: null, followStatus: null },
+      seriesInfo: {
+        id: 42,
+        name: 'Test',
+        bookCount: 5,
+        readCount: 2,
+        authors: ['Author'],
+        possibleGaps: [],
+        expectedBookCount: null,
+        followStatus: null,
+      },
     })
 
     const { seriesInfo, total, load } = useSeriesDetail(seriesId)
@@ -204,7 +222,16 @@ describe('useSeriesDetail', () => {
       total: 5,
       page: 0,
       size: 50,
-      seriesInfo: { id: 42, name: 'Test', bookCount: 5, readCount: 2, authors: ['Author'], possibleGaps: [], expectedBookCount: null, followStatus: null },
+      seriesInfo: {
+        id: 42,
+        name: 'Test',
+        bookCount: 5,
+        readCount: 2,
+        authors: ['Author'],
+        possibleGaps: [],
+        expectedBookCount: null,
+        followStatus: null,
+      },
     })
 
     const { seriesInfo, total, load } = useSeriesDetail(seriesId)
