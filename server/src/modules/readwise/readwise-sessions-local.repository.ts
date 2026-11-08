@@ -97,11 +97,7 @@ export class ReadwiseSessionsLocalRepository {
    * always null: a Readwise session must contribute to stats only, never move BookOrbit's own
    * reading position (reading-services plan §9).
    */
-  async insertPulledSession(
-    userId: number,
-    session: PulledReadwiseSession,
-    timeZone: string,
-  ): Promise<{ id: number; inserted: boolean }> {
+  async insertPulledSession(userId: number, session: PulledReadwiseSession, timeZone: string): Promise<{ id: number; inserted: boolean }> {
     const libraryId = await this.resolveLibraryIdForBook(session.bookId);
     if (libraryId === null) return { id: -1, inserted: false };
 

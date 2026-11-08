@@ -42,7 +42,21 @@ function makeDbHarness(options?: { libraryRow?: { libraryId: number } | null; in
   const db = { select, transaction };
   const repo = new ReadwiseSessionsLocalRepository(db as never);
 
-  return { repo, select, transaction, sessionValues, sessionConflict, ledgerValues, ledgerConflict, dailyValues, txDelete, deleteWhere, txUpdate, updateSet, updateWhere };
+  return {
+    repo,
+    select,
+    transaction,
+    sessionValues,
+    sessionConflict,
+    ledgerValues,
+    ledgerConflict,
+    dailyValues,
+    txDelete,
+    deleteWhere,
+    txUpdate,
+    updateSet,
+    updateWhere,
+  };
 }
 
 describe('ReadwiseSessionsLocalRepository', () => {

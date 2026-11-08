@@ -19,7 +19,6 @@ import { ReadwiseSettingsService } from './readwise-settings.service';
 
 const EVENT = 'readwise.sessions_pull';
 
-
 /**
  * Interval pull for Readwise sessions, on the same cadence as the S3 books pull. A new remote
  * session (not already in the ledger, and belonging to an already-linked book) is inserted as a
