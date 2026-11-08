@@ -15,6 +15,7 @@ function makeFetchResponse(status: number): Response {
   return {
     status,
     ok: status >= 200 && status < 300,
+    headers: { get: vi.fn().mockReturnValue(null) },
     json: vi.fn().mockResolvedValue({}),
   } as unknown as Response;
 }
@@ -109,7 +110,7 @@ describe('ReadwiseClientService', () => {
       fetchMock.mockResolvedValueOnce(makeFetchResponse(429)).mockResolvedValueOnce(makeFetchResponse(200));
       const p = service.createHighlights(1, 'tok', [makeHighlight()]);
       await vi.runAllTimersAsync();
-      await expect(p).resolves.toBeUndefined();
+      await expect(p).resolves.toEqual([]);
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
@@ -126,6 +127,84 @@ describe('ReadwiseClientService', () => {
     it('rethrows network errors', async () => {
       fetchMock.mockRejectedValueOnce(new Error('Network failure'));
       await expect(service.createHighlights(1, 'tok', [makeHighlight()])).rejects.toThrow('Network failure');
+    });
+
+    it('extracts ids from a modified_highlights response', async () => {
+      fetchMock.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: vi.fn().mockReturnValue(null) },
+        json: vi.fn().mockResolvedValue({ modified_highlights: [101, 102] }),
+      });
+      await expect(service.createHighlights(1, 'tok', [makeHighlight(), makeHighlight()])).resolves.toEqual([101, 102]);
+    });
+
+    it('extracts ids from a per-book-group response, flattened in order', async () => {
+      fetchMock.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: vi.fn().mockReturnValue(null) },
+        json: vi.fn().mockResolvedValue([{ id: 'b1', highlights: [{ id: 201 }] }, { id: 'b2', highlights: [{ id: 202 }] }]),
+      });
+      await expect(service.createHighlights(1, 'tok', [makeHighlight(), makeHighlight()])).resolves.toEqual([201, 202]);
+    });
+
+    it('returns an empty array for an unrecognised response shape', async () => {
+      fetchMock.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: vi.fn().mockReturnValue(null) },
+        json: vi.fn().mockResolvedValue({ unexpected: true }),
+      });
+      await expect(service.createHighlights(1, 'tok', [makeHighlight()])).resolves.toEqual([]);
+    });
+  });
+
+  describe('updateHighlight', () => {
+    it('PATCHes the highlight detail URL with the patch body', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200));
+      await service.updateHighlight(1, 'tok', '55', { note: 'edited' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://readwise.io/api/v2/highlights/55/');
+      expect(init.method).toBe('PATCH');
+      expect(init.body).toBe(JSON.stringify({ note: 'edited' }));
+    });
+  });
+
+  describe('deleteHighlight', () => {
+    it('DELETEs the highlight detail URL', async () => {
+      fetchMock.mockResolvedValueOnce({ status: 204, ok: true, headers: { get: vi.fn().mockReturnValue(null) } });
+      await service.deleteHighlight(1, 'tok', '55');
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://readwise.io/api/v2/highlights/55/');
+      expect(init.method).toBe('DELETE');
+    });
+  });
+
+  describe('exportHighlights', () => {
+    it('builds the query string and returns results/nextPageCursor', async () => {
+      fetchMock.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: vi.fn().mockReturnValue(null) },
+        json: vi.fn().mockResolvedValue({ results: [{ user_book_id: 1, title: 'A', author: 'B', highlights: [] }], nextPageCursor: 'next' }),
+      });
+      const result = await service.exportHighlights(1, 'tok', { updatedAfter: '2026-01-01T00:00:00Z', includeDeleted: true });
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toContain('updatedAfter=2026-01-01');
+      expect(url).toContain('includeDeleted=true');
+      expect(result.nextPageCursor).toBe('next');
+      expect(result.results).toHaveLength(1);
+    });
+
+    it('defaults to an empty page when the response has no results', async () => {
+      fetchMock.mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        headers: { get: vi.fn().mockReturnValue(null) },
+        json: vi.fn().mockResolvedValue({}),
+      });
+      await expect(service.exportHighlights(1, 'tok')).resolves.toEqual({ results: [], nextPageCursor: null });
     });
   });
 });

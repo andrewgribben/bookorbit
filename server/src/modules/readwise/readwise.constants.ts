@@ -1,6 +1,10 @@
 export const READWISE_BASE_URL = 'https://readwise.io/api/v2';
 export const READWISE_HIGHLIGHTS_URL = `${READWISE_BASE_URL}/highlights/`;
 export const READWISE_AUTH_URL = `${READWISE_BASE_URL}/auth/`;
+export const READWISE_EXPORT_URL = `${READWISE_BASE_URL}/export/`;
+export function readwiseHighlightDetailUrl(externalId: string): string {
+  return `${READWISE_BASE_URL}/highlights/${externalId}/`;
+}
 
 // Rate limit is 240 req/min for highlights CREATE → ~250ms between requests, keep margin.
 export const READWISE_MIN_INTERVAL_MS = 300;
@@ -87,3 +91,17 @@ export const READWISE_SESSIONS_PULL_INTERVAL_MS = READWISE_BOOKS_PULL_INTERVAL_M
 export const READWISE_SESSIONS_PULL_USER_CONCURRENCY = READWISE_BOOKS_PULL_USER_CONCURRENCY;
 export const READWISE_SESSIONS_PULL_CURSOR_CACHE_KEY = 'sessions-pull-cursor';
 export const READWISE_SESSIONS_PULL_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+
+// S5 highlights two-way: create/update/delete push is folded into the existing
+// ReadwiseSyncService.flush() debounce (READWISE_AUTO_SYNC_* above), triggered now by
+// annotation.created/updated/deleted. Pull runs on the same interval cadence as books/sessions.
+export const READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE = 100;
+export const READWISE_HIGHLIGHTS_PULL_INTERVAL_MS = READWISE_BOOKS_PULL_INTERVAL_MS;
+export const READWISE_HIGHLIGHTS_PULL_USER_CONCURRENCY = READWISE_BOOKS_PULL_USER_CONCURRENCY;
+export const READWISE_HIGHLIGHTS_PULL_CURSOR_CACHE_KEY = 'highlights-pull-cursor';
+export const READWISE_HIGHLIGHTS_PULL_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+export const READWISE_HIGHLIGHTS_LEDGER_BACKFILLED_CACHE_KEY = 'highlights-ledger-backfilled';
+// The flag never expires once set; a far-future TTL keeps `ReadingServiceCacheService.get` happy.
+export const READWISE_HIGHLIGHTS_LEDGER_BACKFILLED_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+// Export is grouped by book, so a page can hold many highlights; keep the HTTP page bounded.
+export const READWISE_HIGHLIGHTS_EXPORT_PAGE_SIZE = 1000;
