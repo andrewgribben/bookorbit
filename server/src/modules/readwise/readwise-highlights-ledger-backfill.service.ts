@@ -68,7 +68,7 @@ export class ReadwiseHighlightsLedgerBackfillService {
           await this.readingServicesRepo.recordItemLinks(items);
           linked += items.length;
         }
-        if (!page.nextPageCursor || page.results.length === 0) break;
+        if (!page.nextPageCursor) break;
         pageCursor = page.nextPageCursor;
       }
       this.logger.log(
