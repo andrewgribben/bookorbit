@@ -240,7 +240,9 @@ export class ReadwiseBooksClientService {
       isbns: params.isbns?.join(','),
       status: params.status,
     });
-    return this.request<ReadwiseListBooksResult>(userId, token, 'GET', `${READWISE_BOOKS_URL}${query}`);
+    const page = await this.request<ReadwiseListBooksResult>(userId, token, 'GET', `${READWISE_BOOKS_URL}${query}`);
+    // Readwise sends numeric ids; link rows and write results hold strings, so a mixed id would never match a Set or Map key.
+    return { ...page, results: (page.results ?? []).map((book) => ({ ...book, id: String(book.id) })) };
   }
 
   async getBooksByIsbns(userId: number, token: string, isbns: string[]): Promise<ReadwiseListBooksResult> {
