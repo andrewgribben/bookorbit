@@ -48,6 +48,7 @@ function makeRepo(run: ReadingServiceRun) {
   const repo = {
     createRun: vi.fn().mockResolvedValue(run),
     findRun: vi.fn().mockResolvedValue(run),
+    findRunningRun: vi.fn().mockResolvedValue(undefined),
     findRunningRuns: vi.fn().mockResolvedValue([]),
     updateRun: vi.fn().mockImplementation((_id: number, patch: Partial<ReadingServiceRun>) => {
       updates.push(patch);
@@ -56,6 +57,13 @@ function makeRepo(run: ReadingServiceRun) {
     }),
   } as unknown as ReadingServicesRepository;
   return { repo, updates };
+}
+
+function uniqueViolation(): Error {
+  return Object.assign(new Error('duplicate key value violates unique constraint "rs_runs_user_provider_kind_running_uidx"'), {
+    code: '23505',
+    constraint: 'rs_runs_user_provider_kind_running_uidx',
+  });
 }
 
 describe('ReadingServiceSyncRunService', () => {
@@ -132,6 +140,72 @@ describe('ReadingServiceSyncRunService', () => {
 
     expect(run.status).toBe('cancelled');
     expect(migratePage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not overwrite a cancellation with completed when cancelled during the final in-flight page', async () => {
+    const run = makeRun();
+    const { repo } = makeRepo(run);
+    const registry = new ReadingServiceRegistry();
+    let resolveFinalPage: (value: Record<string, unknown> | null) => void = () => undefined;
+    const migratePage = vi.fn().mockImplementationOnce(() => new Promise((resolve) => (resolveFinalPage = resolve)));
+    registry.register({
+      provider: 'readwise',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage,
+      pull: () => Promise.resolve(undefined),
+    });
+    const service = new ReadingServiceSyncRunService(repo, registry);
+
+    const progress = await service.startMigration(1, 'readwise');
+    await service.cancel(progress.id, 1);
+    expect(run.status).toBe('cancelled');
+
+    resolveFinalPage(null);
+    await flushMicrotasks();
+
+    expect(run.status).toBe('cancelled');
+    expect(migratePage).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the existing running run instead of starting a duplicate', async () => {
+    const existingRun = makeRun({ id: 5 });
+    const { repo } = makeRepo(existingRun);
+    (repo.findRunningRun as any).mockResolvedValue(existingRun);
+    const registry = new ReadingServiceRegistry();
+    registry.register({
+      provider: 'readwise',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: vi.fn(),
+      pull: () => Promise.resolve(undefined),
+    });
+    const service = new ReadingServiceSyncRunService(repo, registry);
+
+    const progress = await service.startMigration(1, 'readwise');
+
+    expect(progress.id).toBe(5);
+    expect(repo.createRun).not.toHaveBeenCalled();
+  });
+
+  it('recovers from a racing duplicate-insert by returning the run the race created', async () => {
+    const run = makeRun();
+    const { repo } = makeRepo(run);
+    (repo.findRunningRun as any).mockResolvedValueOnce(undefined).mockResolvedValueOnce(run);
+    (repo.createRun as any).mockRejectedValueOnce(uniqueViolation());
+    const registry = new ReadingServiceRegistry();
+    registry.register({
+      provider: 'readwise',
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: vi.fn().mockResolvedValue(null),
+      pull: () => Promise.resolve(undefined),
+    });
+    const service = new ReadingServiceSyncRunService(repo, registry);
+
+    const progress = await service.startMigration(1, 'readwise');
+
+    expect(progress.id).toBe(run.id);
   });
 
   it('marks the run failed and sanitizes the error when the adapter throws', async () => {

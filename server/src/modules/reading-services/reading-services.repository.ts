@@ -80,6 +80,18 @@ export class ReadingServicesRepository {
     });
   }
 
+  async findRunningRun(userId: number, provider: ReadingServiceProvider, kind: ReadingServiceRun['kind']): Promise<ReadingServiceRun | undefined> {
+    return this.db.query.readingServiceRuns.findFirst({
+      where: and(
+        eq(schema.readingServiceRuns.userId, userId),
+        eq(schema.readingServiceRuns.provider, provider),
+        eq(schema.readingServiceRuns.kind, kind),
+        eq(schema.readingServiceRuns.status, 'running'),
+      ),
+      orderBy: desc(schema.readingServiceRuns.id),
+    });
+  }
+
   // Scoped to active rows only: this backs the boot-time resume sweep, which by definition is
   // the one place that legitimately needs every user's unfinished runs, not one user's.
   async findRunningRuns(): Promise<ReadingServiceRun[]> {
