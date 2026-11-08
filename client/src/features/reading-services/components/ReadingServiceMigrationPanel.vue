@@ -54,9 +54,13 @@ function candidateFor(book: { externalId: string; title: string | null; author: 
   return { externalId: book.externalId, title: book.title, author: book.author, coverUrl: book.coverImageUrl }
 }
 
-watch(readwiseOnlyBooks, (books) => {
-  if (canRequestBooks.value && books.length > 0) void checkMany(books.map(candidateFor))
-})
+watch(
+  readwiseOnlyBooks,
+  (books) => {
+    if (canRequestBooks.value && books.length > 0) void checkMany(books.map(candidateFor))
+  },
+  { immediate: true },
+)
 
 const requestAllOpen = ref(false)
 const requestingAll = ref(false)

@@ -10,6 +10,12 @@ const hasPermissionMock = vi.fn().mockReturnValue(false)
 vi.mock('@/lib/api', () => ({ api: (url: string, init?: RequestInit) => apiMock(url, init) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: pushMock }) }))
 vi.mock('@/features/auth/composables/usePermissions', () => ({ usePermissions: () => ({ hasPermission: hasPermissionMock }) }))
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: { name: 'DropdownMenu', template: '<div><slot /></div>' },
+  DropdownMenuContent: { name: 'DropdownMenuContent', template: '<div><slot /></div>' },
+  DropdownMenuItem: { name: 'DropdownMenuItem', props: ['disabled'], emits: ['click'], template: '<button type="button" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>' },
+  DropdownMenuTrigger: { name: 'DropdownMenuTrigger', template: '<button type="button"><slot /></button>' },
+}))
 
 function shelfItem(overrides: Partial<ReadingServiceShelfItem> = {}): ReadingServiceShelfItem {
   return {
@@ -147,7 +153,6 @@ describe('ExternalShelf', () => {
       const requestItem = wrapper.findAllComponents({ name: 'DropdownMenuItem' })[0]
       await requestItem.trigger('click')
       await flushPromises()
-
       expect(apiMock).toHaveBeenCalledWith('/api/v1/book-requests', expect.objectContaining({ method: 'POST' }))
     })
   })
