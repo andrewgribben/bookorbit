@@ -2425,6 +2425,169 @@ exercise or rule out a true concurrent-write race.
 
 ---
 
+## Release: feat-reading-services-release (2026-11-08)
+
+Combines every reading-services stage into one release branch and closes the
+"reconciling" gap item 2 noted above. Branch `feat-reading-services-release`,
+created from `feat-reading-services-provider-parity` @ `b701cd5ac`, merging
+`feat-reading-services-reconnect-safe` @ `1e7b70f8d`. Head commit
+**`b250ac3348`**, local only, not pushed. Worktrees: PC
+`D:/Development/bookorbit-worktrees/feat-reading-services-release`, Unraid
+`/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-release`.
+
+### Ancestry check (before building)
+
+Verified with `git merge-base --is-ancestor` that
+`feat-reading-services-library-scope` @ `3ff34e2d8` (the common base of both
+branches merged here) already contains `feat-reading-services-integration`
+(`4634f1fe`), `feat-reading-services-widgets` (`3d5ad622`),
+`feat-hardcover-social` (`546bd1111`), `merge-upstream-2026-11-08` (`43e1dc8a`)
+and `origin/development` (`d4e085e1`) - all four were ancestors, no extra
+merge needed.
+
+`feat-reader-backup-import` (the branch live's earlier image was built from)
+was **not** a literal git ancestor of `library-scope` (24 commits showed up
+under `git log feat-reader-backup-import ^library-scope`), which initially
+looked like lost work. Checked further: `git diff d4e085e1a ff35710fc`
+(origin/development's HEAD vs feat-reader-backup-import's tip) is **empty** -
+the two branches point at identical trees, just reached by different commit
+SHAs (origin/development's history squashed/re-committed the same changes
+under new hashes). Nothing is actually missing; proceeded with the merge.
+
+### Merge: provider-parity + reconnect-safe
+
+`git merge --no-ff feat-reading-services-reconnect-safe` onto the new branch
+produced one real conflict, `docs/AGENT_HANDOFF.md` (both branches appended a
+new section at the same point) - resolved by keeping both sections in stage
+order (provider-parity's section, then reconnect-safe's). One file,
+`server/src/modules/readwise/readwise-books-migration.service.ts`, had
+changes from both branches but merged automatically with no conflict markers
+(reconnect-safe's PATCH-skip-on-exact-match logic and provider-parity's
+unrelated capability fix touched different regions). Merge commit
+`743819a6e`.
+
+### New work: the "reconciling" phase
+
+Added on top of the merge (commit `ec970d5e5`, formatting fixup
+`b250ac3348`), closing deferred item 2 from the reconnect-safe stage above:
+
+- `packages/types/src/reading-services.ts`: `SyncRunProgress` and
+  `ReadingServiceSummary['migration']` both gain an optional
+  `phase?: 'reconciling' | null`.
+- `reading-service-sync-run.service.ts`: `phase` is derived two ways, no new
+  DB column or migration needed. (1) Automatically, from the existing
+  Readwise books-migration cursor convention (`cursor.phase === 'index'`
+  means the full-library matching pass is still running) - this is the
+  "books migration matching" half of the card, handled without touching
+  `readwise-books-migration.service.ts` since the convention already
+  existed. (2) Via new `markReconciling(userId, provider)` /
+  `clearReconciling(userId, provider)` methods backed by an in-memory
+  `Set<string>` keyed `${userId}:${provider}` (same lifetime/pattern as the
+  existing `cancelled` run-id set) - for passes that run outside a tracked
+  migration run, like Readwise's sessions reconcile.
+- `readwise-sessions-reconcile.service.ts`: `ensureReconciled` now calls
+  `markReconciling` before the pass and `clearReconciling` in a `finally`
+  block, so the phase clears on success or failure.
+- `ReadingServiceMigrationPanel.vue` (client): shows a distinct
+  `reconcilingDescription` sentence instead of the generic running
+  description while `run.phase === 'reconciling'`; new `en.json` key.
+- Tests: new unit tests in `reading-service-sync-run.service.test.ts` (both
+  derivation paths) and `readwise-sessions-reconcile.service.test.ts` (marks
+  and always clears, including on throw), plus a new
+  `ReadingServiceMigrationPanel.spec.ts` case for the client message swap.
+
+### Migrations
+
+0139-0144 (the reading-services stack's own migrations) are unique and
+sequential; confirmed via the journal's own `idx` field
+(`server/src/db/migrations/meta/_journal.json`), which is what Drizzle
+actually orders by. Note: the filenames 0101-0103 are reused by two
+different migrations each (an unrelated pre-existing quirk from the upstream
+merge history, journal `idx` 101-103 and 132-134) - the journal's 145 `idx`
+values are 0..144 with no gaps and no duplicate tags, so this does not affect
+migration correctness.
+
+Verified on Unraid against a fresh `pgvector/pgvector:pg18` disposable
+container (`bookorbit-release-db`, `127.0.0.1:55460`, dropped after use):
+`pnpm db:migrate` applied all 145 migrations cleanly, then
+`pnpm db:generate drift_check` reported "No schema changes, nothing to
+migrate". Also restored the live pre-merge backup
+(`/mnt/user/appdata/bookorbit-backups/bookorbit-pre-upstream-merge-20261108-015217.dump`)
+into a second disposable container (`bookorbit-restore-test-db`,
+`127.0.0.1:55461`, never `bookorbit-db`) via `pg_restore --no-owner --no-acl`,
+then `pnpm db:migrate` applied cleanly against that real-data copy too.
+Container dropped after.
+
+### Gates (all on Unraid, 192.168.5.3)
+
+- Server + client `pnpm run typecheck:server` / `typecheck:client`: exit 0
+  both.
+- Server vitest `src/modules/readwise src/modules/hardcover
+  src/modules/reading-services`: **60 files, 766 tests, all passed**.
+- Client vitest `src/features/reading-services src/features/readwise
+  src/features/hardcover src/features/settings src/features/dashboard`:
+  **116 files, 1380 tests, all passed**.
+- `node ./scripts/validate-locales.mjs`: "Validated 25 locale catalogs
+  against 12253 English messages".
+- Changed-file (vs `feat-reading-services-provider-parity`, the release
+  branch's own new work - the 731-file diff against `origin/development`
+  is the whole reading-services stack validated by earlier stages, not new
+  work from this one) `eslint`/`prettier`: one real finding (a long
+  constructor call in the two-instance integration test and one ternary
+  line in `ReadingServiceMigrationPanel.vue`), both fixed with
+  `eslint --fix` / `prettier --write`, then clean.
+- BOOT GATE, both green, zero `"level":50` lines, both logged `Nest
+  application successfully started` exactly once:
+  - (a) no `READING_SERVICES_PRIVATE_ADAPTERS_DIR` set.
+  - (b) `READING_SERVICES_PRIVATE_ADAPTERS_DIR` pointing at a tracked-files-only
+    copy (`git archive`, no `private/` folder - there wasn't one) of the real
+    adapter at `C:/Users/grib/Development/readwise-accessibility-poc/bookorbit-adapter`
+    (git HEAD `87a63f5`), copied to
+    `/mnt/user/data/Development/bookorbit-private-adapters-test/readwise-social`
+    on Unraid. Logged `provider=readwise-social - adapter registered` and
+    `loaded=1 scanned=1`.
+  - Registered a test user via `POST /auth/setup` (`x-setup-token` header)
+    in the disposable DB, then `GET /api/v1/reading-services` with that
+    user's token: the `readwise-social` summary's `authMethods` lists all
+    three kinds - `password`, `token`, `device_code` - confirming the
+    private adapter's parity surface is reachable end to end, not just
+    loaded at boot.
+
+### Docker image
+
+Built from the Unraid release worktree:
+`docker build -t andrewgribben/bookorbit:release-b250ac334 .` -
+succeeded, image id `58fcebb5d841`, 945MB. `docker system df` showed 18.59GB
+reclaimable before the build (no prune needed). **Not tagged `:development`,
+not run against any real database.**
+
+### Env vars / mounts the live container needs for a private adapter
+
+- `READING_SERVICES_PRIVATE_ADAPTERS_DIR` - absolute path inside the
+  container to a directory containing the adapter's `index.mjs` (or
+  `index.js`) and its `lib/` etc. directly at that path (not a parent
+  directory of multiple adapters - the loader only scans the given directory
+  itself for an entrypoint file, see
+  `reading-service-private-adapter-loader.service.ts`).
+- `READING_SERVICES_ENCRYPTION_KEY` - already required for the stored
+  private-credential table from the provider-parity stage; unchanged here.
+- Suggested mount for the live container: read-only bind mount
+  `/mnt/user/appdata/bookorbit-private-adapters -> /app/private-adapters`
+  (host directory holding one subfolder per adapter, operator picks which
+  one `READING_SERVICES_PRIVATE_ADAPTERS_DIR` points at, e.g.
+  `/app/private-adapters/readwise-social`), `:ro` since the loader only
+  reads it at boot.
+
+### Not done / flagged for the owner
+
+- The image was **not** pushed to any registry and the container was
+  **not** deployed - per the card, this stays local-build-only until the
+  owner approves a deployment.
+- `feat-reading-services-release` was **not** pushed to the fork remote;
+  it exists only in the two local worktrees above.
+
+---
+
 ## First commands for a successor agent
 
 ```bash
