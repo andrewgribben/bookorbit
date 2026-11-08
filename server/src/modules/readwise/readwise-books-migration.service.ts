@@ -83,7 +83,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   private readonly logger = new Logger(ReadwiseBooksMigrationService.name);
 
   readonly provider: ReadingServiceProvider = 'readwise';
-  readonly capabilities: ReadingServiceCapabilities = { status: 'both', rating: 'both', dates: 'both', owned: 'read' };
+  readonly capabilities: ReadingServiceCapabilities = { status: 'both', rating: 'both', dates: 'both', owned: 'read', sessions: 'both', publish_sessions: 'push' };
 
   constructor(
     private readonly registry: ReadingServiceRegistry,

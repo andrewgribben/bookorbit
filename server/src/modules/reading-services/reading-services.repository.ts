@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { ReadingServiceFeature, ReadingServiceProvider, SyncRunProgressCounters } from '@bookorbit/types';
@@ -8,9 +8,11 @@ import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import type {
   NewReadingServiceBookLink,
+  NewReadingServiceItemLink,
   NewReadingServiceRun,
   ReadingServiceBookLink,
   ReadingServiceCacheRow,
+  ReadingServiceItemLink,
   ReadingServiceRun,
 } from '../../db/schema';
 
@@ -194,5 +196,62 @@ export class ReadingServicesRepository {
           syncError: null,
         },
       });
+  }
+
+  // ---- Item ledger (sessions, highlights) ----
+
+  async findItemLinksByLocalIds(
+    userId: number,
+    provider: ReadingServiceProvider,
+    kind: string,
+    localIds: number[],
+  ): Promise<ReadingServiceItemLink[]> {
+    if (localIds.length === 0) return [];
+    return this.db.query.readingServiceItemLinks.findMany({
+      where: and(
+        eq(schema.readingServiceItemLinks.userId, userId),
+        eq(schema.readingServiceItemLinks.provider, provider),
+        eq(schema.readingServiceItemLinks.kind, kind),
+        inArray(schema.readingServiceItemLinks.localId, localIds),
+      ),
+    });
+  }
+
+  async findItemLinkByExternalId(
+    userId: number,
+    provider: ReadingServiceProvider,
+    kind: string,
+    externalId: string,
+  ): Promise<ReadingServiceItemLink | undefined> {
+    return this.db.query.readingServiceItemLinks.findFirst({
+      where: and(
+        eq(schema.readingServiceItemLinks.userId, userId),
+        eq(schema.readingServiceItemLinks.provider, provider),
+        eq(schema.readingServiceItemLinks.kind, kind),
+        eq(schema.readingServiceItemLinks.externalId, externalId),
+      ),
+    });
+  }
+
+  // Inserted as one multi-row statement, which Postgres runs as a single atomic write: this is
+  // the "same transaction" the S4 ledger write requires for a batch of just-posted session ids.
+  // It does not cover the gap between the Readwise POST and this call (see push service comment).
+  async recordItemLinks(items: NewReadingServiceItemLink[]): Promise<void> {
+    if (items.length === 0) return;
+    await this.db.insert(schema.readingServiceItemLinks).values(items).onConflictDoNothing();
+  }
+
+  async markItemLinkDeleted(userId: number, provider: ReadingServiceProvider, kind: string, localId: number): Promise<void> {
+    await this.db
+      .update(schema.readingServiceItemLinks)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, provider),
+          eq(schema.readingServiceItemLinks.kind, kind),
+          eq(schema.readingServiceItemLinks.localId, localId),
+        ),
+      );
   }
 }

@@ -70,3 +70,20 @@ export const READWISE_BOOKS_PULL_USER_CONCURRENCY = 2;
 export const READWISE_BOOKS_PULL_CURSOR_CACHE_KEY = 'books-pull-cursor';
 // The cursor cache entry has no natural expiry; set a far-future TTL so `ReadingServiceCacheService` keeps it.
 export const READWISE_BOOKS_PULL_CURSOR_TTL_MS = 365 * 24 * 60 * 60_000;
+
+// S4 sessions: push every unlinked, non-readwise local session for the changed books, debounced
+// the same way as the S3 books push. Pull reuses the books pull cadence (same @Interval period).
+export const READWISE_SESSIONS_PUSH_DEBOUNCE_MS = 2000;
+export const READWISE_SESSIONS_PUSH_MAX_WAIT_MS = 10_000;
+export const READWISE_SESSIONS_PUSH_RETRY_BASE_MS = 30_000;
+export const READWISE_SESSIONS_PUSH_MAX_RETRIES = 5;
+// Only push a session once it has been read for at least this long (plan §"S4 tasks", step 1).
+export const READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS = 60;
+// How many unlinked local sessions to look at per book per flush; keeps one flush bounded even
+// after a long period offline from Readwise.
+export const READWISE_SESSIONS_PUSH_PAGE_SIZE = 200;
+
+export const READWISE_SESSIONS_PULL_INTERVAL_MS = READWISE_BOOKS_PULL_INTERVAL_MS;
+export const READWISE_SESSIONS_PULL_USER_CONCURRENCY = READWISE_BOOKS_PULL_USER_CONCURRENCY;
+export const READWISE_SESSIONS_PULL_CURSOR_CACHE_KEY = 'sessions-pull-cursor';
+export const READWISE_SESSIONS_PULL_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;

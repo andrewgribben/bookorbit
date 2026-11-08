@@ -18,6 +18,11 @@ import { ReadwiseClientService } from './readwise-client.service';
 import { ReadwiseEventListener } from './readwise-event-listener.service';
 import { ReadwiseQueueService } from './readwise-queue.service';
 import { ReadwiseRepository } from './readwise.repository';
+import { ReadwiseSessionsEventListener } from './readwise-sessions-event-listener.service';
+import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
+import { ReadwiseSessionsPullService } from './readwise-sessions-pull.service';
+import { ReadwiseSessionsPushSchedulerService } from './readwise-sessions-push-scheduler.service';
+import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
 
@@ -39,6 +44,11 @@ import { ReadwiseSyncService } from './readwise-sync.service';
     ReadwiseBooksPushSchedulerService,
     ReadwiseBooksEventListener,
     ReadwiseBooksPullService,
+    ReadwiseSessionsLocalRepository,
+    ReadwiseSessionsPushService,
+    ReadwiseSessionsPushSchedulerService,
+    ReadwiseSessionsEventListener,
+    ReadwiseSessionsPullService,
   ],
   exports: [ReadwiseSettingsService, ReadwiseSyncService],
 })
