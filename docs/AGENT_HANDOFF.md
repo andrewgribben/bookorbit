@@ -596,6 +596,186 @@ Open questions for the owner / a successor:
   the same per-feature toggle plumbing already built for rating/status in
   the Readwise settings screen (`features.review`).
 
+## S5: Readwise highlights two-way sync (2026-11-08)
+
+Branch `feat-readwise-highlights-two-way`, stacked on `feat-readwise-sessions`
+@ `b835cd1d34`. Worktrees: PC
+`D:/Development/bookorbit-worktrees/feat-readwise-highlights-two-way`, Unraid
+`/mnt/user/data/Development/bookorbit-worktrees/feat-readwise-highlights-two-way`.
+Final hash **`eb0c3f68f2`**, local only, not pushed.
+
+Replaces the old single `readwise_user_settings.last_synced_annotation_id`
+watermark (push-only, create-only) with the `reading_service_item_links`
+ledger (`kind='highlight'`), so creates, edits and deletes on either side can
+each be tracked per highlight instead of one forward-only cursor. The
+watermark column stays on the schema (still written on first connect by
+`readwise-settings.service.ts`, never read by this stage) for upstream
+compatibility; no migration was needed since S4 already created the ledger
+table with every column this stage uses (`external_id`, `content_hash`,
+`deleted_at`, `synced_at`).
+
+What was built:
+
+1. `annotation.updated`/`annotation.deleted` achievement events
+   (`achievement-events.service.ts`), emitted from `annotation.service.ts`
+   (web edits/deletes, skipping a pure star/unstar toggle which never
+   touches `version`) and from `annotation-sync.service.ts` (device
+   ingest content changes/moves, explicit device deletes, and detected
+   device deletions), all emitted after their transaction commits so a
+   listener querying the ledger sees the already-committed rows.
+2. `readwise-highlight-hash.utils.ts`: `readwiseHighlightContentHash(text,
+   note)`, SHA-256 of `text\0note`, a dedup/compare key only (not
+   security-sensitive) used on both the push and pull sides to decide
+   whether a highlight actually changed.
+3. `readwise.repository.ts` gained ledger-based queries alongside the old
+   `findNewHighlights`/`findLatestAnnotationId` (left in place, now dead
+   code for this flow, kept for anyone still depending on them):
+   `findPushableHighlights` (unlinked annotations, replaces the watermark
+   query), `findChangedLinkedHighlights` (linked highlights, cursor-paginated
+   by annotation id so a library larger than one page still gets fully
+   scanned across repeated flushes), `findDeletedLinkedHighlights` (linked
+   highlights whose local annotation is soft-deleted but the ledger isn't
+   yet), `findAnnotationsByIds` (ledger backfill matching).
+4. `readwise-client.service.ts`: `createHighlights` now returns the
+   created Readwise ids (parses `modified_highlights` or a per-book-group
+   response shape; an unrecognised shape degrades to an empty array rather
+   than throwing, so the ledger just retries those as new on the next
+   flush) instead of `void`. Added `updateHighlight` (PATCH
+   `/highlights/{id}/`), `deleteHighlight` (DELETE), and `exportHighlights`
+   (`GET /export/`, paginated via `pageCursor`, `updatedAfter`,
+   `includeDeleted`) for the backfill and the pull.
+5. `readwise-highlights-ledger-backfill.service.ts`: one-time migration
+   from the old watermark scheme. Pages the full export once per user
+   (cache flag `highlights-ledger-backfilled`, never expires), matches a
+   remote highlight back to a local annotation via the `annotationId=`
+   query param BookOrbit already embeds in `highlight_url` at push time,
+   and seeds a ledger row per match (content hash from the *local*
+   text/note, not the remote one, so a push-time edit is detected
+   correctly afterwards). Unmatched/no-annotationId highlights are counted,
+   not linked.
+6. `readwise-sync.service.ts` (`flush`) now runs backfill-once, then
+   create push (`findPushableHighlights` + `createHighlights`, batched by
+   `READWISE_HIGHLIGHTS_PUSH_PAGE_SIZE`), then update push
+   (`findChangedLinkedHighlights`, filtered in-process by content hash,
+   `updateHighlight` + `ReadingServicesRepository.updateItemLinkContentHash`
+   per change), then delete push (`findDeletedLinkedHighlights` +
+   `deleteHighlight` + `markItemLinkDeleted`). `ReadingServicesRepository`
+   gained `updateItemLinkContentHash` (an UPDATE, unlike `recordItemLinks`'
+   insert-only `onConflictDoNothing`) for the edit-push and pull-edit paths.
+7. `readwise-highlights-local.repository.ts` +
+   `readwise-highlights-pull.service.ts`: the pull path. Runs on the same
+   interval as the S3/S4 pulls, reads `exportHighlights` with a per-user
+   `highlights-pull-cursor` watermark, and for every remote highlight
+   looks up its ledger link by external id. No link: counted as
+   `skippedNew`, never created locally - a BookOrbit annotation needs a
+   CFI/location anchor (`annotation_positions`) that a Readwise-side-only
+   highlight has no way to carry, confirming the plan's "only when
+   locatable" rule resolves to "never, for this API" in practice, since
+   Readwise highlights are never linked to a BookOrbit book id or
+   position. Link exists and `is_deleted`: soft-deletes the local
+   annotation directly via `ReadwiseHighlightsLocalRepository` (not
+   `AnnotationService`) and marks the ledger link deleted. Link exists and
+   the remote content hash differs from the ledger's: applies the new
+   text/note directly and updates the ledger hash. Echo suppression: the
+   local repository writes bypass `AnnotationService`/`AnnotationSyncService`
+   on purpose, so no `annotation.updated`/`annotation.deleted` event fires
+   from a pull write and the push side never re-pushes its own pull.
+8. `readwise-event-listener.service.ts` now also subscribes to
+   `annotation.updated`/`annotation.deleted` and requests the same
+   debounced flush as `annotation.created`, since `ReadwiseSyncService.flush`
+   now reconciles create/update/delete together in one pass.
+9. `readwise-books-migration.service.ts` capabilities gained
+   `highlights: 'both'`. Bookmarks are not in scope and not added: the v2
+   highlights API has no bookmark concept, so there is nothing to map
+   either direction; left disabled by omission rather than a feature-flag
+   row, since no bookmark feature exists in `READING_SERVICE_FEATURES` to
+   begin with.
+10. `readwise.module.ts` registers the three new providers
+    (`ReadwiseHighlightsLedgerBackfillService`,
+    `ReadwiseHighlightsLocalRepository`, `ReadwiseHighlightsPullService`).
+
+Bug caught and fixed in review-before-handoff (both in the pull service and
+the ledger backfill): the export pagination loop originally stopped when
+`page.results.length === 0`, even if `nextPageCursor` was still set. An
+intermediate page with zero book groups but a valid cursor would have
+silently truncated the backfill/pull instead of continuing; fixed to key
+only on `nextPageCursor`.
+
+Tests added (all mocked DB/HTTP, no live Readwise calls):
+`readwise-highlight-hash.utils.test.ts`,
+`readwise-highlights-ledger-backfill.service.test.ts` (match by
+`annotationId=`, unmatched counting, no-annotationId skip, pagination),
+`readwise-highlights-local.repository.test.ts` (edit/delete apply +
+idempotent no-op when already gone),
+`readwise-highlights-pull.service.test.ts` (token/feature gating,
+skippedNew for an unlinked highlight, edit apply, echo-suppressing no-op
+when the hash already matches, delete apply, already-deleted-link skip,
+cursor advance), plus new cases in `readwise-sync.service.test.ts`
+(rewritten for the ledger: backfill-once gating, create/update/delete push,
+truncation, partial-id-return handling, cursor pagination termination,
+generic-error propagation, 403 auto-disable), `readwise.repository.test.ts`
+(`findPushableHighlights`/`findChangedLinkedHighlights`/
+`findDeletedLinkedHighlights`/`findAnnotationsByIds`),
+`readwise-client.service.test.ts` (`createHighlights` id extraction across
+both response shapes, `updateHighlight`, `deleteHighlight`,
+`exportHighlights`), `reading-services.repository.test.ts`
+(`updateItemLinkContentHash`), `annotation.service.test.ts` and
+`readwise-event-listener.service.test.ts` (update/delete event emission and
+subscription).
+
+No live Readwise calls, no writes to the production `bookorbit-db`, no
+schema change (confirmed by `drift_check` below), review/rating code
+untouched.
+
+**Verified on Unraid** (worktree above, after `pnpm install`):
+
+- `pnpm --filter server run type-check`: clean, exit 0.
+- `pnpm --filter client run type-check`: clean, exit 0.
+- `npx eslint` on every new/changed server file: clean, 0 problems (one
+  `--fix` pass folded back via lint-staged on commit for prettier-only
+  nits).
+- `npx vitest run src/modules/readwise src/modules/annotation
+  src/modules/reading-services src/modules/achievement`: **58 files, 1116
+  tests, all passed.**
+- No migration generated (`pnpm db:generate drift_check` on a disposable
+  `pgvector/pgvector:pg18` container at `127.0.0.1:55446`, after applying
+  all 141 existing migrations and the `uuid-ossp`/`pg_trgm`/`unaccent`/
+  `vector` extensions + `public.bookorbit_unaccent` function from
+  `src/scripts/postgres-extensions.ts`, which a from-scratch disposable DB
+  needs before `drizzle-kit migrate` can run past migration 0047):
+  "No schema changes, nothing to migrate". Container removed afterwards.
+- Full repo-wide `pnpm run lint:check` and the full/e2e test suites were
+  **not** run, per the "focused checks only" instruction; defer to PR
+  preparation.
+
+Open questions for the owner / a successor:
+
+- A user who connects Readwise sync for the **first time** (never
+  synced before) now gets their full existing highlight history pushed as
+  a backlog on the first flush, since `findPushableHighlights` selects
+  every unlinked highlight with no time floor. The pre-S5 behaviour set
+  `lastSyncedAnnotationId` to the latest id at connect time specifically
+  to skip existing highlights and only push going forward. If that
+  skip-history-on-connect behaviour is still wanted for brand-new
+  connections (as opposed to the S5 goal of not re-pushing an
+  *already-connected* user's history), it needs an explicit decision and a
+  small follow-up (e.g. seed the ledger with a "skip" marker for
+  pre-existing highlights at connect time, mirroring the old watermark
+  semantics but ledger-shaped).
+- The pull's remote-edit application is last-write-wins by content hash,
+  not a three-way merge: if a highlight changed locally since the last
+  sync *and* changed on Readwise since the last pull, whichever side's
+  flush/pull runs next overwrites the other unconditionally. The push
+  side's own flush happens first in practice (debounced, fast), so this is
+  mostly a narrow race rather than a routine conflict, but it is a real
+  gap against the plan's general three-way-merge expectation (S3 books
+  sync has one via `three-way-merge.ts`; S5 highlights does not). Flagging
+  for a follow-up if simultaneous cross-device highlight edits turn out to
+  matter in practice.
+- Bookmarks remain unsupported, as instructed, with no code path at all
+  (not even a disabled feature flag) since Readwise's v2 highlights API
+  has nothing to map a bookmark to.
+
 ## First commands for a successor agent
 
 ```bash

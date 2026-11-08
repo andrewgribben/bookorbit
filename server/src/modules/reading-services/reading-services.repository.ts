@@ -254,4 +254,25 @@ export class ReadingServicesRepository {
         ),
       );
   }
+
+  /** Updates an existing ledger row's content fingerprint and re-sync timestamp (a push or pull edit), unlike `recordItemLinks` which only inserts. */
+  async updateItemLinkContentHash(
+    userId: number,
+    provider: ReadingServiceProvider,
+    kind: string,
+    localId: number,
+    contentHash: string,
+  ): Promise<void> {
+    await this.db
+      .update(schema.readingServiceItemLinks)
+      .set({ contentHash, syncedAt: new Date() })
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, provider),
+          eq(schema.readingServiceItemLinks.kind, kind),
+          eq(schema.readingServiceItemLinks.localId, localId),
+        ),
+      );
+  }
 }

@@ -17,7 +17,7 @@ function makeReturningChain(row: unknown) {
 
 function makeSelectChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const method of ['from', 'leftJoin', 'where', 'groupBy', 'orderBy']) {
+  for (const method of ['from', 'leftJoin', 'innerJoin', 'where', 'groupBy', 'orderBy']) {
     chain[method] = vi.fn().mockReturnValue(chain);
   }
   chain.limit = vi.fn().mockResolvedValue(rows);
@@ -170,5 +170,82 @@ describe('ReadwiseRepository', () => {
         author: '',
       },
     ]);
+  });
+
+  it('findPushableHighlights excludes annotations already in the highlight ledger', async () => {
+    const { repo, db } = makeRepository();
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+    db.select.mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue('subquery') }) });
+    db.select.mockReturnValueOnce(
+      makeSelectChain([{ annotationId: 20, bookId: 1, text: 'new', note: null, createdAt, title: null, isbn13: null, isbn10: null, authorsCsv: '' }]),
+    );
+
+    await expect(repo.findPushableHighlights(7, 100)).resolves.toEqual([
+      { annotationId: 20, bookId: 1, text: 'new', note: null, createdAt, title: null, isbn13: null, isbn10: null, author: '' },
+    ]);
+  });
+
+  it('findChangedLinkedHighlights returns externalId and contentHash alongside the mapped row', async () => {
+    const { repo, db } = makeRepository();
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+    db.select.mockReturnValueOnce(
+      makeSelectChain([
+        {
+          annotationId: 5,
+          bookId: 1,
+          text: 'edited',
+          note: 'n',
+          createdAt,
+          title: null,
+          isbn13: null,
+          isbn10: null,
+          authorsCsv: '',
+          externalId: '999',
+          contentHash: 'old-hash',
+        },
+      ]),
+    );
+
+    await expect(repo.findChangedLinkedHighlights(7, 0, 100)).resolves.toEqual([
+      {
+        annotationId: 5,
+        bookId: 1,
+        text: 'edited',
+        note: 'n',
+        createdAt,
+        title: null,
+        isbn13: null,
+        isbn10: null,
+        author: '',
+        externalId: '999',
+        contentHash: 'old-hash',
+      },
+    ]);
+  });
+
+  it('findDeletedLinkedHighlights returns the annotation/external id pairs pending delete push', async () => {
+    const { repo, db } = makeRepository();
+    const chain: Record<string, unknown> = {};
+    for (const method of ['from', 'innerJoin', 'where']) chain[method] = vi.fn().mockReturnValue(chain);
+    chain.limit = vi.fn().mockResolvedValue([{ annotationId: 3, externalId: '42' }]);
+    db.select.mockReturnValueOnce(chain);
+
+    await expect(repo.findDeletedLinkedHighlights(7, 100)).resolves.toEqual([{ annotationId: 3, externalId: '42' }]);
+  });
+
+  it('findAnnotationsByIds returns an empty array for an empty id list without querying', async () => {
+    const { repo, db } = makeRepository();
+    await expect(repo.findAnnotationsByIds(7, [])).resolves.toEqual([]);
+    expect(db.select).not.toHaveBeenCalled();
+  });
+
+  it('findAnnotationsByIds queries by user and id list', async () => {
+    const { repo, db } = makeRepository();
+    const chain = { from: vi.fn(), where: vi.fn() };
+    chain.from.mockReturnValue(chain);
+    chain.where.mockResolvedValue([{ id: 1, bookId: 2, text: 'hi' }]);
+    db.select.mockReturnValueOnce(chain);
+
+    await expect(repo.findAnnotationsByIds(7, [1])).resolves.toEqual([{ id: 1, bookId: 2, text: 'hi' }]);
   });
 });

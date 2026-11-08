@@ -93,6 +93,9 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     owned: 'read',
     sessions: 'both',
     publish_sessions: 'push',
+    // S5: push (create/update/delete) and pull both run through the item-link ledger now.
+    // Bookmarks have no analogue in the v2 highlights API, so that feature stays absent here.
+    highlights: 'both',
   };
 
   constructor(

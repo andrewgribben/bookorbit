@@ -5,6 +5,8 @@ import type { ReadingSessionSource } from '@bookorbit/types';
 export const ACHIEVEMENT_EVENT_READING_SESSION_SAVED = 'reading-session.saved';
 export const ACHIEVEMENT_EVENT_BOOK_STATUS_CHANGED = 'book.status-changed';
 export const ACHIEVEMENT_EVENT_ANNOTATION_CREATED = 'annotation.created';
+export const ACHIEVEMENT_EVENT_ANNOTATION_UPDATED = 'annotation.updated';
+export const ACHIEVEMENT_EVENT_ANNOTATION_DELETED = 'annotation.deleted';
 export const ACHIEVEMENT_EVENT_COLLECTION_CREATED = 'collection.created';
 export const ACHIEVEMENT_EVENT_LIBRARY_CATALOG_CHANGED = 'library.catalog-changed';
 export const ACHIEVEMENT_EVENT_BACKFILL = 'achievement.backfill';
@@ -34,6 +36,18 @@ export interface BookStatusChangedPayload {
 }
 
 export interface AnnotationCreatedPayload {
+  userId: number;
+  bookId: number;
+  annotationId: number;
+}
+
+export interface AnnotationUpdatedPayload {
+  userId: number;
+  bookId: number;
+  annotationId: number;
+}
+
+export interface AnnotationDeletedPayload {
   userId: number;
   bookId: number;
   annotationId: number;
@@ -80,6 +94,8 @@ export type AchievementEventPayload =
   | ReadingSessionSavedPayload
   | BookStatusChangedPayload
   | AnnotationCreatedPayload
+  | AnnotationUpdatedPayload
+  | AnnotationDeletedPayload
   | CollectionCreatedPayload
   | LibraryCatalogChangedPayload
   | BookRatingChangedPayload

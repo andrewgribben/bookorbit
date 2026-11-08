@@ -57,4 +57,10 @@ describe('ReadingServicesRepository - item ledger', () => {
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ deletedAt: expect.any(Date) }));
     expect(updateWhere).toHaveBeenCalledTimes(1);
   });
+
+  it('updates a ledger row content hash and sync timestamp', async () => {
+    await repo.updateItemLinkContentHash(1, 'readwise', 'highlight', 10, 'new-hash');
+    expect(updateSet).toHaveBeenCalledWith({ contentHash: 'new-hash', syncedAt: expect.any(Date) });
+    expect(updateWhere).toHaveBeenCalledTimes(1);
+  });
 });

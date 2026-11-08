@@ -17,6 +17,9 @@ import { ReadwiseBooksPushSchedulerService } from './readwise-books-push-schedul
 import { ReadwiseBooksPushService } from './readwise-books-push.service';
 import { ReadwiseClientService } from './readwise-client.service';
 import { ReadwiseEventListener } from './readwise-event-listener.service';
+import { ReadwiseHighlightsLedgerBackfillService } from './readwise-highlights-ledger-backfill.service';
+import { ReadwiseHighlightsLocalRepository } from './readwise-highlights-local.repository';
+import { ReadwiseHighlightsPullService } from './readwise-highlights-pull.service';
 import { ReadwiseQueueService } from './readwise-queue.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSessionsEventListener } from './readwise-sessions-event-listener.service';
@@ -36,6 +39,9 @@ import { ReadwiseSyncService } from './readwise-sync.service';
     ReadwiseRepository,
     ReadwiseSettingsService,
     ReadwiseSyncService,
+    ReadwiseHighlightsLedgerBackfillService,
+    ReadwiseHighlightsLocalRepository,
+    ReadwiseHighlightsPullService,
     ReadwiseAutoSyncSchedulerService,
     ReadwiseEventListener,
     ReadwiseBooksClientService,
