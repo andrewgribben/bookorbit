@@ -104,6 +104,12 @@ Unresolved / notes for the next agent:
 
 ---
 
+## Merge: feat-readwise-books-migration (S1 runner hardening) into feat-readwise-books-two-way (2026-11-08)
+
+By the time S3 landed, `feat-readwise-books-migration` had already absorbed the concurrent agent's S1 runner fixes (cancel race, duplicate-run guard, per-run permission, features DTO validation, encrypt-on-write; commit `ffe3381ee8`). Merged with `git merge --no-ff feat-readwise-books-migration` on the PC worktree (merge commit `9a5299499b`), auto-merged clean, only `reading-services.repository.ts` touched by both sides and resolved automatically (my S3 link-lookup methods are additive next to the S1 permission/guard methods). Re-verified on Unraid after the merge: `pnpm install --frozen-lockfile` (no new deps), targeted `npx vitest run src/modules/readwise src/modules/reading-services src/modules/hardcover` **39 files, 571 tests, all passed**; `npx eslint`/`npx prettier --check` on the same three directories clean; `npx tsc -p tsconfig.build.json --noEmit` clean, exit 0. Head is now `9a5299499b`, still local only, not pushed.
+
+---
+
 ## Merge: upstream 2026-11-08 into feat-reading-services-core (2026-11-08)
 
 Worktree: `/mnt/user/data/Development/bookorbit-worktrees/feat-reading-services-core` (PC mirror: `D:/Development/bookorbit-worktrees/feat-reading-services-core`).
