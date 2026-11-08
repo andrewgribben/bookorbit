@@ -14,6 +14,8 @@ export const READING_SERVICE_FEATURES = [
   "recap_widget",
   "friends_shelf",
   "discover_shelf",
+  "trending_shelf",
+  "recommendations_shelf",
 ] as const;
 export type ReadingServiceFeature = (typeof READING_SERVICE_FEATURES)[number];
 
@@ -21,6 +23,35 @@ export type ReadingServiceFeature = (typeof READING_SERVICE_FEATURES)[number];
 export const READING_SERVICE_FEATURES_DEFAULT_OFF: ReadonlyArray<ReadingServiceFeature> = ["publish_sessions"];
 
 export type ReadingServiceCapabilities = Partial<Record<ReadingServiceFeature, "both" | "push" | "pull" | "read">>;
+
+/**
+ * Generic shelves every reading-service provider can expose through
+ * `GET /reading-services/:provider/shelves/:shelf`. The provider field on each item is what lets
+ * the client render shelves from more than one provider with one component (coordinate with the
+ * widgets/web agent before changing field names here).
+ */
+export const READING_SERVICE_SHELVES = ["friends-reading", "friends-finished", "trending", "recommendations", "owned-elsewhere"] as const;
+export type ReadingServiceShelf = (typeof READING_SERVICE_SHELVES)[number];
+
+export type ReadingServiceShelfFriend = {
+  displayName: string;
+  avatarUrl: string | null;
+  status: string;
+  date: string | null;
+};
+
+export type ReadingServiceShelfItem = {
+  provider: ReadingServiceProvider;
+  externalId: string;
+  title: string;
+  authors: string[];
+  coverUrl: string | null;
+  externalUrl: string | null;
+  /** The matched BookOrbit book, when one exists locally by ISBN or title+author. */
+  bookId: number | null;
+  /** Present only on friends shelves. */
+  friend: ReadingServiceShelfFriend | null;
+};
 
 export type ReadingServiceSummary = {
   provider: ReadingServiceProvider;
@@ -92,19 +123,9 @@ export interface ReadingRecapWidget {
   byMonth: ReadingRecapMonthData[];
 }
 
-/**
- * A book the user owns on an external reading service but that the service alone can tell us
- * about, generic across providers so a future Hardcover/friends shelf can reuse the shape (plan
- * §7.2). `libraryBookId` is set only when a BookOrbit book was independently matched (by ISBN or
- * normalized title+author); it is not implied by `provider`/`providerUrl` both being present.
- */
-export interface ExternalBookCard {
-  title: string;
-  author: string | null;
-  coverUrl: string | null;
-  isbn13: string | null;
+/** One shelf a connected provider currently exposes, for the "Customize Dashboard" picker. */
+export interface ReadingServiceAvailableShelf {
   provider: ReadingServiceProvider;
-  providerUrl: string | null;
-  libraryBookId: number | null;
-  people: string[];
+  shelf: ReadingServiceShelf;
+  connected: boolean;
 }

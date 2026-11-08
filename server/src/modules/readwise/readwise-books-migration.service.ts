@@ -4,8 +4,11 @@ import type {
   ReadingServiceCapabilities,
   ReadingServiceProvider,
   ReadingServiceRemoteOnlyBooksPage,
+  ReadingServiceShelf,
+  ReadingServiceShelfItem,
   SyncRunProgressCounters,
 } from '@bookorbit/types';
+import { Permission } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
@@ -19,6 +22,7 @@ import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readw
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
 import { ReadwiseBooksPullService } from './readwise-books-pull.service';
+import { ReadwiseOwnedElsewhereService } from './readwise-owned-elsewhere.service';
 import { READWISE_BOOKS_LIST_LIMIT, READWISE_MIGRATION_PUSH_PAGE_SIZE } from './readwise.constants';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseRepository } from './readwise.repository';
@@ -93,6 +97,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
   private readonly logger = new Logger(ReadwiseBooksMigrationService.name);
 
   readonly provider: ReadingServiceProvider = 'readwise';
+  readonly permission = Permission.ReadwiseSync;
   readonly capabilities: ReadingServiceCapabilities = {
     status: 'both',
     rating: 'both',
@@ -115,6 +120,7 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly cache: ReadingServiceCacheService,
     private readonly pullService: ReadwiseBooksPullService,
+    private readonly ownedElsewhere: ReadwiseOwnedElsewhereService,
   ) {}
 
   onModuleInit(): void {
@@ -126,6 +132,12 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     if (!settings?.enabled || settings.disabledReason) return false;
     const token = await this.readwiseSettings.getToken(userId);
     return token !== null;
+  }
+
+  /** Only the "owned-elsewhere" shelf is supported; Readwise has no friends/trending graph. */
+  async getShelf(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]> {
+    if (shelf !== 'owned-elsewhere') return [];
+    return this.ownedElsewhere.getOwnedElsewhere(userId);
   }
 
   async pull(userId: number): Promise<void> {

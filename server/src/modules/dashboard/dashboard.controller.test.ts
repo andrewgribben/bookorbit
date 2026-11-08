@@ -45,10 +45,8 @@ function makeController() {
     getReadingRecap: vi.fn(),
     getWidgets: vi.fn(),
   };
-  const ownedElsewhereService = { getOwnedElsewhere: vi.fn() };
-
-  const controller = new DashboardController(dashboardService as never, widgetService as never, ownedElsewhereService as never);
-  return { controller, dashboardService, widgetService, ownedElsewhereService };
+  const controller = new DashboardController(dashboardService as never, widgetService as never);
+  return { controller, dashboardService, widgetService };
 }
 
 describe('DashboardController', () => {
@@ -204,31 +202,6 @@ describe('DashboardController', () => {
 
       expect(widgetService[method]).toHaveBeenCalledWith(user);
       expect(result).toEqual(mockResult);
-    });
-  });
-
-  describe('owned-elsewhere shelf', () => {
-    it('returns the books with their count as the total', async () => {
-      const { controller, ownedElsewhereService } = makeController();
-      const user = makeUser();
-      const books = [
-        { title: 'Piranesi', author: null, coverUrl: null, isbn13: null, provider: 'readwise', providerUrl: null, libraryBookId: null, people: [] },
-      ];
-      ownedElsewhereService.getOwnedElsewhere.mockResolvedValue(books);
-
-      const result = await controller.getOwnedElsewhereShelf(user);
-
-      expect(ownedElsewhereService.getOwnedElsewhere).toHaveBeenCalledWith(user.id);
-      expect(result).toEqual({ books, total: 1 });
-    });
-
-    it('returns an empty shelf when the provider is disconnected', async () => {
-      const { controller, ownedElsewhereService } = makeController();
-      ownedElsewhereService.getOwnedElsewhere.mockResolvedValue([]);
-
-      const result = await controller.getOwnedElsewhereShelf(makeUser());
-
-      expect(result).toEqual({ books: [], total: 0 });
     });
   });
 });

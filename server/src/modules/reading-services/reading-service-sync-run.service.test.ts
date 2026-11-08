@@ -26,6 +26,7 @@ function makeFakeAdapter(pages: (Record<string, unknown> | null)[]): ReadingServ
   let call = 0;
   return {
     provider: 'readwise',
+    permission: Permission.ReadwiseSync,
     capabilities: {},
     isConnected: () => Promise.resolve(true),
     migratePage: (_userId, _cursor, counters) => {
@@ -101,6 +102,7 @@ describe('ReadingServiceSyncRunService', () => {
     const migratePage = vi.fn().mockResolvedValue(null);
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage,
@@ -126,6 +128,7 @@ describe('ReadingServiceSyncRunService', () => {
       .mockImplementationOnce(() => Promise.resolve(null));
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage,
@@ -150,6 +153,7 @@ describe('ReadingServiceSyncRunService', () => {
     const migratePage = vi.fn().mockImplementationOnce(() => new Promise((resolve) => (resolveFinalPage = resolve)));
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage,
@@ -175,6 +179,7 @@ describe('ReadingServiceSyncRunService', () => {
     const registry = new ReadingServiceRegistry();
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage: vi.fn(),
@@ -196,6 +201,7 @@ describe('ReadingServiceSyncRunService', () => {
     const registry = new ReadingServiceRegistry();
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage: vi.fn().mockResolvedValue(null),
@@ -214,6 +220,7 @@ describe('ReadingServiceSyncRunService', () => {
     const registry = new ReadingServiceRegistry();
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage: () => {
@@ -266,6 +273,7 @@ describe('ReadingServiceSyncRunService', () => {
     const migratePage = vi.fn().mockResolvedValue(null);
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage,

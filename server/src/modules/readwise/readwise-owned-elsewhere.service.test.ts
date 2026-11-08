@@ -67,7 +67,7 @@ describe('ReadwiseOwnedElsewhereService', () => {
   it('returns the cached list without calling the Readwise client', async () => {
     const { service, cache, client } = makeService();
     const cached = [
-      { title: 'Cached', author: null, coverUrl: null, isbn13: null, provider: 'readwise', providerUrl: null, libraryBookId: null, people: [] },
+      { provider: 'readwise', externalId: 'r1', title: 'Cached', authors: [], coverUrl: null, externalUrl: null, bookId: null, friend: null },
     ];
     (cache.get as any).mockResolvedValue(cached);
 
@@ -111,14 +111,14 @@ describe('ReadwiseOwnedElsewhereService', () => {
 
     expect(result).toEqual([
       {
-        title: 'Piranesi',
-        author: 'Susanna Clarke',
-        coverUrl: null,
-        isbn13: '9780306406157',
         provider: 'readwise',
-        providerUrl: 'https://readwise.io/books/r1',
-        libraryBookId: null,
-        people: [],
+        externalId: 'r1',
+        title: 'Piranesi',
+        authors: ['Susanna Clarke'],
+        coverUrl: null,
+        externalUrl: 'https://readwise.io/books/r1',
+        bookId: null,
+        friend: null,
       },
     ]);
     expect(cache.set).toHaveBeenCalledWith(1, 'readwise', 'owned-elsewhere', result, expect.any(Number));
@@ -138,7 +138,7 @@ describe('ReadwiseOwnedElsewhereService', () => {
 
     const result = await service.getOwnedElsewhere(1);
 
-    expect(result[0]?.libraryBookId).toBe(42);
+    expect(result[0]?.bookId).toBe(42);
   });
 
   it('turns a 403 into disabling the sync and returns an empty list', async () => {

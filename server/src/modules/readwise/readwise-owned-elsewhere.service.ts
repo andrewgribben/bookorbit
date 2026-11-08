@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import type { ExternalBookCard } from '@bookorbit/types';
+import type { ReadingServiceShelfItem } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
@@ -26,11 +26,16 @@ const PROVIDER = 'readwise' as const;
 const READWISE_BOOK_WEB_URL_BASE = 'https://readwise.io/books';
 
 /**
- * Builds the dashboard "Owned elsewhere" shelf (S7, D1): Readwise Books the ownership heuristic
+ * Builds the dashboard "owned-elsewhere" shelf (S7, D1): Readwise Books the ownership heuristic
  * (`readwise-book-ownership.ts`) classifies as owned, that are not already linked to a BookOrbit
- * book through `reading_service_book_links`. A card still gets `libraryBookId` set when the pure
- * matcher independently finds a BookOrbit book by ISBN or normalized title+author, so tapping a
- * card that happens to match an unsynced library book opens that book instead of Readwise.
+ * book through `reading_service_book_links`. An item still gets `bookId` set when the pure
+ * matcher independently finds a BookOrbit book by ISBN or normalized title+author, so tapping an
+ * item that happens to match an unsynced library book opens that book instead of Readwise.
+ *
+ * Returns the same generic `ReadingServiceShelfItem` shape every other reading-service shelf
+ * uses (served through `GET /reading-services/readwise/shelves/owned-elsewhere`), not a
+ * Readwise-specific type, so the dashboard's generic external-shelf component can render this
+ * shelf with no special-casing.
  */
 @Injectable()
 export class ReadwiseOwnedElsewhereService {
@@ -46,7 +51,7 @@ export class ReadwiseOwnedElsewhereService {
     private readonly localBooks: ReadwiseBooksLocalBooksRepository,
   ) {}
 
-  async getOwnedElsewhere(userId: number): Promise<ExternalBookCard[]> {
+  async getOwnedElsewhere(userId: number): Promise<ReadingServiceShelfItem[]> {
     const settings = await this.readwiseRepo.findSettings(userId);
     if (!settings?.enabled || settings.disabledReason) return [];
 
@@ -56,7 +61,7 @@ export class ReadwiseOwnedElsewhereService {
     const token = await this.readwiseSettings.getToken(userId);
     if (!token) return [];
 
-    const cached = await this.cache.get<ExternalBookCard[]>(userId, PROVIDER, READWISE_OWNED_ELSEWHERE_CACHE_KEY);
+    const cached = await this.cache.get<ReadingServiceShelfItem[]>(userId, PROVIDER, READWISE_OWNED_ELSEWHERE_CACHE_KEY);
     if (cached) return cached;
 
     try {
@@ -67,7 +72,7 @@ export class ReadwiseOwnedElsewhereService {
       ]);
       const linkedExternalIds = new Set(links.map((link) => link.externalBookId));
 
-      const cards: ExternalBookCard[] = [];
+      const items: ReadingServiceShelfItem[] = [];
       for (const book of remoteBooks) {
         if (linkedExternalIds.has(book.id)) continue; // already in the BookOrbit library via sync
         if (classifyReadwiseOwnership(book.creation_origin) !== 'owned') continue; // D: owned-only
@@ -78,20 +83,20 @@ export class ReadwiseOwnedElsewhereService {
         const author = book.product?.author ?? null;
 
         const match = matchBook({ isbn13, isbn10: null, title, author }, localIndex);
-        cards.push({
-          title,
-          author,
-          coverUrl: null, // Readwise Books has no documented cover field; see AGENT_HANDOFF
-          isbn13,
+        items.push({
           provider: PROVIDER,
-          providerUrl: `${READWISE_BOOK_WEB_URL_BASE}/${book.id}`,
-          libraryBookId: match ? Number(match.externalId) : null,
-          people: [],
+          externalId: book.id,
+          title,
+          authors: author ? [author] : [],
+          coverUrl: null, // Readwise Books has no documented cover field; see AGENT_HANDOFF
+          externalUrl: `${READWISE_BOOK_WEB_URL_BASE}/${book.id}`,
+          bookId: match ? Number(match.externalId) : null,
+          friend: null,
         });
       }
 
-      await this.cache.set(userId, PROVIDER, READWISE_OWNED_ELSEWHERE_CACHE_KEY, cards, READWISE_OWNED_ELSEWHERE_CACHE_TTL_MS);
-      return cards;
+      await this.cache.set(userId, PROVIDER, READWISE_OWNED_ELSEWHERE_CACHE_KEY, items, READWISE_OWNED_ELSEWHERE_CACHE_TTL_MS);
+      return items;
     } catch (err) {
       if (err instanceof ReadwiseBooksForbiddenError) {
         await this.readwiseRepo.upsertSettings(userId, { disabledReason: 'no_readwise_books', enabled: false });

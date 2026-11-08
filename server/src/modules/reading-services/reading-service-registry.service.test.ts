@@ -1,3 +1,4 @@
+import { Permission } from '@bookorbit/types';
 import { ReadingServiceProviderAdapter } from './reading-service-provider';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 
@@ -5,6 +6,7 @@ describe('ReadingServiceRegistry', () => {
   function makeAdapter(provider: 'readwise' | 'hardcover'): ReadingServiceProviderAdapter {
     return {
       provider,
+      permission: provider === 'readwise' ? Permission.ReadwiseSync : Permission.HardcoverSync,
       capabilities: {},
       isConnected: vi.fn().mockResolvedValue(false),
       migratePage: vi.fn().mockResolvedValue(null),

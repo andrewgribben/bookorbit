@@ -13,7 +13,7 @@ import DashboardScroller from '@/features/dashboard/components/DashboardScroller
 import DashboardSettingsSheet from '@/features/dashboard/components/DashboardSettingsSheet.vue'
 import DashboardWelcome from '@/features/dashboard/components/DashboardWelcome.vue'
 import DashboardWidgetRow from '@/features/dashboard/components/DashboardWidgetRow.vue'
-import OwnedElsewhereShelf from '@/features/dashboard/components/OwnedElsewhereShelf.vue'
+import OwnedElsewhereShelf from '@/features/dashboard/components/ExternalShelf.vue'
 import { SHELF_LAYOUT, useDashboardConfig } from '@/features/dashboard/composables/useDashboardConfig'
 import { useDashboardLabels } from '@/features/dashboard/composables/useDashboardLabels'
 import { useOnboardingTour } from '@/features/onboarding/composables/useOnboardingTour'
@@ -165,7 +165,13 @@ onUnmounted(() => {
         <DashboardWelcome v-else-if="libraryState === 'empty'" :can-create="hasPermission('manage_libraries')" />
         <template v-else>
           <DashboardWidgetRow :key="`widgets-${dashboardRevision}`" class="animate-fade-up" />
-          <OwnedElsewhereShelf class="animate-fade-up" />
+          <OwnedElsewhereShelf
+            provider="readwise"
+            shelf="owned-elsewhere"
+            title-key="dashboard.ownedElsewhere.title"
+            description-key="dashboard.ownedElsewhere.description"
+            class="animate-fade-up"
+          />
           <div v-if="enabledScrollers.length > 0" :class="shelfLayoutClass">
             <template v-for="(shelf, index) in shelves" :key="`${dashboardRevision}-${shelf.key}`">
               <DashboardScroller

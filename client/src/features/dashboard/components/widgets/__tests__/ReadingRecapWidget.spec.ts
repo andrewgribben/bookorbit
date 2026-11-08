@@ -1,7 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { ReadingRecapWidget as ReadingRecapWidgetData } from '@bookorbit/types'
 import ReadingRecapWidgetComponent from '../ReadingRecapWidget.vue'
+import { resetReadingRecapWidgetForTests } from '../../../composables/useReadingRecapWidget'
 
 const fetchReadingRecap = vi.fn<() => Promise<ReadingRecapWidgetData | null>>()
 
@@ -31,6 +32,11 @@ async function mountWidget(data: ReadingRecapWidgetData | null) {
 }
 
 describe('ReadingRecapWidget', () => {
+  beforeEach(() => {
+    resetReadingRecapWidgetForTests()
+    fetchReadingRecap.mockReset()
+  })
+
   it('renders nothing when the widget endpoint returns null (disconnected or toggled off)', async () => {
     const wrapper = await mountWidget(null)
 

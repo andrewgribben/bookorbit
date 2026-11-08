@@ -19,12 +19,13 @@ export class ReadingServiceRegistry {
     this.logger.log(`[reading_services.registry] [end] provider=${adapter.provider} - adapter registered`);
   }
 
-  get(provider: ReadingServiceProvider): ReadingServiceProviderAdapter | undefined {
-    return this.adapters.get(provider);
+  /** Accepts any string so a private, operator-supplied adapter's arbitrary provider id can be looked up too. */
+  get(provider: string): ReadingServiceProviderAdapter | undefined {
+    return this.adapters.get(provider as ReadingServiceProvider);
   }
 
-  has(provider: ReadingServiceProvider): boolean {
-    return this.adapters.has(provider);
+  has(provider: string): boolean {
+    return this.adapters.has(provider as ReadingServiceProvider);
   }
 
   list(): ReadingServiceProviderAdapter[] {

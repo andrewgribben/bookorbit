@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { ReadingServiceCacheService } from './reading-service-cache.service';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
+import { ReadingServicePrivateAdapterLoaderService } from './reading-service-private-adapter-loader.service';
 import { ReadingServiceRegistry } from './reading-service-registry.service';
 import { ReadingServiceSyncRunService } from './reading-service-sync-run.service';
 import { ReadingServiceTokenService } from './reading-service-token.service';
@@ -17,6 +18,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceFeaturesService,
     ReadingServiceCacheService,
     ReadingServiceSyncRunService,
+    ReadingServicePrivateAdapterLoaderService,
   ],
   exports: [
     ReadingServiceRegistry,

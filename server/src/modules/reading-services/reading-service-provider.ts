@@ -1,13 +1,29 @@
 import type {
+  Permission,
   ReadingServiceCapabilities,
   ReadingServiceProvider,
   ReadingServiceRemoteOnlyBooksPage,
+  ReadingServiceShelf,
+  ReadingServiceShelfItem,
   SyncRunProgressCounters,
 } from '@bookorbit/types';
 
 export interface ReadingServiceProviderAdapter {
   readonly provider: ReadingServiceProvider;
   readonly capabilities: ReadingServiceCapabilities;
+
+  /**
+   * The permission that gates every HTTP route for this provider. Built-in providers (Readwise,
+   * Hardcover) still go through the controller's fixed `PROVIDER_PERMISSIONS` map for backward
+   * compatibility; this field is what lets a private, operator-supplied adapter (registered via
+   * `ReadingServicePrivateAdapterLoaderService`) be reached over HTTP at all, since it has no
+   * entry in that fixed map. Must be an existing `Permission` enum member - the loader rejects an
+   * adapter whose `permission` isn't one, so it can never grant access through a typo or a
+   * permission that doesn't exist. Reusing an existing permission such as `Permission.ReadwiseSync`
+   * is expected and fine; nothing about this field invents new access control, it only decides
+   * which already-existing permission a given adapter's routes require.
+   */
+  readonly permission: Permission;
 
   isConnected(userId: number): Promise<boolean>;
 
@@ -33,4 +49,12 @@ export interface ReadingServiceProviderAdapter {
    * provider that never ran a migration (or doesn't support one) has nothing to list.
    */
   listRemoteOnlyBooks?(userId: number, offset: number, limit: number): Promise<ReadingServiceRemoteOnlyBooksPage>;
+
+  /**
+   * Reads one generic shelf (friends' current/recent reads, trending, recommendations, or
+   * Readwise's "owned elsewhere"). Optional because most providers have no social graph; a
+   * provider that declares the matching capability in `capabilities` (e.g. `friends_shelf`) must
+   * implement this.
+   */
+  getShelf?(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]>;
 }

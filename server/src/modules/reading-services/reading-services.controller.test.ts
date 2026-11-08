@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Permission } from '@bookorbit/types';
 
 import { PermissionService } from '../../common/services/permission.service';
@@ -38,14 +38,30 @@ describe('ReadingServicesController', () => {
   });
 
   it('rejects a provider the user lacks permission for', async () => {
-    const { controller } = makeController();
+    const { controller, registry } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
 
     await expect(controller.updateFeatures(user, 'hardcover', { features: {} })).rejects.toThrow(ForbiddenException);
   });
 
   it('updates features for a provider the user has permission for', async () => {
-    const { controller, featuresService } = makeController();
+    const { controller, registry, featuresService } = makeController();
+    registry.register({
+      provider: 'readwise',
+      permission: Permission.ReadwiseSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
 
     await controller.updateFeatures(user, 'readwise', { features: { status: true } });
@@ -57,6 +73,7 @@ describe('ReadingServicesController', () => {
     const { controller, registry } = makeController();
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage: () => Promise.resolve(null),
@@ -64,6 +81,7 @@ describe('ReadingServicesController', () => {
     });
     registry.register({
       provider: 'hardcover',
+      permission: Permission.HardcoverSync,
       capabilities: {},
       isConnected: () => Promise.resolve(false),
       migratePage: () => Promise.resolve(null),
@@ -78,7 +96,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('starts a migration for a permitted provider', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'readwise',
+      permission: Permission.ReadwiseSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.startMigration as any).mockResolvedValue({ id: 1 });
 
@@ -89,7 +115,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('returns a run for a provider the user has permission for', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'readwise',
+      permission: Permission.ReadwiseSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'readwise' });
 
@@ -99,7 +133,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('rejects getting a run that belongs to a provider the user lacks permission for', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'hardcover' });
 
@@ -108,7 +150,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('rejects cancelling a run that belongs to a provider the user lacks permission for', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'hardcover' });
 
@@ -117,7 +167,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('cancels a run for a provider the user has permission for', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'readwise',
+      permission: Permission.ReadwiseSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'readwise' });
     (syncRunService.cancel as any).mockResolvedValue({ id: 1, provider: 'readwise', status: 'cancelled' });
@@ -129,7 +187,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('resumes a run for a provider the user has permission for', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'readwise',
+      permission: Permission.ReadwiseSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'readwise' });
     (syncRunService.resumeMigration as any).mockResolvedValue({ id: 1, provider: 'readwise', status: 'running' });
@@ -141,7 +207,15 @@ describe('ReadingServicesController', () => {
   });
 
   it('rejects resuming a run that belongs to a provider the user lacks permission for', async () => {
-    const { controller, syncRunService } = makeController();
+    const { controller, registry, syncRunService } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
     const user = makeUser([Permission.ReadwiseSync]);
     (syncRunService.getRun as any).mockResolvedValue({ id: 1, provider: 'hardcover' });
 
@@ -159,6 +233,7 @@ describe('ReadingServicesController', () => {
     });
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage: () => Promise.resolve(null),
@@ -177,6 +252,7 @@ describe('ReadingServicesController', () => {
     const user = makeUser([Permission.ReadwiseSync]);
     registry.register({
       provider: 'readwise',
+      permission: Permission.ReadwiseSync,
       capabilities: {},
       isConnected: () => Promise.resolve(true),
       migratePage: () => Promise.resolve(null),
@@ -186,5 +262,86 @@ describe('ReadingServicesController', () => {
     const result = await controller.listReadwiseOnlyBooks(user, 'readwise');
 
     expect(result).toEqual({ items: [], next: null, total: 0 });
+  });
+
+  it('rejects an unknown shelf with 400', async () => {
+    const { controller, registry } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+    });
+    const user = makeUser([Permission.HardcoverSync]);
+
+    await expect(controller.getShelf(user, 'hardcover', 'bogus-shelf')).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a shelf the registered adapter does not declare the capability for', async () => {
+    const { controller, registry } = makeController();
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: {},
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf: vi.fn(),
+    });
+    const user = makeUser([Permission.HardcoverSync]);
+
+    await expect(controller.getShelf(user, 'hardcover', 'trending')).rejects.toThrow(NotFoundException);
+  });
+
+  it('reads a shelf from the adapter when the capability and getShelf are both present', async () => {
+    const { controller, registry } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([{ externalId: '1' }]);
+    registry.register({
+      provider: 'hardcover',
+      permission: Permission.HardcoverSync,
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+    const user = makeUser([Permission.HardcoverSync]);
+
+    const result = await controller.getShelf(user, 'hardcover', 'trending');
+
+    expect(getShelf).toHaveBeenCalledWith(1, 'trending');
+    expect(result).toEqual([{ externalId: '1' }]);
+  });
+
+  it('rejects an unregistered provider for a generic shelf with 400', async () => {
+    const { controller } = makeController();
+    const user = makeUser([Permission.ReadwiseSync, Permission.HardcoverSync]);
+
+    await expect(controller.getShelf(user, 'private-service', 'trending')).rejects.toThrow(BadRequestException);
+  });
+
+  it('uses a private adapter declared permission instead of the fixed provider map', async () => {
+    const { controller, registry } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([{ externalId: 'p1' }]);
+    registry.register({
+      provider: 'private-service' as never,
+      permission: Permission.KoboSync,
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+
+    const withoutPermission = makeUser([Permission.ReadwiseSync, Permission.HardcoverSync]);
+    await expect(controller.getShelf(withoutPermission, 'private-service', 'trending')).rejects.toThrow(ForbiddenException);
+
+    const withPermission = makeUser([Permission.KoboSync]);
+    const result = await controller.getShelf(withPermission, 'private-service', 'trending');
+
+    expect(getShelf).toHaveBeenCalledWith(1, 'trending');
+    expect(result).toEqual([{ externalId: 'p1' }]);
   });
 });
