@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { CommonModule } from '../../common/common.module';
 import { LibraryModule } from '../library/library.module';
 import { ReadingServiceCacheService } from './reading-service-cache.service';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
@@ -12,7 +13,7 @@ import { ReadingServicesController } from './reading-services.controller';
 import { ReadingServicesRepository } from './reading-services.repository';
 
 @Module({
-  imports: [LibraryModule],
+  imports: [CommonModule, LibraryModule],
   controllers: [ReadingServicesController],
   providers: [
     ReadingServicesRepository,
