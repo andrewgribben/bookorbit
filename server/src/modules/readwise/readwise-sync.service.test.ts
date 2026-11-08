@@ -20,7 +20,7 @@ const mockClient = {
   deleteHighlight: vi.fn(),
 };
 
-const mockSettingsService = {
+const mockTokenService = {
   getToken: vi.fn(),
 };
 
@@ -43,7 +43,7 @@ function makeService() {
   return new ReadwiseSyncService(
     mockRepo as any,
     mockClient as any,
-    mockSettingsService as any,
+    mockTokenService as any,
     mockReadingServicesRepo as any,
     mockCache as any,
     mockLedgerBackfill as any,
@@ -83,7 +83,7 @@ describe('ReadwiseSyncService', () => {
     mockRepo.findDeletedLinkedHighlights.mockResolvedValue([]);
     mockClient.createHighlights.mockResolvedValue([]);
     mockRepo.upsertSettings.mockResolvedValue(undefined);
-    mockSettingsService.getToken.mockResolvedValue('tok');
+    mockTokenService.getToken.mockResolvedValue('tok');
     mockCache.get.mockResolvedValue(true); // ledger already backfilled by default
     mockCache.set.mockResolvedValue(undefined);
   });
@@ -98,7 +98,7 @@ describe('ReadwiseSyncService', () => {
 
     it('skips when token missing', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings({ apiToken: null }));
-      mockSettingsService.getToken.mockResolvedValue(null);
+      mockTokenService.getToken.mockResolvedValue(null);
       await makeService().flush(1);
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
     });

@@ -18,7 +18,7 @@ import {
   READWISE_SOURCE_TYPE,
 } from './readwise.constants';
 import { ReadwiseRepository, type NewHighlightRow } from './readwise.repository';
-import { ReadwiseSettingsService } from './readwise-settings.service';
+import { ReadwiseTokenService } from './readwise-token.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 
 const SYNC_EVENT = 'readwise.sync';
@@ -41,7 +41,7 @@ export class ReadwiseSyncService {
   constructor(
     private readonly repo: ReadwiseRepository,
     private readonly client: ReadwiseClientService,
-    private readonly settingsService: ReadwiseSettingsService,
+    private readonly tokens: ReadwiseTokenService,
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly cache: ReadingServiceCacheService,
     private readonly ledgerBackfill: ReadwiseHighlightsLedgerBackfillService,
@@ -54,7 +54,7 @@ export class ReadwiseSyncService {
     if (!(settings?.apiToken || settings?.apiTokenEncrypted) || !settings.enabled) return;
     const hasPermission = await this.repo.userHasReadwiseSyncPermission(userId);
     if (!hasPermission) return;
-    const token = await this.settingsService.getToken(userId);
+    const token = await this.tokens.getToken(userId);
     if (!token) return;
 
     this.logger.log(`[${SYNC_EVENT}] [start] userId=${userId} - Readwise highlights push started`);

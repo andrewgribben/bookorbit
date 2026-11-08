@@ -31,6 +31,7 @@ import { ReadwiseSessionsPushSchedulerService } from './readwise-sessions-push-s
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
+import { ReadwiseTokenService } from './readwise-token.service';
 
 @Module({
   imports: [AchievementModule, ReadingServicesModule, LibraryModule, BookModule, UserBookStatusModule, UserBookReviewModule],
@@ -40,6 +41,7 @@ import { ReadwiseSyncService } from './readwise-sync.service';
     ReadwiseClientService,
     ReadwiseRepository,
     ReadwiseSettingsService,
+    ReadwiseTokenService,
     ReadwiseSyncService,
     ReadwiseHighlightsLedgerBackfillService,
     ReadwiseHighlightsLocalRepository,
