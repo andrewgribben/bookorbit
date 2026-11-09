@@ -303,4 +303,30 @@ describe('useDashboardLabels', () => {
       expect(externalShelfDescription('readwise-social')).toContain('Readwise friends')
     })
   })
+
+  describe('externalShelfViewInProviderName', () => {
+    it('resolves built-in providers the same as externalShelfProviderName', () => {
+      const { externalShelfViewInProviderName } = mountComposable()
+
+      expect(externalShelfViewInProviderName('readwise')).toBe(en.dashboard.externalShelves.providerNames.readwise)
+      expect(externalShelfViewInProviderName('hardcover')).toBe(en.dashboard.externalShelves.providerNames.hardcover)
+    })
+
+    // A friends/social adapter rides on a built-in provider's own API (e.g. `readwise-social`),
+    // so "View in <provider>" should name the actual site a link opens on, not the adapter's own
+    // display name.
+    it('names the built-in provider before the first hyphen rather than the adapter displayName', () => {
+      summaries.value = [readingServiceSummary({ provider: 'readwise-social' as ReadingServiceSummary['provider'], displayName: 'Readwise friends' })]
+      const { externalShelfViewInProviderName } = mountComposable()
+
+      expect(externalShelfViewInProviderName('readwise-social')).toBe(en.dashboard.externalShelves.providerNames.readwise)
+    })
+
+    it('falls back to externalShelfProviderName when the prefix is not a built-in provider', () => {
+      summaries.value = [readingServiceSummary({ provider: 'mystery-adapter' as ReadingServiceSummary['provider'], displayName: 'Mystery Adapter' })]
+      const { externalShelfViewInProviderName } = mountComposable()
+
+      expect(externalShelfViewInProviderName('mystery-adapter')).toBe('Mystery Adapter')
+    })
+  })
 })
