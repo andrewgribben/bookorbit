@@ -5,6 +5,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import {
   ACHIEVEMENT_EVENT_BACKFILL,
   ACHIEVEMENT_EVENT_READING_SESSION_SAVED,
+  ACHIEVEMENT_EVENT_READING_SESSIONS_BACKFILLED,
   type AchievementEventsService,
 } from '../achievement/achievement-events.service';
 import type { PageStatsUploadDto } from './dto';
@@ -289,7 +290,7 @@ describe('KoreaderStatsService', () => {
     });
   });
 
-  it('emits a single backfill event when inserted and updated sessions together exceed the threshold', async () => {
+  it('emits a backfill event and a distinct sessions-backfilled event when inserted and updated sessions together exceed the threshold', async () => {
     pluginRepo.ingestAndDeriveForBook.mockResolvedValue({
       accepted: 30,
       duplicates: 0,
@@ -301,8 +302,9 @@ describe('KoreaderStatsService', () => {
 
     await service.uploadPageStats(makeUser(), dto);
 
-    expect(achievementEvents.emit).toHaveBeenCalledTimes(1);
+    expect(achievementEvents.emit).toHaveBeenCalledTimes(2);
     expect(achievementEvents.emit).toHaveBeenCalledWith(ACHIEVEMENT_EVENT_BACKFILL, { userId: 7 });
+    expect(achievementEvents.emit).toHaveBeenCalledWith(ACHIEVEMENT_EVENT_READING_SESSIONS_BACKFILLED, { userId: 7, bookFileIds: [10] });
   });
 
   it('normalizes hashes to lowercase before resolution', async () => {

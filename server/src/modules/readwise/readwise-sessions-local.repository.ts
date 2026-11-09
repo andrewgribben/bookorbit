@@ -17,6 +17,7 @@ export interface PushableSession {
   endProgress: number | null;
   progressDelta: number | null;
   sessionType: string;
+  source: string | null;
 }
 
 export interface PushableSessionWithBook extends PushableSession {
@@ -39,6 +40,17 @@ export interface LinkedSessionForCorrection {
   endedAt: Date;
   durationSeconds: number;
   sessionType: string;
+}
+
+export interface LinkedSessionForRepair {
+  id: number;
+  bookId: number;
+  externalId: string;
+  startedAt: Date;
+  endedAt: Date;
+  durationSeconds: number;
+  contentHash: string | null;
+  syncedAt: Date;
 }
 
 /**
@@ -74,6 +86,7 @@ export class ReadwiseSessionsLocalRepository {
         endProgress: schema.readingSessions.endProgress,
         progressDelta: schema.readingSessions.progressDelta,
         sessionType: schema.readingSessions.sessionType,
+        source: schema.readingSessions.source,
       })
       .from(schema.readingSessions)
       .where(
@@ -130,6 +143,7 @@ export class ReadwiseSessionsLocalRepository {
         endProgress: schema.readingSessions.endProgress,
         progressDelta: schema.readingSessions.progressDelta,
         sessionType: schema.readingSessions.sessionType,
+        source: schema.readingSessions.source,
       })
       .from(schema.readingSessions)
       .where(
@@ -175,6 +189,46 @@ export class ReadwiseSessionsLocalRepository {
           eq(schema.readingServiceItemLinks.provider, 'readwise'),
           eq(schema.readingServiceItemLinks.kind, 'session'),
           isNull(schema.readingServiceItemLinks.deletedAt),
+          ne(schema.readingSessions.source, 'readwise'),
+          ne(schema.readingSessions.sessionType, 'listen'),
+          sql`${schema.readingSessions.id} > ${afterId}`,
+        ),
+      )
+      .orderBy(asc(schema.readingSessions.id))
+      .limit(limit);
+  }
+
+  /**
+   * Per-book, keyset-paged linked sessions for the grown-session repair pass: triggered from the
+   * normal per-book flush (`ReadwiseSessionsPushService.pushBook`) on every READING_SESSION_SAVED
+   * event for that book, not a one-time sweep, since a koreader session can grow at any time.
+   * Excludes pulled-back sessions (`source='readwise'`) and listening sessions (duration there
+   * comes from position fields, not `startedAt`/`endedAt`, so growth doesn't apply the same way).
+   */
+  async findLinkedSessionsForBook(userId: number, bookId: number, afterId: number, limit: number): Promise<LinkedSessionForRepair[]> {
+    return this.db
+      .select({
+        id: schema.readingSessions.id,
+        bookId: schema.readingSessions.bookId,
+        externalId: schema.readingServiceItemLinks.externalId,
+        startedAt: schema.readingSessions.startedAt,
+        endedAt: schema.readingSessions.endedAt,
+        durationSeconds: schema.readingSessions.durationSeconds,
+        contentHash: schema.readingServiceItemLinks.contentHash,
+        syncedAt: schema.readingServiceItemLinks.syncedAt,
+      })
+      .from(schema.readingServiceItemLinks)
+      .innerJoin(
+        schema.readingSessions,
+        and(eq(schema.readingServiceItemLinks.localId, schema.readingSessions.id), eq(schema.readingSessions.userId, userId)),
+      )
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'session'),
+          isNull(schema.readingServiceItemLinks.deletedAt),
+          eq(schema.readingSessions.bookId, bookId),
           ne(schema.readingSessions.source, 'readwise'),
           ne(schema.readingSessions.sessionType, 'listen'),
           sql`${schema.readingSessions.id} > ${afterId}`,

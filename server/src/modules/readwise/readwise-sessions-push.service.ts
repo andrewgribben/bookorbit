@@ -8,12 +8,20 @@ import { ReadingServicesRepository } from '../reading-services/reading-services.
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
-import { computePausedSeconds } from './readwise-session-timing.utils';
+import { readwiseSessionContentHash } from './readwise-session-hash.utils';
+import { computePausedSeconds, isSessionSettled, settleAtFor } from './readwise-session-timing.utils';
+import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
-import { READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS, READWISE_SESSIONS_PUSH_PAGE_SIZE, READWISE_SESSIONS_CREATE_BATCH } from './readwise.constants';
+import { ReadwiseSessionsRepairService } from './readwise-sessions-repair.service';
+import {
+  READWISE_SESSIONS_FEED_MAX_AGE_MS,
+  READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS,
+  READWISE_SESSIONS_PUSH_PAGE_SIZE,
+  READWISE_SESSIONS_CREATE_BATCH,
+} from './readwise.constants';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
@@ -34,7 +42,9 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
     ended_at: session.endedAt.toISOString(),
     format,
     timezone,
-    publish_to_feed: publishToFeed,
+    // Old sessions (a backfill, a sweep, or a correction re-post) count on Readwise but must not
+    // flood the feed with posts for reading done days or weeks ago.
+    publish_to_feed: publishToFeed && Date.now() - session.endedAt.getTime() <= READWISE_SESSIONS_FEED_MAX_AGE_MS,
   };
   // Readwise counts ended_at - started_at - paused_seconds as reading time; durationSeconds is active time only.
   // Audiobook duration comes from the positions instead, so paused_seconds would not apply there.
@@ -53,10 +63,21 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
   return item;
 }
 
+export interface FlushResult {
+  /** Books with a session that was skipped because it had not settled yet, with the earliest time it will. */
+  settleRetries: { bookId: number; nextSettleAt: Date }[];
+}
+
 /**
  * Pushes unlinked local reading sessions to Readwise Books in batches of 10, per the S4 plan.
  * A session is only eligible once its book has a Readwise link (it is migrated/pushed already)
  * and it has never been linked itself; `publish_to_feed` follows the `publish_sessions` toggle.
+ *
+ * A session is only pushed once it has settled (docs/plans/readwise-session-timing.md): a later
+ * koreader page-stat upload, or a later web/Android/iOS write superseding a checkpoint, would
+ * extend the same local row, so pushing it any earlier risks Readwise ending up with a
+ * truncated copy (see `settleAtFor`). An unsettled session is left unlinked and its book is returned in
+ * `settleRetries` so the scheduler can retry once it has settled.
  *
  * shortcut: the ledger write happens right after each batch's POST succeeds, in one multi-row
  * insert, but that is not the same database transaction as the POST itself (there isn't one -
@@ -77,15 +98,17 @@ export class ReadwiseSessionsPushService {
     private readonly featuresService: ReadingServiceFeaturesService,
     private readonly reconcile: ReadwiseSessionsReconcileService,
     private readonly correction: ReadwiseSessionsCorrectionService,
+    private readonly repair: ReadwiseSessionsRepairService,
+    private readonly sweep: ReadwiseSessionsBackfillSweepService,
   ) {}
 
-  async flushUser(userId: number, bookIds: number[]): Promise<void> {
-    if (bookIds.length === 0) return;
+  async flushUser(userId: number, bookIds: number[]): Promise<FlushResult> {
+    if (bookIds.length === 0) return { settleRetries: [] };
     const token = await this.readwiseSettings.getToken(userId);
-    if (!token) return;
+    if (!token) return { settleRetries: [] };
 
     const features = await this.featuresService.getFeatures(userId, 'readwise');
-    if (!isFeatureEnabled(features, 'sessions')) return;
+    if (!isFeatureEnabled(features, 'sessions')) return { settleRetries: [] };
 
     // Reconnect-safe first-connect pass: links any session that already exists on Readwise
     // (pushed there by another BookOrbit instance connected to the same account) before the
@@ -98,15 +121,23 @@ export class ReadwiseSessionsPushService {
     // cursor, and a no-op after the one-time pass finishes (see READWISE_SESSIONS_CORRECTION_*).
     const correctedBookIds = await this.correction.correctUser(userId, token);
 
+    // One-time sweep for books whose settled sessions were never requested for push (large
+    // KOReader backfills used to raise no push request at all; see
+    // ReadwiseSessionsBackfillSweepService). A no-op after the one-time pass finishes.
+    const sweptBookIds = await this.sweep.ensureSwept(userId);
+
     const timezone = await this.sessionsRepo.resolveUserTimeZone(userId);
     const publishToFeed = isFeatureEnabled(features, 'publish_sessions');
     const startedAt = Date.now();
     let pushed = 0;
     let failed = 0;
+    const settleRetries: { bookId: number; nextSettleAt: Date }[] = [];
 
-    for (const bookId of [...new Set([...bookIds, ...correctedBookIds])]) {
+    for (const bookId of [...new Set([...bookIds, ...correctedBookIds, ...sweptBookIds])]) {
       try {
-        pushed += await this.pushBook(userId, token, bookId, timezone, publishToFeed);
+        const result = await this.pushBook(userId, token, bookId, timezone, publishToFeed);
+        pushed += result.pushedCount;
+        if (result.nextSettleAt) settleRetries.push({ bookId, nextSettleAt: result.nextSettleAt });
       } catch (err) {
         failed += 1;
         if (err instanceof ReadwiseBooksForbiddenError) {
@@ -121,15 +152,26 @@ export class ReadwiseSessionsPushService {
     }
 
     this.logger.log(
-      `[${EVENT}] [end] userId=${userId} bookCount=${bookIds.length} durationMs=${Date.now() - startedAt} pushed=${pushed} failed=${failed} - sessions push batch completed`,
+      `[${EVENT}] [end] userId=${userId} bookCount=${bookIds.length} durationMs=${Date.now() - startedAt} pushed=${pushed} failed=${failed} settleRetries=${settleRetries.length} - sessions push batch completed`,
     );
     if (failed > 0) throw new Error(`${failed} of ${bookIds.length} books failed sessions push to Readwise`);
+    return { settleRetries };
   }
 
-  /** Returns how many sessions were pushed for this book. */
-  private async pushBook(userId: number, token: string, bookId: number, timezone: string, publishToFeed: boolean): Promise<number> {
+  /** Pushes new sessions for this book and repairs any linked session that changed since it was pushed. */
+  private async pushBook(
+    userId: number,
+    token: string,
+    bookId: number,
+    timezone: string,
+    publishToFeed: boolean,
+  ): Promise<{ pushedCount: number; nextSettleAt: Date | null }> {
     const link = await this.readingServicesRepo.findBookLink(userId, 'readwise', bookId);
-    if (!link || link.remoteDeleted) return 0; // only push sessions for books already on Readwise
+    if (!link || link.remoteDeleted) return { pushedCount: 0, nextSettleAt: null }; // only push sessions for books already on Readwise
+
+    // Unlinks any session whose startedAt/endedAt/durationSeconds changed since it was pushed
+    // (a koreader session that grew), so the push below re-POSTs it with the current numbers.
+    await this.repair.repairBook(userId, token, bookId);
 
     const sessions = await this.sessionsRepo.findPushableSessions(
       userId,
@@ -137,14 +179,26 @@ export class ReadwiseSessionsPushService {
       READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS,
       READWISE_SESSIONS_PUSH_PAGE_SIZE,
     );
-    if (sessions.length === 0) return 0;
+    if (sessions.length === 0) return { pushedCount: 0, nextSettleAt: null };
+
+    const settled: PushableSession[] = [];
+    let nextSettleAt: Date | null = null;
+    for (const session of sessions) {
+      if (isSessionSettled(session)) {
+        settled.push(session);
+        continue;
+      }
+      const settleAt = settleAtFor(session);
+      if (!nextSettleAt || settleAt < nextSettleAt) nextSettleAt = settleAt;
+    }
+    if (settled.length === 0) return { pushedCount: 0, nextSettleAt };
 
     let pushedCount = 0;
-    for (let i = 0; i < sessions.length; i += READWISE_SESSIONS_CREATE_BATCH) {
-      const batch = sessions.slice(i, i + READWISE_SESSIONS_CREATE_BATCH);
+    for (let i = 0; i < settled.length; i += READWISE_SESSIONS_CREATE_BATCH) {
+      const batch = settled.slice(i, i + READWISE_SESSIONS_CREATE_BATCH);
       pushedCount += await this.pushSessionBatch(userId, token, bookId, link.externalBookId, batch, timezone, publishToFeed);
     }
-    return pushedCount;
+    return { pushedCount, nextSettleAt };
   }
 
   /**
@@ -205,6 +259,7 @@ export class ReadwiseSessionsPushService {
         kind: 'session',
         localId: session.id,
         externalId,
+        contentHash: readwiseSessionContentHash(session),
       }));
 
     await this.readingServicesRepo.recordItemLinks(ledgerItems);

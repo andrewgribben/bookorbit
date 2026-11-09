@@ -6,6 +6,8 @@ import {
   READWISE_SESSIONS_PUSH_MAX_RETRIES,
   READWISE_SESSIONS_PUSH_MAX_WAIT_MS,
   READWISE_SESSIONS_PUSH_RETRY_BASE_MS,
+  READWISE_SESSIONS_SETTLE_RETRY_MAX_DELAY_MS,
+  READWISE_SESSIONS_SETTLE_RETRY_MIN_DELAY_MS,
 } from './readwise.constants';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 
@@ -18,18 +20,30 @@ interface PushState {
   firstPendingAtMs: number | null;
 }
 
+interface SettleState {
+  timer: NodeJS.Timeout;
+  targetAtMs: number;
+  bookIds: Set<number>;
+}
+
 const SCHEDULER_EVENT = 'readwise.sessions_push_scheduler';
 
 /**
  * Debounces `reading-session.saved` into a batched sessions push per user, mirroring
  * `ReadwiseBooksPushSchedulerService`'s shape exactly (per-book id batching, capped-exponential
  * retry on failure).
+ *
+ * Also carries a second, independent timer per user (`settleStates`) for books whose push was
+ * skipped because a session had not settled yet (docs/plans/readwise-session-timing.md):
+ * a bounded, single retry timer per user rather than one per skipped session, so a burst of
+ * uploads from the same device never grows the timer count.
  */
 @Injectable()
 export class ReadwiseSessionsPushSchedulerService {
   private readonly logger = new Logger(ReadwiseSessionsPushSchedulerService.name);
   private readonly states = new Map<number, PushState>();
-  private readonly userPushQueues = new Map<number, Promise<void>>();
+  private readonly userPushQueues = new Map<number, Promise<unknown>>();
+  private readonly settleStates = new Map<number, SettleState>();
 
   constructor(private readonly pushService: ReadwiseSessionsPushService) {}
 
@@ -51,6 +65,41 @@ export class ReadwiseSessionsPushSchedulerService {
     this.schedule(state);
   }
 
+  /**
+   * Retries a book once an unsettled session on it is expected to have settled.
+   * Keeps the earliest requested target time per user, so repeated calls before that time only
+   * widen the book id set rather than pushing the retry further out.
+   */
+  scheduleSettleRetry(userId: number, bookIds: number[], nextSettleAt: Date): void {
+    if (bookIds.length === 0) return;
+    const delayMs = Math.min(
+      Math.max(nextSettleAt.getTime() - Date.now(), READWISE_SESSIONS_SETTLE_RETRY_MIN_DELAY_MS),
+      READWISE_SESSIONS_SETTLE_RETRY_MAX_DELAY_MS,
+    );
+    const targetAtMs = Date.now() + delayMs;
+
+    const existing = this.settleStates.get(userId);
+    if (existing) {
+      for (const bookId of bookIds) existing.bookIds.add(bookId);
+      if (targetAtMs < existing.targetAtMs) {
+        clearTimeout(existing.timer);
+        existing.targetAtMs = targetAtMs;
+        existing.timer = setTimeout(() => this.fireSettleRetry(userId), targetAtMs - Date.now());
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => this.fireSettleRetry(userId), delayMs);
+    this.settleStates.set(userId, { timer, targetAtMs, bookIds: new Set(bookIds) });
+  }
+
+  private fireSettleRetry(userId: number): void {
+    const state = this.settleStates.get(userId);
+    this.settleStates.delete(userId);
+    if (!state) return;
+    this.requestPush(userId, [...state.bookIds]);
+  }
+
   private schedule(state: PushState, delayMs = READWISE_SESSIONS_PUSH_DEBOUNCE_MS, capByMaxWait = true): void {
     if (state.timer) clearTimeout(state.timer);
     const cappedDelayMs = capByMaxWait ? Math.min(delayMs, this.remainingMaxWaitMs(state)) : delayMs;
@@ -70,8 +119,9 @@ export class ReadwiseSessionsPushSchedulerService {
     let nextDelayMs = READWISE_SESSIONS_PUSH_DEBOUNCE_MS;
     const startedAtMs = Date.now();
     try {
-      await this.enqueue(userId, () => this.pushService.flushUser(userId, bookIds));
+      const result = await this.enqueue(userId, () => this.pushService.flushUser(userId, bookIds));
       state.retryAttempt = 0;
+      for (const retry of result.settleRetries) this.scheduleSettleRetry(userId, [retry.bookId], retry.nextSettleAt);
     } catch (err) {
       const durationMs = Date.now() - startedAtMs;
       const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
@@ -102,7 +152,7 @@ export class ReadwiseSessionsPushSchedulerService {
     return Math.max(0, READWISE_SESSIONS_PUSH_MAX_WAIT_MS - elapsedMs);
   }
 
-  private enqueue(userId: number, task: () => Promise<void>): Promise<void> {
+  private enqueue<T>(userId: number, task: () => Promise<T>): Promise<T> {
     const previous = this.userPushQueues.get(userId) ?? Promise.resolve();
     const current = previous.catch(() => undefined).then(task);
     this.userPushQueues.set(userId, current);
