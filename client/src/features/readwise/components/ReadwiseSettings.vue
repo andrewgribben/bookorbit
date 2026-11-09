@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Link, Save, CheckCircle2, AlertCircle, Info, Loader2 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
@@ -13,6 +13,7 @@ import { useReadwiseSettings } from '../composables/useReadwiseSettings'
 import ReadingServiceFeatureList from '@/features/reading-services/components/ReadingServiceFeatureList.vue'
 import ReadingServiceLibraries from '@/features/reading-services/components/ReadingServiceLibraries.vue'
 import ReadingServiceMigrationPanel from '@/features/reading-services/components/ReadingServiceMigrationPanel.vue'
+import ReadingServiceSettings from '@/features/reading-services/components/ReadingServiceSettings.vue'
 import { useReadingServices } from '@/features/reading-services/composables/useReadingServices'
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
@@ -21,8 +22,13 @@ const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
 const { t } = useI18n()
 
 const { settings, saving, validating, error, fetchSettings, saveSettings, validateToken } = useReadwiseSettings()
-const { fetchSummaries, getSummary } = useReadingServices()
+const { summaries, fetchSummaries, getSummary } = useReadingServices()
 const readingServiceSummary = getSummary('readwise')
+
+/** Readwise's social adapters (e.g. a friends/shelves provider) live in their own `Social`
+ * section here instead of the generic private-adapter settings nav (see
+ * `usePrivateAdapterNavItems`), since they are Readwise features, not separate integrations. */
+const socialSummaries = computed(() => summaries.value.filter((summary) => summary.provider.startsWith('readwise-')))
 
 const tokenInput = ref('')
 const tokenVisible = ref(false)
@@ -192,5 +198,15 @@ function toggleTokenVisible() {
     </SettingsSection>
 
     <ReadingServiceMigrationPanel v-if="readingServiceSummary" provider="readwise" :summary="readingServiceSummary" />
+
+    <SettingsSection
+      v-if="socialSummaries.length > 0"
+      :title="t('settings.readwise.social.title')"
+      :brief="t('settings.readwise.social.description')"
+    >
+      <div class="flex flex-col gap-6">
+        <ReadingServiceSettings v-for="summary in socialSummaries" :key="summary.provider" :provider="summary.provider" embedded />
+      </div>
+    </SettingsSection>
   </div>
 </template>

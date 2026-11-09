@@ -85,6 +85,28 @@ describe('usePrivateAdapterNavItems', () => {
     expect(result.items.value[0]?.labelKey).toBe('barewise')
   })
 
+  it('excludes readwise-* private adapters, since they get a Social section inside Readwise settings instead', () => {
+    summaries.value = [
+      summary({
+        provider: 'readwise-social' as ReadingServiceSummary['provider'],
+        displayName: 'Readwise friends',
+        iconUrl: null,
+        authMethods: [{ kind: 'token', label: 'API token' }],
+      }),
+      summary({
+        provider: 'fixturewise' as ReadingServiceSummary['provider'],
+        displayName: 'Fixturewise',
+        iconUrl: null,
+        authMethods: [{ kind: 'token', label: 'API token' }],
+      }),
+    ]
+
+    const { result } = withSetup()
+
+    expect(result.items.value).toHaveLength(1)
+    expect(result.items.value[0]?.routeParams).toMatchObject({ provider: 'fixturewise' })
+  })
+
   it('fetches summaries once on mount so the nav reflects adapters without a manual refresh', () => {
     withSetup()
     expect(fetchSummaries).toHaveBeenCalledTimes(1)

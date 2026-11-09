@@ -11,6 +11,9 @@ const BUILT_IN_PROVIDERS = new Set(['readwise', 'hardcover', 'storygraph'])
  * `GET /reading-services` currently reports. `displayName` is used directly as `labelKey`
  * (see `settings-nav.ts`'s `mergeDynamicAccountItems` doc comment for why that needs no
  * en.json entry): vue-i18n falls back to returning an unknown key verbatim.
+ *
+ * A `readwise-*` provider (e.g. the Readwise friends social adapter) is excluded here: it gets
+ * its own `Social` section inside `ReadwiseSettings.vue` instead of a separate nav entry.
  */
 export function usePrivateAdapterNavItems() {
   const { summaries, fetchSummaries } = useReadingServices()
@@ -21,7 +24,9 @@ export function usePrivateAdapterNavItems() {
 
   const items = computed<SettingsNavItem[]>(() =>
     summaries.value
-      .filter((summary) => summary.authMethods !== undefined && !BUILT_IN_PROVIDERS.has(summary.provider))
+      .filter(
+        (summary) => summary.authMethods !== undefined && !BUILT_IN_PROVIDERS.has(summary.provider) && !summary.provider.startsWith('readwise-'),
+      )
       .map((summary) => ({
         id: `reading-service-${summary.provider}`,
         routeName: 'settings-reading-service',

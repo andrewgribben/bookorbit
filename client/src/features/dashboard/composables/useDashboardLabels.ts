@@ -96,8 +96,26 @@ export function useDashboardLabels() {
     return t(`dashboard.externalShelves.shelfNames.${EXTERNAL_SHELF_NAME_KEYS[shelf]}`)
   }
 
-  /** Composed title for a generic provider shelf, e.g. "Hardcover: Trending", used by both the dashboard and the picker. */
+  // A private adapter id is often a built-in provider with a suffix (e.g. `readwise-social`, a
+  // friends adapter riding on Readwise's own API). "View in <provider>" should name the actual
+  // site the link opens on ("Readwise"), not the adapter's own display name ("Readwise
+  // friends"), so this checks the part before the first hyphen against the built-in map before
+  // falling back to `externalShelfProviderName`'s displayName/bare-id fallback.
+  function externalShelfViewInProviderName(provider: string): string {
+    const base = provider.split('-')[0]
+    const key = EXTERNAL_SHELF_PROVIDER_KEYS[base as ReadingServiceProvider]
+    return key ? t(`dashboard.externalShelves.providerNames.${key}`) : externalShelfProviderName(provider)
+  }
+
+  /**
+   * Composed title for a shelf, e.g. "Hardcover: Trending" for a built-in provider, used by
+   * both the dashboard and the picker. A private adapter (not in `EXTERNAL_SHELF_PROVIDER_KEYS`,
+   * e.g. a friends/social adapter) drops the provider prefix and shows just the shelf name, since
+   * its own settings section already names the provider.
+   */
   function externalShelfTitle(provider: string, shelf: ReadingServiceShelf): string {
+    const key = EXTERNAL_SHELF_PROVIDER_KEYS[provider as ReadingServiceProvider]
+    if (!key) return externalShelfName(shelf)
     return t('dashboard.externalShelves.title', { provider: externalShelfProviderName(provider), shelf: externalShelfName(shelf) })
   }
 
@@ -110,6 +128,7 @@ export function useDashboardLabels() {
     shelfTypeName,
     shelfTitle,
     externalShelfProviderName,
+    externalShelfViewInProviderName,
     externalShelfName,
     externalShelfTitle,
     externalShelfDescription,

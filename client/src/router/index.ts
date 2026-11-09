@@ -444,6 +444,12 @@ export const routes: RouteRecordRaw[] = [
             name: 'settings-reading-service',
             component: () => import('@/features/reading-services/components/ReadingServiceSettingsPage.vue'),
             meta: { maxWidth: 'max-w-3xl', title: resolveReadingServiceProviderTitle },
+            beforeEnter: (to) => {
+              const provider = typeof to.params.provider === 'string' ? to.params.provider : ''
+              if (provider.startsWith('readwise-')) {
+                return { name: 'settings-readwise' }
+              }
+            },
           },
           {
             path: 'tts',

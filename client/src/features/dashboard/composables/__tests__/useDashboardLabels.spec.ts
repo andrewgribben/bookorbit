@@ -295,12 +295,46 @@ describe('useDashboardLabels', () => {
 
     it('never leaks a raw message path through externalShelfTitle or externalShelfDescription for an unknown provider', () => {
       summaries.value = [readingServiceSummary({ provider: 'readwise-social' as ReadingServiceSummary['provider'], displayName: 'Readwise friends' })]
-      const { externalShelfTitle, externalShelfDescription } = mountComposable()
+      const { externalShelfDescription } = mountComposable()
 
-      expect(externalShelfTitle('readwise-social', 'friends-reading')).not.toContain('undefined')
       expect(externalShelfDescription('readwise-social')).not.toContain('undefined')
-      expect(externalShelfTitle('readwise-social', 'friends-reading')).toContain('Readwise friends')
       expect(externalShelfDescription('readwise-social')).toContain('Readwise friends')
+    })
+
+    // A private adapter's settings section already names the provider, so its shelf titles drop
+    // the "Provider: " prefix a built-in like Hardcover keeps.
+    it('drops the provider prefix for a private adapter shelf title, unlike a built-in provider', () => {
+      summaries.value = [readingServiceSummary({ provider: 'readwise-social' as ReadingServiceSummary['provider'], displayName: 'Readwise friends' })]
+      const { externalShelfTitle } = mountComposable()
+
+      expect(externalShelfTitle('readwise-social', 'friends-reading')).toBe('Friends currently reading')
+      expect(externalShelfTitle('hardcover', 'trending')).toContain('Hardcover')
+    })
+  })
+
+  describe('externalShelfViewInProviderName', () => {
+    it('resolves built-in providers the same as externalShelfProviderName', () => {
+      const { externalShelfViewInProviderName } = mountComposable()
+
+      expect(externalShelfViewInProviderName('readwise')).toBe(en.dashboard.externalShelves.providerNames.readwise)
+      expect(externalShelfViewInProviderName('hardcover')).toBe(en.dashboard.externalShelves.providerNames.hardcover)
+    })
+
+    // A friends/social adapter rides on a built-in provider's own API (e.g. `readwise-social`),
+    // so "View in <provider>" should name the actual site a link opens on, not the adapter's own
+    // display name.
+    it('names the built-in provider before the first hyphen rather than the adapter displayName', () => {
+      summaries.value = [readingServiceSummary({ provider: 'readwise-social' as ReadingServiceSummary['provider'], displayName: 'Readwise friends' })]
+      const { externalShelfViewInProviderName } = mountComposable()
+
+      expect(externalShelfViewInProviderName('readwise-social')).toBe(en.dashboard.externalShelves.providerNames.readwise)
+    })
+
+    it('falls back to externalShelfProviderName when the prefix is not a built-in provider', () => {
+      summaries.value = [readingServiceSummary({ provider: 'mystery-adapter' as ReadingServiceSummary['provider'], displayName: 'Mystery Adapter' })]
+      const { externalShelfViewInProviderName } = mountComposable()
+
+      expect(externalShelfViewInProviderName('mystery-adapter')).toBe('Mystery Adapter')
     })
   })
 })

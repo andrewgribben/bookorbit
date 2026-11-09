@@ -58,6 +58,26 @@ describe('useExternalBookRequests', () => {
     expect(stateFor('rw-3')).toBe('owned')
   })
 
+  it('exposes the owned book id so a caller can navigate straight to it', async () => {
+    apiMock.mockResolvedValue(makeResponse([{ ownedBookId: 7, existingRequestId: null, existingRequestStatus: null, alreadySubscribed: false }]))
+    const { useExternalBookRequests } = await loadComposable()
+    const { ownedBookIdFor, checkMany } = useExternalBookRequests()
+
+    await checkMany([{ externalId: 'rw-3', title: 'Dune' }])
+
+    expect(ownedBookIdFor('rw-3')).toBe(7)
+  })
+
+  it('leaves the owned book id unset for a candidate with no library match', async () => {
+    apiMock.mockResolvedValue(makeResponse([{ ownedBookId: null, existingRequestId: null, existingRequestStatus: null, alreadySubscribed: false }]))
+    const { useExternalBookRequests } = await loadComposable()
+    const { ownedBookIdFor, checkMany } = useExternalBookRequests()
+
+    await checkMany([{ externalId: 'rw-1', title: 'Dune' }])
+
+    expect(ownedBookIdFor('rw-1')).toBeNull()
+  })
+
   it('requestOne posts to the ordinary single-request endpoint and settles to requested', async () => {
     apiMock.mockResolvedValue(makeResponse({ request: { id: 99, status: 'pending' }, subscribed: false }))
     const { useExternalBookRequests } = await loadComposable()

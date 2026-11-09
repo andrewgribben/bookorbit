@@ -1754,6 +1754,10 @@
     "readwise": {
       "disabledReasons": {
         "noReadwiseBooks": "Your Readwise account doesn't have access to the Books API, so sync is paused."
+      },
+      "social": {
+        "title": "Social",
+        "description": "Friends shelves from Readwise."
       }
     },
     "readingServices": {
@@ -10086,7 +10090,9 @@
       "requestAllConfirmDescription": "This sends {count} requests to Book Requests. Depending on your request settings, some may start a search and download automatically.",
       "requestAllConfirmLabel": "Request all {count}",
       "requestAllResult": "Requested {created}, already had {skipped}, failed {errors}.",
-      "actionsFor": "Request actions for {title}"
+      "actionsFor": "Request actions for {title}",
+      "viewInProvider": "View in {provider}",
+      "addToRequests": "Add to requests"
     }
   },
   "collection": {

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ref } from 'vue'
-import type { ReadwiseSettings } from '@bookorbit/types'
+import type { ReadingServiceSummary, ReadwiseSettings } from '@bookorbit/types'
+import { useReadingServices } from '@/features/reading-services/composables/useReadingServices'
 import ReadwiseSettingsPage from '../ReadwiseSettings.vue'
 
 const settings = ref<ReadwiseSettings | null>(null)
@@ -38,6 +39,7 @@ beforeEach(() => {
   validateToken.mockReset().mockResolvedValue({ valid: true })
   toastSuccess.mockReset()
   toastError.mockReset()
+  useReadingServices().summaries.value = []
 })
 
 function testButton(wrapper: Awaited<ReturnType<typeof mountPage>>, label: string) {
@@ -55,6 +57,20 @@ function baseSettings(overrides: Partial<ReadwiseSettings> = {}): ReadwiseSettin
     lastSyncedAt: null,
     ...overrides,
   }
+}
+
+function readingServiceSummary(overrides: Partial<ReadingServiceSummary>): ReadingServiceSummary {
+  return {
+    provider: 'readwise-social',
+    connected: false,
+    capabilities: {},
+    features: {},
+    migration: { state: 'never', runId: null, finishedAt: null },
+    lastPullAt: null,
+    disabledReason: null,
+    libraries: [],
+    ...overrides,
+  } as ReadingServiceSummary
 }
 
 async function mountPage() {
@@ -186,5 +202,27 @@ describe('ReadwiseSettings', () => {
     await testButton(wrapper, 'Hide').trigger('click')
     expect(input.classes()).toContain('input-secret')
     expect((input.element as HTMLInputElement).type).toBe('text')
+  })
+
+  // Readwise's social adapters (e.g. a friends/shelves provider) get their own section here
+  // instead of a separate settings nav entry, see usePrivateAdapterNavItems.
+  it('does not render a Social section when no readwise-* summary is present', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.text()).not.toContain('Social')
+  })
+
+  it('renders a Social section with an embedded reading service panel for each readwise-* summary', async () => {
+    useReadingServices().summaries.value = [
+      readingServiceSummary({
+        provider: 'readwise-social' as ReadingServiceSummary['provider'],
+        displayName: 'Readwise friends',
+        authMethods: [{ kind: 'token', label: 'API token' }],
+      }),
+    ]
+    const wrapper = await mountPage()
+
+    expect(wrapper.text()).toContain('Social')
+    expect(wrapper.text()).toContain('Friends shelves from Readwise.')
+    expect(wrapper.findAll('[data-testid="reading-service-settings"]')).toHaveLength(1)
   })
 })
