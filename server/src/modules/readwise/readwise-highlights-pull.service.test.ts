@@ -10,6 +10,9 @@ const mockReadingServicesRepo = { findItemLinkByExternalId: vi.fn(), markItemLin
 const mockFeaturesService = { getFeatures: vi.fn() };
 const mockCache = { get: vi.fn(), set: vi.fn() };
 const mockLocalRepo = { applyRemoteEdit: vi.fn(), applyRemoteDelete: vi.fn() };
+const mockLock = {
+  runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
+};
 
 function makeService() {
   return new ReadwiseHighlightsPullService(
@@ -20,6 +23,7 @@ function makeService() {
     mockFeaturesService as any,
     mockCache as any,
     mockLocalRepo as any,
+    mockLock as any,
   );
 }
 
@@ -44,6 +48,12 @@ describe('ReadwiseHighlightsPullService', () => {
 
   it('returns zero counters when the highlights feature is disabled', async () => {
     mockFeaturesService.getFeatures.mockResolvedValue({ highlights: false });
+    await expect(makeService().pullForUser(1)).resolves.toEqual({ edited: 0, deleted: 0, skippedNew: 0 });
+    expect(mockClient.exportHighlights).not.toHaveBeenCalled();
+  });
+
+  it('returns zero counters when the advisory lock is already held', async () => {
+    mockLock.runExclusive.mockResolvedValueOnce(null);
     await expect(makeService().pullForUser(1)).resolves.toEqual({ edited: 0, deleted: 0, skippedNew: 0 });
     expect(mockClient.exportHighlights).not.toHaveBeenCalled();
   });

@@ -389,7 +389,7 @@ Verification on Unraid, both branches, after every sync:
 - `eslint`/`prettier --check` on every changed file: clean on both
   branches.
 - `vitest run src/modules/reading-services src/modules/readwise
-  src/modules/hardcover`: 30 files / 470 tests passed on
+src/modules/hardcover`: 30 files / 470 tests passed on
   `feat-reading-services-core`, 35 files / 537 tests passed on
   `feat-readwise-books-migration`, both after the migration merge.
 - Migration 0140 applied cleanly on a disposable
@@ -439,22 +439,22 @@ What was built:
    `source = 'readwise'` rows, on top of pulled sessions never carrying
    progress/position fields in the first place (belt and suspenders).
 3. `ReadwiseSessionsPushService` + `ReadwiseSessionsPushSchedulerService`
-   + `ReadwiseSessionsEventListener`: a session save fires
-   `ACHIEVEMENT_EVENT_READING_SESSION_SAVED`, the listener resolves
-   `bookFileId` to a book and queues a debounced (2s, capped at 10s)
-   per-user/per-book flush. The flush only looks at books that already
-   have a Readwise book link (skips `remoteDeleted` links), selects up
-   to 200 unlinked, non-readwise-sourced sessions of at least 60s via
-   `ReadwiseSessionsLocalRepository.findPushableSessions`, posts them to
-   the Books API sessions endpoint in batches of 10, and writes every
-   ledger row (`reading_service_item_links`, `kind='session'`) in one
-   batch insert right after each successful POST. A 403 disables the
-   Readwise connection the same way the S3 books push does, and a
-   failed batch gets retried with a 30s base / 5 max-retry backoff.
-   `publish_to_feed` on the pushed sessions follows the new
-   `publish_sessions` feature toggle (capability `publish_sessions:
-   'push'`), default off since it posts to the user's public Readwise
-   feed.
+   - `ReadwiseSessionsEventListener`: a session save fires
+     `ACHIEVEMENT_EVENT_READING_SESSION_SAVED`, the listener resolves
+     `bookFileId` to a book and queues a debounced (2s, capped at 10s)
+     per-user/per-book flush. The flush only looks at books that already
+     have a Readwise book link (skips `remoteDeleted` links), selects up
+     to 200 unlinked, non-readwise-sourced sessions of at least 60s via
+     `ReadwiseSessionsLocalRepository.findPushableSessions`, posts them to
+     the Books API sessions endpoint in batches of 10, and writes every
+     ledger row (`reading_service_item_links`, `kind='session'`) in one
+     batch insert right after each successful POST. A 403 disables the
+     Readwise connection the same way the S3 books push does, and a
+     failed batch gets retried with a 30s base / 5 max-retry backoff.
+     `publish_to_feed` on the pushed sessions follows the new
+     `publish_sessions` feature toggle (capability `publish_sessions:
+'push'`), default off since it posts to the user's public Readwise
+     feed.
 4. `ReadwiseSessionsPullService`: runs on the same interval as the S3
    books pull. Calls `listSessions` with `order=updated`, `updatedAfter`
    (the per-user watermark) and `include_deleted`. A session is skipped
@@ -494,7 +494,7 @@ resolution to a push request), plus one new case in
 Verification on Unraid:
 
 - `vitest run src/modules/readwise src/modules/reading-services
-  src/modules/reading-session`: 38 files / 357 tests passed.
+src/modules/reading-session`: 38 files / 357 tests passed.
 - `eslint --fix` + `prettier --write` (via lint-staged on commit) on
   every new/changed file: clean, three pre-fix formatting nits
   resolved (a multi-line object literal, a wrapped function signature,
@@ -502,7 +502,7 @@ Verification on Unraid:
 - `tsc --noEmit -p tsconfig.json` (server): zero errors in any file
   touched by this stage; the ~80 remaining errors are all in unrelated
   e2e specs and drizzle `ExtractTablesWithRelations<Record<string,
-  unknown>>` generic mismatches that predate this branch (confirmed by
+unknown>>` generic mismatches that predate this branch (confirmed by
   grepping the output for this stage's file paths: no matches).
 - Migration 0141 applied cleanly on a disposable `pgvector/pgvector:pg18`
   container bound to 127.0.0.1:55444; `pnpm db:generate drift_check`
@@ -624,7 +624,7 @@ What was built:
    device deletions), all emitted after their transaction commits so a
    listener querying the ledger sees the already-committed rows.
 2. `readwise-highlight-hash.utils.ts`: `readwiseHighlightContentHash(text,
-   note)`, SHA-256 of `text\0note`, a dedup/compare key only (not
+note)`, SHA-256 of `text\0note`, a dedup/compare key only (not
    security-sensitive) used on both the push and pull sides to decide
    whether a highlight actually changed.
 3. `readwise.repository.ts` gained ledger-based queries alongside the old
@@ -649,7 +649,7 @@ What was built:
    (cache flag `highlights-ledger-backfilled`, never expires), matches a
    remote highlight back to a local annotation via the `annotationId=`
    query param BookOrbit already embeds in `highlight_url` at push time,
-   and seeds a ledger row per match (content hash from the *local*
+   and seeds a ledger row per match (content hash from the _local_
    text/note, not the remote one, so a push-time edit is detected
    correctly afterwards). Unmatched/no-annotationId highlights are counted,
    not linked.
@@ -734,7 +734,7 @@ untouched.
   `--fix` pass folded back via lint-staged on commit for prettier-only
   nits).
 - `npx vitest run src/modules/readwise src/modules/annotation
-  src/modules/reading-services src/modules/achievement`: **58 files, 1116
+src/modules/reading-services src/modules/achievement`: **58 files, 1116
   tests, all passed.**
 - No migration generated (`pnpm db:generate drift_check` on a disposable
   `pgvector/pgvector:pg18` container at `127.0.0.1:55446`, after applying
@@ -757,13 +757,13 @@ Open questions for the owner / a successor:
   to skip existing highlights and only push going forward. If that
   skip-history-on-connect behaviour is still wanted for brand-new
   connections (as opposed to the S5 goal of not re-pushing an
-  *already-connected* user's history), it needs an explicit decision and a
+  _already-connected_ user's history), it needs an explicit decision and a
   small follow-up (e.g. seed the ledger with a "skip" marker for
   pre-existing highlights at connect time, mirroring the old watermark
   semantics but ledger-shaped).
 - The pull's remote-edit application is last-write-wins by content hash,
   not a three-way merge: if a highlight changed locally since the last
-  sync *and* changed on Readwise since the last pull, whichever side's
+  sync _and_ changed on Readwise since the last pull, whichever side's
   flush/pull runs next overwrites the other unconditionally. The push
   side's own flush happens first in practice (debounced, fast), so this is
   mostly a narrow race rather than a routine conflict, but it is a real
@@ -910,15 +910,15 @@ API shapes for the Android stage:
 
 - `GET /api/v1/dashboard/widgets/reading-recap` -> `ReadingRecapWidget | null`:
   `{ provider: "readwise", year: number, booksFinished: number, sessions:
-  number, totalSeconds: number, readingDays: number, goal: number | null,
-  byMonth: { month: 1-12, seconds: number }[] }`. `null` means hide the
+number, totalSeconds: number, readingDays: number, goal: number | null,
+byMonth: { month: 1-12, seconds: number }[] }`. `null` means hide the
   widget entirely (disconnected, feature off, or no data available); do not
   render a zeroed card.
 - `GET /api/v1/dashboard/shelves/owned-elsewhere` -> `ExternalBookShelfResponse`:
   `{ books: ExternalBookCard[], total: number | null }`. `ExternalBookCard`:
   `{ title: string, author: string | null, coverUrl: string | null, isbn13:
-  string | null, provider: string, providerUrl: string | null,
-  libraryBookId: number | null, people: string[] }`. Empty `books` array
+string | null, provider: string, providerUrl: string | null,
+libraryBookId: number | null, people: string[] }`. Empty `books` array
   (not absent) when disconnected or nothing to show. `libraryBookId` set
   means the app should deep-link to that local book instead of
   `providerUrl`.
@@ -1094,9 +1094,10 @@ Open questions for the owner / a successor:
   harmless but worth a cleanup pass if someone is already touching that file.
 - The readwise-only list panel only loads when a migration's last run is `completed`
   (`state === 'done'`) or a tracked run just finished; it is not shown for `never`, `running` or
-  `failed` states, matching the idea that this list reflects the *last successful* migration's
+  `failed` states, matching the idea that this list reflects the _last successful_ migration's
   classification, not a live query. If the product intent is to show it in more states, that
   is a product decision, not something this stage inferred from the API.
+
 ---
 
 ## Phase 2: Hardcover social shelves (2026-11-08)
@@ -1145,7 +1146,7 @@ and Android parity from §7.6 are explicitly out of scope here):
    - **UNVERIFIED GraphQL queries, called out explicitly in code comments**:
      `followed_user_books`'s and `books_trending`'s exact argument shapes
      were not confirmed by introspection against a live token (the research
-     doc only confirms the root field *names* exist, per risk #6 in
+     doc only confirms the root field _names_ exist, per risk #6 in
      `research/hardcover-api.md`). `parseTrendingResponse` treats any
      unexpected `books_trending` shape as an empty shelf rather than
      throwing, per the research doc's "defensive parsing" mitigation for the
@@ -1182,14 +1183,19 @@ and Android parity from §7.6 are explicitly out of scope here):
    (for the widgets/web agent, coordinate before changing it):**
    ```ts
    type ReadingServiceShelfItem = {
-     provider: 'readwise' | 'hardcover'; // generic: a future Readwise shelf reuses the same shape
+     provider: "readwise" | "hardcover"; // generic: a future Readwise shelf reuses the same shape
      externalId: string;
      title: string;
      authors: string[];
      coverUrl: string | null;
      externalUrl: string | null;
      bookId: number | null; // matched local BookOrbit book, or null
-     friend: { displayName: string; avatarUrl: string | null; status: string; date: string | null } | null; // only on friends shelves
+     friend: {
+       displayName: string;
+       avatarUrl: string | null;
+       status: string;
+       date: string | null;
+     } | null; // only on friends shelves
    };
    ```
    This lives in `packages/types/src/reading-services.ts` alongside
@@ -1337,7 +1343,7 @@ with two different response shapes. They are now one surface:
   social graph).
 - Client: `OwnedElsewhereShelf.vue`/`useOwnedElsewhereShelf.ts` were
   replaced by generic `ExternalShelf.vue` + `useExternalShelf(provider,
-  shelf)` (`client/src/features/dashboard/{components,composables}/`),
+shelf)` (`client/src/features/dashboard/{components,composables}/`),
   taking `provider`/`shelf` plus a `titleKey`/`descriptionKey` i18n pair so
   each call site supplies its own copy (no new locale keys were added this
   stage - `DashboardView.vue`'s one call site reuses the existing
@@ -1357,11 +1363,13 @@ Fixed by giving every adapter a `permission: Permission` field
 (`reading-service-provider.ts`), and having the controller fall back to the
 adapter's own declared permission for anything that is not one of the two
 built-in providers:
+
 ```ts
 private permissionFor(adapter: ReadingServiceProviderAdapter): Permission {
   return PROVIDER_PERMISSIONS[adapter.provider as ReadingServiceProvider] ?? adapter.permission;
 }
 ```
+
 `PROVIDER_PERMISSIONS` still exists and still wins for `readwise`/`hardcover`
 (backward compatible, no behaviour change for the two built-in providers).
 `ReadingServicePrivateAdapterLoaderService.hasAdapterShape` now rejects a
@@ -1513,8 +1521,8 @@ or a provider rename never needs a migration.
 
 - `client/src/features/dashboard/composables/useExternalShelvesConfig.ts`
   (new): fetches `GET /reading-services/shelves/available` and `GET
-  /reading-services` once on mount, calls `useDashboardConfig().
-  ensureExternalShelf(provider, shelf, defaultEnabled)` for every available
+/reading-services` once on mount, calls `useDashboardConfig().
+ensureExternalShelf(provider, shelf, defaultEnabled)` for every available
   shelf not yet in the persisted list (a no-op once it is), and exposes
   `pickerShelves` (every available shelf + its toggle, for the sheet) and
   `enabledExternalShelves` (enabled AND still connected, in order, for the
@@ -1530,7 +1538,7 @@ or a provider rename never needs a migration.
   built this stage (order is simply the API's available-shelves order);
   flagged below.
 - `DashboardView.vue`: the single hardcoded `<ExternalShelf provider=
-  "readwise" shelf="owned-elsewhere">` was replaced by a
+"readwise" shelf="owned-elsewhere">` was replaced by a
   `v-for="entry in enabledExternalShelves"`. `ExternalShelf.vue` gained
   optional `title`/`description` props (pre-resolved strings) alongside the
   existing `titleKey`/`descriptionKey` (locale keys resolved inside the
@@ -1601,7 +1609,7 @@ per the studio rules): **46 tests, 46 passed, 0 failed**.
   touched: clean, 0 problems (after one `--fix` pass on a server test file
   and one `--write` prettier pass on `DashboardSettingsSheet.vue`, both
   copied back to the PC and folded into the commit with `git commit
-  --amend`, per the never-commit-on-Unraid rule).
+--amend`, per the never-commit-on-Unraid rule).
 - `npx prettier --check` on every file this stage touched: clean after the
   fix above.
 - `npx vitest run src/modules/reading-services src/modules/hardcover`
@@ -1674,18 +1682,18 @@ focused suites surfaced three more real gaps, all fixed in this stage:
   file.
 - `ReadingServiceMatchRepository.findCandidates` gained a `provider`
   second argument in this feature (`findCandidates(userId, provider,
-  isbn13s, titlesLower)`) and one pre-existing controller test still
+isbn13s, titlesLower)`) and one pre-existing controller test still
   asserted the old 3-arg call.
 
 ### Verification (Unraid, disposable DB)
 
 - Server vitest, focused: `pnpm vitest run src/modules/readwise
-  src/modules/reading-services src/modules/hardcover` - **54 test files,
+src/modules/reading-services src/modules/hardcover` - **54 test files,
   717 tests, all passed**. (Did not run the whole-repo suite per owner
   instruction mid-task; every file this stage touched is in that focused
   set.)
 - Client vitest, focused: `pnpm vitest run src/features/reading-services
-  src/features/readwise src/features/hardcover` - **16 test files, 148
+src/features/readwise src/features/hardcover` - **16 test files, 148
   tests, all passed** (one `ReadingServiceLibraries.spec.ts` test fixed:
   it clicked `wrapper.get('button')` assuming that was Comics' "Customise"
   button, but the component renders a Customise button for every enabled
@@ -1695,7 +1703,7 @@ focused suites surfaced three more real gaps, all fixed in this stage:
 - `pnpm run validate:locales` (client): 25 locale catalogs validated
   against 12225 English messages, clean.
 - `pnpm db:migrate` against the disposable DB (`postgres://postgres:postgres@
-  127.0.0.1:55452/bookorbit`): migrations applied successfully.
+127.0.0.1:55452/bookorbit`): migrations applied successfully.
 - `drizzle-kit generate --name drift_check`: "No schema changes, nothing
   to migrate" - no drift between the migration files and
   `db/schema/reading-services.ts`.
@@ -1734,6 +1742,7 @@ a few Fastify/path-to-regexp deprecation notices unrelated to this
 feature.
 
 ### Android (separate repo, `bookorbit-android`, branch
+
 `feat-reading-services-parity`)
 
 Added `ReadingServiceLibrarySetting` and a pure
@@ -1776,7 +1785,7 @@ implement, Hardcover's support for marking a book owned:
     fetch.
 - A third-party open-source integration
   (`kristianedlund/hardcover-mcp`, MIT, unofficial) added ownership
-  support and its own changelog shows it moving *away* from calling
+  support and its own changelog shows it moving _away_ from calling
   `edition_owned` directly: an early commit ("add owned books support")
   exposed `owned`/`owned_copies` via `set_user_book`, then a follow-up fix
   ("use `edition_owned` toggle and Owned list for ownership") ended up
@@ -1801,8 +1810,6 @@ implement, Hardcover's support for marking a book owned:
   end to end (server, client, migrations, boot, Android read-only
   summary). Hardcover "owned" sync remains a future feature, not started.
 
-
-
 JSON shapes exported by this branch as of commit `8e09d0f9d`, exactly as
 the server sends them (field names, types, null-ability). All routes are
 under `/api/v1` and require the standard JWT auth; permission/feature
@@ -1817,7 +1824,11 @@ the caller lacks permission for are omitted, not 403'd). Returns
 ```ts
 {
   provider: "readwise" | "hardcover" | string; // string: a private adapter's own id
-  shelf: "friends-reading" | "friends-finished" | "trending" | "recommendations" | "owned-elsewhere";
+  shelf: "friends-reading" |
+    "friends-finished" |
+    "trending" |
+    "recommendations" |
+    "owned-elsewhere";
   connected: boolean; // whether the current user has this provider connected
 }
 ```
@@ -1920,7 +1931,11 @@ client/newer server mismatch), not rejected. Returns the full effective
 setting after the update, inherited defaults filled in:
 
 ```ts
-{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }
+{
+  libraryId: number;
+  enabled: boolean;
+  features: Partial<Record<string, boolean>>;
+}
 ```
 
 ### `DELETE /reading-services/:provider/libraries/:libraryId`
@@ -1975,7 +1990,7 @@ require-await fixes", "feat(db): migration 0144".
   auth methods it implements.
 - `reading-service-private-adapter-bridge.ts`: wraps a contract-v2 module (ctx-based
   calls: `{userId, credential, logger, fetch}`; `getShelf(ctx, shelfId) -> {items,
-  error?}`) into the host's `ReadingServiceProviderAdapter` shape. `auth_expired` from
+error?}`) into the host's `ReadingServiceProviderAdapter` shape. `auth_expired` from
   `getShelf` flips the stored credential's `needsReconnect` instead of throwing.
   `migratePage`/`pull` reject (no sync surface for a v2, read-only adapter).
 - `reading-service-private-adapter-loader.service.ts`: loads either a v1
@@ -2102,14 +2117,14 @@ require-await fixes", "feat(db): migration 0144".
     consistency with the existing design system). Boot gate: build succeeded (1558
     files via swc); against the already-migrated disposable DB
     (`bookorbit-disposable-db`, `127.0.0.1:55452`, migration 144 applied), `node
-    dist/main.js` logged "Nest application successfully started" exactly once and
+dist/main.js` logged "Nest application successfully started" exactly once and
     zero `"level":50` lines.
   - Three pre-existing Readwise/Hardcover specs needed a one-line "click Switch
     account first" fix each (they'd assumed the form was always visible); the
     Hardcover spec's `disconnect` mock was also changed to set `settings.value =
-    null`, matching what the real `useHardcoverSettings.disconnect()` actually does
+null`, matching what the real `useHardcoverSettings.disconnect()` actually does
     - without that the mock left `tokenConfigured` true after disconnecting and the
-    card would incorrectly re-collapse to "Connected".
+      card would incorrectly re-collapse to "Connected".
 
 ### Auth method contract (packages/types)
 
@@ -2117,14 +2132,23 @@ require-await fixes", "feat(db): migration 0144".
 type ReadingServiceAuthMethod =
   | { kind: "token"; label: string; help?: string; placeholder?: string }
   | { kind: "device_code"; label: string; help?: string }
-  | { kind: "password"; label: string; help?: string; fields: {
-      username: { label: string; placeholder?: string };
-      password: { label: string; placeholder?: string };
-    } };
+  | {
+      kind: "password";
+      label: string;
+      help?: string;
+      fields: {
+        username: { label: string; placeholder?: string };
+        password: { label: string; placeholder?: string };
+      };
+    };
 
 type ReadingServicePasswordLoginResult =
   | { ok: true; accountLabel?: string | null }
-  | { ok: false; reason: "invalid" | "mfa_required" | "network" | "unsupported"; message?: string | null };
+  | {
+      ok: false;
+      reason: "invalid" | "mfa_required" | "network" | "unsupported";
+      message?: string | null;
+    };
 ```
 
 `GET /reading-services` summary gained: `displayName?`, `description?`, `iconUrl?`,
@@ -2146,7 +2170,7 @@ declare them (private adapters); built-ins leave them undefined/false.
   `pnpm db:migrate`; a follow-up `pnpm db:generate drift_check` reported "No schema
   changes, nothing to migrate".
 - Boot gate, both green, zero `"level":50` lines, both logged `Nest application
-  successfully started`:
+successfully started`:
   - (a) no `READING_SERVICES_PRIVATE_ADAPTERS_DIR` set.
   - (b) `READING_SERVICES_PRIVATE_ADAPTERS_DIR` pointing at a copy of the real
     `readwise-social` adapter (from
@@ -2160,7 +2184,7 @@ listening when this stage ran; check `docker ps` if gates fail to connect.
 
 ### Adapter-side: already matches, no changes needed
 
-The real adapter at `bookorbit-adapter/index.mjs` (outside this repo) has *already*
+The real adapter at `bookorbit-adapter/index.mjs` (outside this repo) has _already_
 been updated in parallel with `token` and `password` (`loginWithPassword`) methods
 alongside `device_code`, matching this stage's host contract exactly - confirmed by
 loading a copy of it in boot gate (b) above. No adapter-side changes are needed.
@@ -2187,6 +2211,7 @@ settings design system rather than dealing a fresh direction).
 
 **States covered by `ReadingServiceSignIn.vue`** (one component, used at the top of
 every provider settings page):
+
 - **Disconnected, one method**: that method's form renders directly, no picker.
 - **Disconnected, 2+ methods**: a segmented control (radio-group semantics, one row,
   sentence case, no icons) above the active method's form, order as the adapter
@@ -2195,7 +2220,7 @@ every provider settings page):
   masking, not an actual BookOrbit credential field) with a reveal toggle, a Connect
   button disabled while empty or pending, inline error on failure.
 - **Password method**: username (`autocomplete="username"`) + password
-  (`autocomplete="current-password"`, reveal toggle) - this *is* a real third-party
+  (`autocomplete="current-password"`, reveal toggle) - this _is_ a real third-party
   login form, so real autocomplete hints are correct and intentional, unlike the
   BookOrbit-credential case `secret-input.ts` warns about. Submit disabled while
   pending or either field empty. Component state for the password is cleared
@@ -2316,14 +2341,14 @@ A BookOrbit DB with no sync history (live restored from an old backup, or a bran
 
 ### Audit: every push path's "unlinked local item -> create remote" assumption
 
-| Path | File | Before this stage | Duplicate risk on reconnect |
-|---|---|---|---|
-| Books migration push | `readwise-books-migration.service.ts` | Matched a book against the remote index (built once per run, fine) and called `updateBooks`/`createBooks`. On an exact value match it still sent a PATCH every time. | Low duplicate risk (the matcher already ran against the full library via the index phase), but every re-run silently overwrote a remote value that already agreed, with no record of what would have changed on an actual mismatch. |
-| Sessions push | `readwise-sessions-push.service.ts` + `readwise-sessions-local.repository.ts` (`findPushableSessions`) | Per book, found local sessions with no `readwise.session` link and pushed them via `createSessions`. Never checked whether an equivalent session already existed remotely. | **High.** On reconnect, every BookOrbit-origin session already on Readwise (pushed by the other instance) looks "unlinked" here and gets recreated. |
-| Highlights ledger backfill | `readwise-highlights-ledger-backfill.service.ts` | For highlights exported before the per-highlight ledger existed, looked up the local annotation purely by `annotationId` parsed out of the highlight's `url`, with no check that the ids still line up to a DB restored from a different point in time, and no fallback when the id was unparsable or wrong. | **High.** The old-watermark backfill assumed watermark-reachable implied "this highlight's annotation id still points at the matching local row", which does not hold once the DB has been swapped for a different backup. |
-| Reviews/ratings/status/dates push (part of the books migration path above) | `readwise-books-migration.service.ts` | Same PATCH-every-match behaviour as the books row above; no "BookOrbit wins, but log what was overwritten" record for the owner to review after a reconnect. | Not a duplicate-creation risk, but a silent-data-loss risk on the remote side with no audit trail. |
-| Hardcover sync (status/progress/rating/dates) | `hardcover-sync.service.ts`, `hardcover-book-match.service.ts` | `user_book` upsert already keys off Hardcover's own `book_id` via `findOrCreateUserBook`-style lookup before create, so it is naturally idempotent per book id; confirmed by reading `hardcover-sync.service.ts` end to end - no code path creates a `user_book` without first searching for an existing one by `book_id`. No separate matching work was needed here. | Low; Hardcover's own id-based upsert already prevents duplicate `user_book` rows. Reading-journal entries follow the same book-id-scoped lookup. |
-| Sessions/highlights pull | `readwise-sessions-pull.service.ts`, `readwise-highlights-pull.service.ts` | Pull dedupes by the `reading_service_item_links` ledger (`findItemLinkByExternalId`), which is correct for "already pulled this exact remote id before" but did nothing for "this remote item is the twin of a BookOrbit-origin local item that this live DB never got a link row for because it never pushed it (a different, earlier BookOrbit instance did)". | **Medium.** A highlight or session BookOrbit itself originally created and pushed (from the *other* instance) would, on live's first pull, import as a brand-new `source='readwise'` row sitting alongside nothing, instead of linking back to nothing (it has no local twin on live) - except when live *does* have a local twin (e.g. the same book/session exists locally because BookOrbit, not Readwise, is the source of truth for it). Sessions: fixed in this stage. Highlights: BookOrbit never creates highlights independently of Readwise in this codebase, so there is no local-origin highlight for the pull side to accidentally duplicate; no change was needed there beyond the existing ledger dedupe. |
+| Path                                                                       | File                                                                                                   | Before this stage                                                                                                                                                                                                                                                                                                                                                     | Duplicate risk on reconnect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Books migration push                                                       | `readwise-books-migration.service.ts`                                                                  | Matched a book against the remote index (built once per run, fine) and called `updateBooks`/`createBooks`. On an exact value match it still sent a PATCH every time.                                                                                                                                                                                                  | Low duplicate risk (the matcher already ran against the full library via the index phase), but every re-run silently overwrote a remote value that already agreed, with no record of what would have changed on an actual mismatch.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Sessions push                                                              | `readwise-sessions-push.service.ts` + `readwise-sessions-local.repository.ts` (`findPushableSessions`) | Per book, found local sessions with no `readwise.session` link and pushed them via `createSessions`. Never checked whether an equivalent session already existed remotely.                                                                                                                                                                                            | **High.** On reconnect, every BookOrbit-origin session already on Readwise (pushed by the other instance) looks "unlinked" here and gets recreated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Highlights ledger backfill                                                 | `readwise-highlights-ledger-backfill.service.ts`                                                       | For highlights exported before the per-highlight ledger existed, looked up the local annotation purely by `annotationId` parsed out of the highlight's `url`, with no check that the ids still line up to a DB restored from a different point in time, and no fallback when the id was unparsable or wrong.                                                          | **High.** The old-watermark backfill assumed watermark-reachable implied "this highlight's annotation id still points at the matching local row", which does not hold once the DB has been swapped for a different backup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Reviews/ratings/status/dates push (part of the books migration path above) | `readwise-books-migration.service.ts`                                                                  | Same PATCH-every-match behaviour as the books row above; no "BookOrbit wins, but log what was overwritten" record for the owner to review after a reconnect.                                                                                                                                                                                                          | Not a duplicate-creation risk, but a silent-data-loss risk on the remote side with no audit trail.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Hardcover sync (status/progress/rating/dates)                              | `hardcover-sync.service.ts`, `hardcover-book-match.service.ts`                                         | `user_book` upsert already keys off Hardcover's own `book_id` via `findOrCreateUserBook`-style lookup before create, so it is naturally idempotent per book id; confirmed by reading `hardcover-sync.service.ts` end to end - no code path creates a `user_book` without first searching for an existing one by `book_id`. No separate matching work was needed here. | Low; Hardcover's own id-based upsert already prevents duplicate `user_book` rows. Reading-journal entries follow the same book-id-scoped lookup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Sessions/highlights pull                                                   | `readwise-sessions-pull.service.ts`, `readwise-highlights-pull.service.ts`                             | Pull dedupes by the `reading_service_item_links` ledger (`findItemLinkByExternalId`), which is correct for "already pulled this exact remote id before" but did nothing for "this remote item is the twin of a BookOrbit-origin local item that this live DB never got a link row for because it never pushed it (a different, earlier BookOrbit instance did)".      | **Medium.** A highlight or session BookOrbit itself originally created and pushed (from the _other_ instance) would, on live's first pull, import as a brand-new `source='readwise'` row sitting alongside nothing, instead of linking back to nothing (it has no local twin on live) - except when live _does_ have a local twin (e.g. the same book/session exists locally because BookOrbit, not Readwise, is the source of truth for it). Sessions: fixed in this stage. Highlights: BookOrbit never creates highlights independently of Readwise in this codebase, so there is no local-origin highlight for the pull side to accidentally duplicate; no change was needed there beyond the existing ledger dedupe. |
 
 ### What changed
 
@@ -2340,7 +2365,7 @@ Not implemented as a distinct phase exposed through the migration/sync-run statu
 
 ### Two concurrent instances (task item 5)
 
-Documented here per the task, since code is not a complete guard: **two BookOrbit instances must never run a sync for the same Readwise or Hardcover account at the same time.** Both the sessions reconcile pass and the books-migration index phase build an in-memory/cached snapshot of "the remote state as of the start of this run" and then act on it; a concurrent writer on the other instance can create a remote item *during* that window that this run's snapshot doesn't know about, producing exactly the duplicate this whole stage exists to prevent, race-permitting. No cheap per-instance tag exists on the current Readwise or Hardcover API surfaces to guard against this (the task explicitly said not to invent API fields that don't exist, and neither provider's write endpoints used here - `createSessions`, `createBooks`, `updateBooks`, Hardcover's GraphQL mutations - expose a client-supplied free-text/tag field we already populate that could double as an instance id). The mitigation is operational, not code: the owner's staging-then-live plan must not run staging's sync and live's first connect concurrently against the same account; stop staging's sync (or disconnect it) before connecting live.
+Documented here per the task, since code is not a complete guard: **two BookOrbit instances must never run a sync for the same Readwise or Hardcover account at the same time.** Both the sessions reconcile pass and the books-migration index phase build an in-memory/cached snapshot of "the remote state as of the start of this run" and then act on it; a concurrent writer on the other instance can create a remote item _during_ that window that this run's snapshot doesn't know about, producing exactly the duplicate this whole stage exists to prevent, race-permitting. No cheap per-instance tag exists on the current Readwise or Hardcover API surfaces to guard against this (the task explicitly said not to invent API fields that don't exist, and neither provider's write endpoints used here - `createSessions`, `createBooks`, `updateBooks`, Hardcover's GraphQL mutations - expose a client-supplied free-text/tag field we already populate that could double as an instance id). The mitigation is operational, not code: the owner's staging-then-live plan must not run staging's sync and live's first connect concurrently against the same account; stop staging's sync (or disconnect it) before connecting live.
 
 ### Tests
 
@@ -2376,6 +2401,7 @@ changes are then made independently of BookOrbit (a rating edit, a session logge
 app), then instance B (same snapshot's book plus its own local rating/status/session/highlight
 changes, empty ledger) connects and runs two full cycles; a third test is a never-synced instance's
 first migration. All of the task's duplicate/precedence/idempotency assertions pass:
+
 - no duplicate remote book/session/highlight/user_book/read for the shared natural key (checked by
   count per ISBN / per Hardcover `book_id`);
 - instance B's local values win on the remote (rating, status) over both A's earlier push and the
@@ -2389,13 +2415,14 @@ first migration. All of the task's duplicate/precedence/idempotency assertions p
 **No bug was found or fixed in either module.** Both integration tests passed on the first run
 against the already-existing `readwise-sessions-reconcile.service.ts`,
 `readwise-books-migration.service.ts` and `hardcover-sync.service.ts` logic - this is a positive
-result that *confirms* the reconnect-safety behaviour already documented above (the ISBN-first-match
+result that _confirms_ the reconnect-safety behaviour already documented above (the ISBN-first-match
 book lookup, the sessions reconcile-before-push pass, and Hardcover's `book_id`-keyed
 insert-or-find) actually holds end-to-end across two instances, not just in each service's own unit
 tests. No code change to `server/src/modules/readwise` or `server/src/modules/hardcover` was
 required for this stage.
 
 Verified on Unraid for this addendum:
+
 - `pnpm run typecheck:server` - clean, exit 0.
 - Focused `pnpm vitest run src/modules/readwise src/modules/hardcover`: **45 test files, 622 tests,
   all passed** (includes both new integration test files, 4 tests total).
@@ -2523,9 +2550,9 @@ Container dropped after.
 - Server + client `pnpm run typecheck:server` / `typecheck:client`: exit 0
   both.
 - Server vitest `src/modules/readwise src/modules/hardcover
-  src/modules/reading-services`: **60 files, 766 tests, all passed**.
+src/modules/reading-services`: **60 files, 766 tests, all passed**.
 - Client vitest `src/features/reading-services src/features/readwise
-  src/features/hardcover src/features/settings src/features/dashboard`:
+src/features/hardcover src/features/settings src/features/dashboard`:
   **116 files, 1380 tests, all passed**.
 - `node ./scripts/validate-locales.mjs`: "Validated 25 locale catalogs
   against 12253 English messages".
@@ -2537,7 +2564,7 @@ Container dropped after.
   line in `ReadingServiceMigrationPanel.vue`), both fixed with
   `eslint --fix` / `prettier --write`, then clean.
 - BOOT GATE, both green, zero `"level":50` lines, both logged `Nest
-  application successfully started` exactly once:
+application successfully started` exactly once:
   - (a) no `READING_SERVICES_PRIVATE_ADAPTERS_DIR` set.
   - (b) `READING_SERVICES_PRIVATE_ADAPTERS_DIR` pointing at a tracked-files-only
     copy (`git archive`, no `private/` folder - there wasn't one) of the real
@@ -2615,7 +2642,7 @@ Ranked candidate causes investigated, with evidence:
    (`readwise-books-status-mapping.ts`) only ever emits Readwise's own enum values and never
    `unsorted` (the one value Readwise rejects on write). None of these were changed.
 3. **Open question, not fixed - needs an owner/product decision, not a guess:** `user_book_reviews
-   .review` has no minimum-length constraint in the schema, so a user clearing a review to `''`
+.review` has no minimum-length constraint in the schema, so a user clearing a review to `''`
    (empty string, not `null`) would push `review: ""`. Readwise's docs say `review` is "1-10000
    characters; `null` clears it" - an empty string is neither a valid 1+ char review nor `null`,
    so it may 400 on its own. I did not reproduce this against the live account's actual data (no
@@ -2705,6 +2732,132 @@ Plan before implementing:
 10. Tests: server (`bulkSubmitFromMetadata` created/skipped/error counts, permission-gated via the
     existing controller guard), client (row states, hidden without permission, confirm dialog blocks
     submission, shelf menu item gated on shelf type).
+
+---
+
+## Same-DB concurrent sync lock for Readwise/Hardcover (2026-11-09)
+
+Branch `feat-reading-services-instance-lock`, off `origin/development` @ `ebaf35729`. Worktree
+`D:/Development/bookorbit-worktrees/feat-reading-services-instance-lock`.
+
+Problem: `reading-service-sync-run.service.ts` already has a DB-level duplicate-run guard for a
+provider _migration_ (partial unique index `rs_runs_user_provider_kind_running_uidx`), but the
+recurring `@Interval` background workers in `server/src/modules/readwise` and
+`server/src/modules/hardcover` had nothing stopping two overlapping runs for the same user on the
+same database: two `@Interval` ticks racing each other, a manual trigger racing a scheduled one,
+or two app replicas pointed at one Postgres instance. The highest-risk path is the Readwise
+sessions push: Readwise does not dedupe sessions (readwise-api.md §3), so two overlapping pushes
+for the same user could each create the same session as a real duplicate with no way to detect it
+after the fact.
+
+**Inventory of per-provider background/write paths** (server/src/modules/readwise,
+server/src/modules/hardcover):
+
+- `readwise-sessions-push.service.ts` (`flushUser`, driven by
+  `readwise-sessions-push-scheduler.service.ts`'s debounce, not `@Interval` itself) - creates
+  remote sessions; not idempotent.
+- `readwise-sessions-pull.service.ts` (`pullForUser`, `@Interval`) - inserts local session rows,
+  writes ledger links and a pull cursor.
+- `readwise-books-pull.service.ts` (`pullForUser`, `@Interval`) - applies remote book changes
+  locally, writes link snapshots and a pull cursor.
+- `readwise-highlights-pull.service.ts` (`pullForUser`, `@Interval`) - applies remote highlight
+  edits/deletes locally, writes ledger content hashes and a pull cursor.
+- `readwise-sessions-correction.service.ts`, `readwise-sessions-backfill-sweep.service.ts` -
+  one-time passes invoked from inside `flushUser`, so locking `flushUser` covers them too; not
+  given their own lock.
+- `readwise-books-migration.service.ts` / `reading-service-sync-run.service.ts` - already has the
+  DB unique-index guard mentioned above; left untouched.
+- `hardcover-sync.service.ts` (`syncAll`/`syncBook`) - already serialized per-process via
+  in-memory `activeSyncs` (one run per user) and `withBookSyncLock` (per book), and Hardcover's
+  own `insert_user_book`/`update_user_book` GraphQL mutations are closer to idempotent (an insert
+  that already exists is found and updated, not duplicated) than Readwise's session POST. Adding
+  the same DB advisory lock here was judged not cheap enough to be worth it on this card:
+  `hardcover-sync.service.test.ts` is 1542 lines deep into `syncAll`'s fire-and-forget semantics
+  (`activeSyncs`/`cancelRequests`/`syncStatusEvents` interplay), and wrapping that flow risks
+  subtle behavioural changes across a very large existing test surface for a lower-duplication-risk
+  path. Left as a flagged follow-up, not done on this card.
+
+**Design chosen**: `ReadingServiceAdvisoryLockService`
+(`server/src/modules/reading-services/reading-service-advisory-lock.service.ts`), one new file,
+no schema change. `runExclusive(operation, userId, fn)` runs `fn` inside a `db.transaction` after
+calling `pg_try_advisory_xact_lock(hashtext(lockKey)::bigint)` where `lockKey` is
+`reading_services:<operation>:<userId>`; skips (returns `null`, never waits) if the lock is
+already held, logging `[reading_services.advisory_lock] [end] ... locked=false` at debug level.
+
+Chose the transaction-scoped variant (`pg_try_advisory_xact_lock`), not session-level
+(`pg_advisory_lock`), because of how the DB pool works
+(`server/src/db/db.module.ts`: a `node-postgres` `Pool`, max 20 connections, handed out per
+query/transaction and returned to the pool afterwards). A session-level lock acquired on one
+borrowed connection would need an explicit unlock on that exact same connection before it goes
+back to the pool, or it would sit "held" on a connection some unrelated later query might then
+reuse. The xact variant's lifetime is tied to the transaction Drizzle already manages (released
+automatically on commit/rollback), so there is nothing to leak. This also matches an existing
+pattern already in the codebase: `AuthenticationPolicyService.lockAdministratorAvailability` uses
+`pg_advisory_xact_lock(hashtext(key)::bigint)` (blocking, not try) inside a `db.transaction` the
+same way.
+
+No schema change: an advisory lock is a Postgres primitive with no backing table, so there was
+nothing to add to `server/src/db/schema` or generate a migration for.
+
+**Applied to** (first, per the card's priority): `ReadwiseSessionsPushService.flushUser`,
+`ReadwiseSessionsPullService.pullForUser`, `ReadwiseBooksPullService.pullForUser`,
+`ReadwiseHighlightsPullService.pullForUser`. Each wraps its existing body (renamed to
+`*Locked`) in `this.lock.runExclusive(...)`; on a skip, `flushUser` returns
+`{ settleRetries: [] }` and the `pullForUser` methods return their existing "nothing to do" shape
+(`void`, or zeroed counters for highlights), identical to their no-token/feature-off early
+returns, so callers (the push scheduler's retry logic, the `@Interval` batch loop) see a no-op
+rather than an error and simply pick the user back up on their own next cadence.
+
+**Different-database case** (two separate BookOrbit installs, e.g. staging and live, pointed at
+different databases but sharing one Readwise/Hardcover token): a database-level lock cannot see
+or coordinate with a different database, so this is not and cannot be fixed by this change.
+Documented here only, not in product/settings copy: no low-cost signal exists to detect it (no
+API to ask Readwise/Hardcover "is another app instance also using this token right now", and
+guessing from request timing/patterns would be unreliable and not worth the complexity). If this
+becomes a real support issue, the practical mitigation is operational (never point two live
+instances at the same reading-service token), not a code fix.
+
+Tests added: `reading-service-advisory-lock.service.test.ts` (runs fn when free, skips and
+returns `null` when held, a genuinely concurrent pair where the first holds the lock and the
+second is skipped, and the lock-key SQL shape), plus one or two cases folded into each of
+`readwise-sessions-push.service.test.ts`, `readwise-sessions-pull.service.test.ts`,
+`readwise-books-pull.service.test.ts`, `readwise-highlights-pull.service.test.ts` (skip-when-held,
+and for the push/pull services a genuinely concurrent pair via two queued `lock.runExclusive`
+mock implementations). The existing `readwise-reconnect-two-instance.integration.test.ts` and
+`readwise-sessions-correction-push.integration.test.ts` harnesses were updated to pass a
+pass-through fake lock into the real `ReadwiseSessionsPushService`/`ReadwiseSessionsPullService`
+constructors they build directly (that harness models "two instances" as two different `userId`s
+acting on a shared fake remote, not two overlapping calls for the same `userId`, so a real lock
+would never contend there and a fake pass-through is correct, not a shortcut).
+
+No e2e test against a disposable Postgres was written for this card: the lock's correctness
+depends only on Postgres's own `pg_try_advisory_xact_lock` semantics (a well-documented built-in,
+not something this change implements), and the unit tests above already exercise the "try, skip,
+don't wait" contract through a mocked `db.transaction`. Flagging this as unverified against a
+real database if a reviewer wants that extra confidence; the existing
+`AuthenticationPolicyService` precedent this pattern copies also has no such e2e test.
+
+Verified (worktree above, after `pnpm install --frozen-lockfile`,
+`pnpm --filter @bookorbit/types build`, `pnpm --filter @bookorbit/plugin-api build`):
+
+- `npx vitest run src/modules/readwise src/modules/reading-services src/modules/hardcover`:
+  **70 files, 869 tests, all passed.**
+- `npx eslint src/modules/reading-services src/modules/readwise src/modules/hardcover`: clean, 0
+  problems (one `--fix` pass for two prettier-only formatting nits, folded into the same commit).
+- `npx prettier --check src/modules/reading-services src/modules/readwise src/modules/hardcover`:
+  all matched files use Prettier style.
+- `npx tsc -p tsconfig.build.json --noEmit`: clean, exit 0.
+- Full repo-wide `pnpm run lint:check`, client typecheck, and the full/e2e test suites were
+  **not** run, per "focused checks only" for this card; defer to PR preparation.
+
+Open items for the owner / a successor:
+
+- Hardcover's `syncAll`/`syncBook` were deliberately left without the DB advisory lock (see
+  above); a future card could add it once someone is willing to touch
+  `hardcover-sync.service.test.ts`'s large fire-and-forget test surface.
+- No e2e/disposable-Postgres test for the lock itself, as noted above.
+- The different-database case remains undocumented anywhere end-user-facing (settings copy,
+  README); this handoff section is the only record. Revisit if support tickets ever point at it.
 
 ---
 

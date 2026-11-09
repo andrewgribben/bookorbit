@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { ReadingServiceFeature } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
@@ -100,10 +101,23 @@ export class ReadwiseSessionsPushService {
     private readonly correction: ReadwiseSessionsCorrectionService,
     private readonly repair: ReadwiseSessionsRepairService,
     private readonly sweep: ReadwiseSessionsBackfillSweepService,
+    private readonly lock: ReadingServiceAdvisoryLockService,
   ) {}
 
+  /**
+   * Readwise does not dedupe sessions (readwise-api.md §3), so two overlapping pushes for the
+   * same user - a retried scheduler tick racing a fresh one, or two app instances/replicas on
+   * the same database - could each create the same session. Serialized per user via an advisory
+   * lock; a push that loses the race is skipped and simply retried on the scheduler's own next
+   * tick rather than duplicating the other push's work.
+   */
   async flushUser(userId: number, bookIds: number[]): Promise<FlushResult> {
     if (bookIds.length === 0) return { settleRetries: [] };
+    const result = await this.lock.runExclusive('readwise_sessions_push', userId, () => this.flushUserLocked(userId, bookIds));
+    return result ?? { settleRetries: [] };
+  }
+
+  private async flushUserLocked(userId: number, bookIds: number[]): Promise<FlushResult> {
     const token = await this.readwiseSettings.getToken(userId);
     if (!token) return { settleRetries: [] };
 

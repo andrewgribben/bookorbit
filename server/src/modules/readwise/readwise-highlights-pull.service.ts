@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -47,6 +48,7 @@ export class ReadwiseHighlightsPullService {
     private readonly featuresService: ReadingServiceFeaturesService,
     private readonly cache: ReadingServiceCacheService,
     private readonly localRepo: ReadwiseHighlightsLocalRepository,
+    private readonly lock: ReadingServiceAdvisoryLockService,
   ) {}
 
   @Interval(READWISE_HIGHLIGHTS_PULL_INTERVAL_MS)
@@ -58,7 +60,19 @@ export class ReadwiseHighlightsPullService {
     }
   }
 
+  /**
+   * Serialized per user via an advisory lock: an overlapping run (two @Interval ticks racing,
+   * or two instances/replicas sharing one database) would apply the same remote edit/delete
+   * twice and could race on the pull cursor. A run that loses the race is skipped and retried
+   * on the next interval; its counters come back zeroed, same as the no-token/feature-off cases.
+   */
   async pullForUser(userId: number): Promise<{ edited: number; deleted: number; skippedNew: number }> {
+    const result = await this.lock.runExclusive('readwise_highlights_pull', userId, () => this.pullForUserLocked(userId));
+    if (result === null) this.logger.debug(`[${EVENT}] [end] userId=${userId} - skipped, another pull already running`);
+    return result ?? { edited: 0, deleted: 0, skippedNew: 0 };
+  }
+
+  private async pullForUserLocked(userId: number): Promise<{ edited: number; deleted: number; skippedNew: number }> {
     const counters = { edited: 0, deleted: 0, skippedNew: 0 };
     const token = await this.readwiseSettings.getToken(userId);
     if (!token) return counters;

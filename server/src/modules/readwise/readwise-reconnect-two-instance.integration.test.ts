@@ -578,6 +578,11 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
   const correctionService = new ReadwiseSessionsCorrectionService(sessionsRepo, readwiseRepo, cache, deleteUnlinkService);
   const repairService = new ReadwiseSessionsRepairService(sessionsRepo, readingServicesRepo, deleteUnlinkService);
   const sweepService = new ReadwiseSessionsBackfillSweepService(sessionsRepo, cache);
+  // Fake, single-process stand-in for the real Postgres advisory lock: always free, since this
+  // harness models two instances as two userIds, not two overlapping calls for the same userId.
+  const advisoryLock = {
+    runExclusive: async <T>(_operation: string, _userId: number, fn: () => Promise<T>) => fn(),
+  } as unknown as import('../reading-services/reading-service-advisory-lock.service').ReadingServiceAdvisoryLockService;
   const sessionsPushService = new ReadwiseSessionsPushService(
     booksClient,
     sessionsRepo,
@@ -589,6 +594,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     correctionService,
     repairService,
     sweepService,
+    advisoryLock,
   );
   const sessionsPullService = new ReadwiseSessionsPullService(
     booksClient,
@@ -598,6 +604,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     featuresService,
     cache,
     sessionsRepo,
+    advisoryLock,
   );
 
   const ledgerBackfillStub = {
