@@ -60,6 +60,19 @@ function makeService() {
     findBookLinksForProvider: vi.fn((userId: number, provider: string) =>
       Promise.resolve([...bookLinksStore.entries()].filter(([key]) => key.startsWith(`${userId}:${provider}:`)).map(([, link]) => link)),
     ),
+    findBookLinksForBookIds: vi.fn((userId: number, provider: string, bookIds: number[]) =>
+      Promise.resolve(
+        [...bookLinksStore.entries()]
+          .filter(([key, link]) => key.startsWith(`${userId}:${provider}:`) && bookIds.includes(link.bookId))
+          .map(([, link]) => link),
+      ),
+    ),
+    markRemoteDeleted: vi.fn((userId: number, provider: string, bookId: number) => {
+      const key = `${userId}:${provider}:${bookId}`;
+      const existing = bookLinksStore.get(key);
+      if (existing) bookLinksStore.set(key, { ...existing, remoteDeleted: true });
+      return Promise.resolve();
+    }),
   } as unknown as ReadingServicesRepository;
   const pullService = { pullForUser: vi.fn() } as unknown as ReadwiseBooksPullService;
 
@@ -337,6 +350,99 @@ describe('ReadwiseBooksMigrationService', () => {
       // has a link to it from run 1, even though run 2's live matching missed it.
       const page = await service.listRemoteOnlyBooks(1, 0, 50);
       expect(page.total).toBe(0);
+    });
+
+    it('reuses an already-linked book instead of creating a duplicate when live matching misses it', async () => {
+      const { service, client, localBooks, readingServicesRepo } = makeService();
+
+      // Run 1: the local book matches by isbn and is linked to 'r1'.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: { isbn: '9780306406157' } }], next: null });
+      let indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read', rating: 4 })]);
+      (client.updateBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'existing' }]);
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      // Run 2: Readwise now reports 'r1' with blank product metadata, so isbn/title matching
+      // fails; without reusing the link this would have fallen through to createBooks.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: null }], next: null });
+      indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read', rating: 5 })]);
+      (client.updateBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'existing' }]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).not.toHaveBeenCalled();
+      expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ id: 'r1', rating: 5 })]);
+      expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(1, 'readwise', 10, expect.objectContaining({ externalBookId: 'r1' }));
+      expect(counters).toMatchObject({ scanned: 1, matched: 1, updated: 1, created: 0 });
+    });
+
+    it('leaves a remote-deleted link alone and counts it as skipped rather than re-creating it', async () => {
+      const { service, client, localBooks, readingServicesRepo } = makeService();
+
+      // Run 1: links bookId 10 to 'r1'.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [{ id: 'r1', product: { isbn: '9780306406157' } }], next: null });
+      let indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read' })]);
+      (client.updateBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'existing' }]);
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      // Readwise deleted 'r1' (simulated via the two-way sync marking the link remote-deleted).
+      await (readingServicesRepo.markRemoteDeleted as any)(1, 'readwise', 10);
+      (client.updateBooks as any).mockClear();
+
+      // Run 2: 'r1' is gone from the remote index entirely, and matching still misses the local
+      // book (no isbn match target left). A remote-deleted link must never be re-created.
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      indexCursor = await service.migratePage(1, {}, emptyCounters());
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 10, isbn13: '9780306406157', status: 'read' })]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).not.toHaveBeenCalled();
+      expect(client.updateBooks).not.toHaveBeenCalled();
+      expect(counters).toMatchObject({ scanned: 1, skipped: 1, matched: 0, created: 0, updated: 0 });
+    });
+
+    it('is idempotent on a full re-run: nothing is created the second time through', async () => {
+      const { service, client, localBooks } = makeService();
+
+      const localPage = [
+        book({ bookId: 1, isbn13: '9781111111111', title: 'Book One', status: 'read' }),
+        book({ bookId: 2, title: 'Book Two (no isbn)', status: 'want_to_read' }),
+      ];
+
+      for (const run of [1, 2]) {
+        (client.listBooks as any).mockResolvedValueOnce({
+          results:
+            run === 1
+              ? []
+              : [
+                  { id: 'created-1', product: null },
+                  { id: 'created-2', product: null },
+                ],
+          next: null,
+        });
+        const indexCursor = await service.migratePage(1, {}, emptyCounters());
+        (localBooks.findPage as any).mockResolvedValueOnce(localPage);
+        if (run === 1) {
+          (client.createBooks as any).mockResolvedValueOnce([
+            { id: 'created-1', status: 'created', book_id: 'created-1' },
+            { id: 'created-2', status: 'created', book_id: 'created-2' },
+          ]);
+        }
+        const counters = emptyCounters();
+        await service.migratePage(1, indexCursor!, counters);
+        if (run === 1) {
+          expect(counters.created).toBe(2);
+        } else {
+          expect(counters.created).toBe(0);
+        }
+      }
+
+      expect(client.createBooks).toHaveBeenCalledTimes(1);
     });
 
     it('retries a 400 update batch item by item and keeps the run from aborting', async () => {

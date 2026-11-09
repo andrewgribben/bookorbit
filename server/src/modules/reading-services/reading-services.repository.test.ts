@@ -52,6 +52,34 @@ describe('ReadingServicesRepository - item ledger', () => {
     expect(findFirst).toHaveBeenCalledTimes(1);
   });
 
+  it('finds book links for a page of bookIds in one batched query', async () => {
+    const db = {
+      insert: vi.fn(),
+      update: vi.fn(),
+      query: { readingServiceBookLinks: { findMany: vi.fn().mockResolvedValue([{ bookId: 10 }]) } },
+    };
+    const bookLinksRepo = new ReadingServicesRepository(db as never);
+
+    const result = await bookLinksRepo.findBookLinksForBookIds(1, 'readwise', [10, 11]);
+
+    expect(result).toEqual([{ bookId: 10 }]);
+    expect(db.query.readingServiceBookLinks.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the query entirely for an empty bookId list', async () => {
+    const db = {
+      insert: vi.fn(),
+      update: vi.fn(),
+      query: { readingServiceBookLinks: { findMany: vi.fn() } },
+    };
+    const bookLinksRepo = new ReadingServicesRepository(db as never);
+
+    const result = await bookLinksRepo.findBookLinksForBookIds(1, 'readwise', []);
+
+    expect(result).toEqual([]);
+    expect(db.query.readingServiceBookLinks.findMany).not.toHaveBeenCalled();
+  });
+
   it('marks a ledger row deleted', async () => {
     await repo.markItemLinkDeleted(1, 'readwise', 'session', 10);
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ deletedAt: expect.any(Date) }));
