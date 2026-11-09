@@ -131,6 +131,27 @@ describe('ReadwiseBooksPushService', () => {
     );
   });
 
+  it('coerces an empty-string review to null before sending to Readwise', async () => {
+    const { service, client, localBooks, readingServicesRepo } = makeService();
+    (localBooks.findOne as any).mockResolvedValueOnce(book({ bookId: 19, status: 'reading', rating: 4, review: '   ' }));
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({
+      externalBookId: 'r8',
+      matchMethod: 'isbn13',
+      remoteDeleted: false,
+      snapshot: { status: 'reading', rating: 4, review: 'Old review', startedAt: null, finishedAt: null },
+    });
+
+    await service.flushUser(1, [19]);
+
+    expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ id: 'r8', review: null })]);
+    expect(readingServicesRepo.upsertBookLink).toHaveBeenCalledWith(
+      1,
+      'readwise',
+      19,
+      expect.objectContaining({ snapshot: expect.objectContaining({ review: '   ' }) }),
+    );
+  });
+
   it('respects a disabled rating feature toggle', async () => {
     const { service, client, localBooks, readingServicesRepo, featuresService } = makeService();
     (featuresService.getFeatures as any).mockResolvedValueOnce({ rating: false });

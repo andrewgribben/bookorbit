@@ -10,6 +10,7 @@ export const ACHIEVEMENT_EVENT_ANNOTATION_DELETED = 'annotation.deleted';
 export const ACHIEVEMENT_EVENT_COLLECTION_CREATED = 'collection.created';
 export const ACHIEVEMENT_EVENT_LIBRARY_CATALOG_CHANGED = 'library.catalog-changed';
 export const ACHIEVEMENT_EVENT_BACKFILL = 'achievement.backfill';
+export const ACHIEVEMENT_EVENT_READING_SESSIONS_BACKFILLED = 'reading-session.backfilled';
 export const ACHIEVEMENT_EVENT_ACHIEVEMENT_AWARDED = 'achievement.awarded';
 export const ACHIEVEMENT_EVENT_BOOK_RATING_CHANGED = 'book.rating-changed';
 export const ACHIEVEMENT_EVENT_BOOK_PROGRESS_CHANGED = 'book.progress-changed';
@@ -26,6 +27,17 @@ export interface ReadingSessionSavedPayload {
   endProgress: number | null;
   timezone: string;
   source: ReadingSessionSource;
+}
+
+/**
+ * Raised instead of (not in addition to, per-session) `ACHIEVEMENT_EVENT_READING_SESSION_SAVED`
+ * when an upload changes more sessions than the achievements backfill threshold, so Readwise
+ * push still gets requested for the affected books even though no per-session saved event was
+ * emitted for them. See `KoreaderStatsService.emitSessionAchievements`.
+ */
+export interface ReadingSessionsBackfilledPayload {
+  userId: number;
+  bookFileIds: number[];
 }
 
 export interface BookStatusChangedPayload {
@@ -92,6 +104,7 @@ export interface BookReviewChangedPayload {
 
 export type AchievementEventPayload =
   | ReadingSessionSavedPayload
+  | ReadingSessionsBackfilledPayload
   | BookStatusChangedPayload
   | AnnotationCreatedPayload
   | AnnotationUpdatedPayload

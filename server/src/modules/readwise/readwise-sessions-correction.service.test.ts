@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
+import { ReadwiseSessionsDeleteUnlinkService } from './readwise-sessions-delete-unlink.service';
 import type { LinkedSessionForCorrection } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
@@ -35,7 +36,8 @@ function makeService() {
     }),
   } as unknown as ReadingServiceCacheService;
 
-  const service = new ReadwiseSessionsCorrectionService(client, sessionsRepo, readwiseRepo, cache);
+  const deleteUnlink = new ReadwiseSessionsDeleteUnlinkService(client, sessionsRepo);
+  const service = new ReadwiseSessionsCorrectionService(sessionsRepo, readwiseRepo, cache, deleteUnlink);
   return { service, client, sessionsRepo, readwiseRepo, cache, cacheStore };
 }
 

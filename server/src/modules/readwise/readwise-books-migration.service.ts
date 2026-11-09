@@ -24,6 +24,7 @@ import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from '.
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
 import { ReadwiseBooksPullService } from './readwise-books-pull.service';
 import { ReadwiseOwnedElsewhereService } from './readwise-owned-elsewhere.service';
+import { normalizeReadwiseReview } from './readwise-review.utils';
 import {
   READWISE_BOOKS_CREATE_BATCH,
   READWISE_BOOKS_LIST_LIMIT,
@@ -84,7 +85,7 @@ function toCreateItem(book: LocalBookForMigration, status: NonNullable<ReturnTyp
     started_reading_at: book.startedAt,
     finished_reading_at: book.finishedAt,
     rating: book.rating,
-    review: book.review,
+    review: normalizeReadwiseReview(book.review),
   };
 }
 
@@ -99,7 +100,7 @@ function toUpdateItem(
     started_reading_at: book.startedAt,
     finished_reading_at: book.finishedAt,
     rating: book.rating,
-    review: book.review,
+    review: normalizeReadwiseReview(book.review),
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computePausedSeconds } from './readwise-session-timing.utils';
+import { computePausedSeconds, isSessionSettled, settleAtFor } from './readwise-session-timing.utils';
 
 describe('computePausedSeconds', () => {
   it('returns the idle gap for an ebook session that was open longer than it was active', () => {
@@ -41,5 +41,23 @@ describe('computePausedSeconds', () => {
       sessionType: 'listen',
     });
     expect(seconds).toBe(0);
+  });
+});
+
+describe('isSessionSettled', () => {
+  const endedAt = new Date('2026-01-01T12:00:00Z');
+  const minutesLater = (minutes: number) => new Date(endedAt.getTime() + minutes * 60_000);
+
+  it('holds a web, Android or iOS session until it has been quiet for 10 minutes', () => {
+    for (const source of ['web', 'android', 'ios', null]) {
+      expect(isSessionSettled({ source, endedAt }, minutesLater(9))).toBe(false);
+      expect(isSessionSettled({ source, endedAt }, minutesLater(10))).toBe(true);
+    }
+  });
+
+  it('holds a koreader session until it has been quiet for 30 minutes', () => {
+    expect(isSessionSettled({ source: 'koreader', endedAt }, minutesLater(29))).toBe(false);
+    expect(isSessionSettled({ source: 'koreader', endedAt }, minutesLater(30))).toBe(true);
+    expect(settleAtFor({ source: 'koreader', endedAt })).toEqual(minutesLater(30));
   });
 });

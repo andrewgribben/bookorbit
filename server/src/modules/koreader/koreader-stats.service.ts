@@ -7,6 +7,7 @@ import { resolveTimeZone } from '../../common/utils/timezone.utils';
 import {
   ACHIEVEMENT_EVENT_BACKFILL,
   ACHIEVEMENT_EVENT_READING_SESSION_SAVED,
+  ACHIEVEMENT_EVENT_READING_SESSIONS_BACKFILLED,
   AchievementEventsService,
 } from '../achievement/achievement-events.service';
 import { BookService } from '../book/book.service';
@@ -139,8 +140,14 @@ export class KoreaderStatsService {
     // An upload this large is a device catching up rather than a live reading session, so it is
     // evaluated as a backfill: one pass over the catalogue instead of one per session, and awards
     // land silently. Notifying per badge here would burst a toast for every historical unlock.
+    // Readwise still needs to know which books changed, so a separate, distinct event carries
+    // just the book file ids - this does not change the achievements backfill behaviour above.
     if (sessions.length > KOREADER_BACKFILL_EVENT_THRESHOLD) {
       this.achievementEvents.emit(ACHIEVEMENT_EVENT_BACKFILL, { userId: user.id });
+      this.achievementEvents.emit(ACHIEVEMENT_EVENT_READING_SESSIONS_BACKFILLED, {
+        userId: user.id,
+        bookFileIds: [...new Set(sessions.map(({ bookFileId }) => bookFileId))],
+      });
       return;
     }
 

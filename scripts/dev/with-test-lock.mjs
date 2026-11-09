@@ -6,6 +6,7 @@
 
 import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";
+import { createRequire } from "node:module";
 import { availableParallelism } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -13,6 +14,41 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(scriptDir, "..", "..");
+const requireFromCwd = createRequire(join(process.cwd(), "package.json"));
+
+// On Windows, node_modules/.bin only has .cmd/.ps1 shims (plus an extensionless shebang file
+// that only a POSIX shell understands). child_process.spawn without shell:true can't run
+// those directly (EINVAL/ENOENT), and shell:true for an untrusted argv is something we'd
+// rather not reach for. Resolve the package's declared bin entry point instead and run it
+// with the current Node binary, which is a plain JS file on every platform we support.
+function resolveWindowsCommand(command) {
+  const [binName, ...args] = command;
+  let pkgJsonPath;
+  try {
+    pkgJsonPath = requireFromCwd.resolve(`${binName}/package.json`);
+  } catch {
+    return null;
+  }
+  let pkg;
+  try {
+    pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+  } catch {
+    return null;
+  }
+  let binEntry = pkg.bin;
+  if (binEntry && typeof binEntry === "object") {
+    binEntry = binEntry[binName] ?? Object.values(binEntry)[0];
+  }
+  if (typeof binEntry !== "string") return null;
+  const binPath = join(dirname(pkgJsonPath), binEntry);
+  return [process.execPath, binPath, ...args];
+}
+
+function resolveCommand(command) {
+  if (process.platform !== "win32") return command;
+  return resolveWindowsCommand(command) ?? command;
+}
+
 const lockDir = join(rootDir, "node_modules", ".cache", "bookorbit");
 const lockPath = join(lockDir, "test-run.lock");
 
@@ -140,7 +176,8 @@ async function acquire(command, waitTimeoutMs) {
 
 function runChild(command, runTimeoutMs) {
   return new Promise((resolve) => {
-    const child = spawn(command[0], command.slice(1), {
+    const [file, ...args] = resolveCommand(command);
+    const child = spawn(file, args, {
       cwd: process.cwd(),
       stdio: "inherit",
       detached: true,

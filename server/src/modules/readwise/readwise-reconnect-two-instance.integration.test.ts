@@ -7,9 +7,12 @@ import { ReadingServiceRegistry } from '../reading-services/reading-service-regi
 import { ReadwiseBooksMigrationService } from './readwise-books-migration.service';
 import type { LocalBookForMigration } from './readwise-books-local-books.repository';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
+import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
+import { ReadwiseSessionsDeleteUnlinkService } from './readwise-sessions-delete-unlink.service';
 import { ReadwiseSessionsPullService } from './readwise-sessions-pull.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
+import { ReadwiseSessionsRepairService } from './readwise-sessions-repair.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
 import type { ReadwiseBook, ReadwiseBookCreateItem, ReadwiseBookCreateResult, ReadwiseBookUpdateItem } from './readwise-books-client.service';
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
@@ -536,6 +539,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     // No previously-pushed sessions exist in this harness's dataset, so the one-time correction
     // pass always finds nothing to correct; this file exercises reconnect-safety, not correction.
     findLinkedSessionsForCorrection: async () => [] as never[],
+    findLinkedSessionsForBook: async () => [] as never[],
     unlinkSessions: async () => undefined,
   } as unknown as import('./readwise-sessions-local.repository').ReadwiseSessionsLocalRepository;
 
@@ -570,7 +574,10 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     sessionsRepo,
     syncRunServiceStub,
   );
-  const correctionService = new ReadwiseSessionsCorrectionService(booksClient, sessionsRepo, readwiseRepo, cache);
+  const deleteUnlinkService = new ReadwiseSessionsDeleteUnlinkService(booksClient, sessionsRepo);
+  const correctionService = new ReadwiseSessionsCorrectionService(sessionsRepo, readwiseRepo, cache, deleteUnlinkService);
+  const repairService = new ReadwiseSessionsRepairService(sessionsRepo, readingServicesRepo, deleteUnlinkService);
+  const sweepService = new ReadwiseSessionsBackfillSweepService(sessionsRepo, cache);
   const sessionsPushService = new ReadwiseSessionsPushService(
     booksClient,
     sessionsRepo,
@@ -580,6 +587,8 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     featuresService,
     reconcileService,
     correctionService,
+    repairService,
+    sweepService,
   );
   const sessionsPullService = new ReadwiseSessionsPullService(
     booksClient,
