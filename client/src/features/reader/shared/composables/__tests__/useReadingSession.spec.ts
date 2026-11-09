@@ -109,6 +109,119 @@ describe('useReadingSession - elapsedMinutes', () => {
   })
 })
 
+describe('useReadingSession - session gap rule', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    apiMock.mockResolvedValue({ ok: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  function setHidden() {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true, configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  function setVisible() {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true, configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  it('resumes the same session for a gap under 10 minutes and does not count the gap', async () => {
+    const { onActivity, endSession } = useReadingSession(1, () => ({ percentage: 10 }))
+
+    onActivity()
+    await vi.advanceTimersByTimeAsync(60 * 1000)
+
+    setHidden()
+    // Gap of 3 minutes - under the 10 minute threshold.
+    await vi.advanceTimersByTimeAsync(3 * 60 * 1000)
+    setVisible()
+
+    onActivity()
+    await vi.advanceTimersByTimeAsync(60 * 1000)
+    endSession()
+
+    // Only one session was ever saved, so the 3-minute gap resumed it rather than
+    // closing it and starting a second one.
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    const [, init] = apiMock.mock.calls[0] as [string, { body: string }]
+    const body = JSON.parse(init.body) as Record<string, unknown>
+    // Active time is ~2 minutes (1 before + 1 after the hidden gap); the 3-minute
+    // gap itself must not be counted as reading time.
+    expect(body.durationSeconds as number).toBeLessThan(3 * 60)
+  })
+
+  it('closes the session at the last activity time after a gap over 10 minutes, then starts a new one', async () => {
+    const { onActivity, endSession } = useReadingSession(1, () => ({ percentage: 10 }))
+
+    onActivity()
+    await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
+
+    setHidden()
+    const pausedAtMs = Date.now()
+
+    // Gap of 11 minutes - over the 10 minute threshold.
+    await vi.advanceTimersByTimeAsync(11 * 60 * 1000)
+    setVisible()
+
+    // The old session must already have been saved on becoming visible again,
+    // with endedAt set to the moment it went hidden, not the time it was resumed.
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    const [, firstInit] = apiMock.mock.calls[0] as [string, { body: string }]
+    const firstBody = JSON.parse(firstInit.body) as Record<string, unknown>
+    expect(firstBody.endedAt).toBe(new Date(pausedAtMs).toISOString())
+
+    // The next reading signal starts a brand-new session.
+    onActivity()
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(60 * 1000)
+    endSession()
+
+    expect(apiMock).toHaveBeenCalledTimes(2)
+    const [, secondInit] = apiMock.mock.calls[1] as [string, { body: string }]
+    const secondBody = JSON.parse(secondInit.body) as Record<string, unknown>
+    expect(secondBody.sessionId).not.toBe(firstBody.sessionId)
+  })
+
+  it('still ends the session after 5 minutes idle while visible (unchanged threshold)', async () => {
+    const { onActivity, elapsedMinutes } = useReadingSession(1, () => ({ percentage: 10 }))
+
+    onActivity()
+    await vi.advanceTimersByTimeAsync(60 * 1000)
+    onActivity()
+
+    // Just under the 5-minute idle threshold - session must still be open.
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1000)
+    expect(apiMock).not.toHaveBeenCalled()
+
+    // Crossing the 5-minute idle threshold ends the session (far short of the
+    // 10-minute session-gap threshold, confirming the two are independent).
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(elapsedMinutes.value).toBe(0)
+    expect(apiMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends an idle session at the last activity and does not count the idle minutes', async () => {
+    vi.setSystemTime(new Date('2026-01-01T12:00:00Z'))
+    const { onActivity } = useReadingSession(1, () => ({ percentage: 10 }))
+
+    onActivity()
+    await vi.advanceTimersByTimeAsync(3 * 60 * 1000)
+    onActivity()
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000)
+
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    const body = JSON.parse((apiMock.mock.calls[0]![1] as { body: string }).body)
+    expect(body.durationSeconds).toBe(180)
+    expect(body.endedAt).toBe('2026-01-01T12:03:00.000Z')
+  })
+})
+
 describe('useReadingSession - sessionType', () => {
   beforeEach(() => {
     vi.useFakeTimers()
