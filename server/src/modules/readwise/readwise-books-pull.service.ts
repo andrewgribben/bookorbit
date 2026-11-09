@@ -15,6 +15,7 @@ import type { ReadwiseBook } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository } from './readwise-books-local-books.repository';
 import { mapReadwiseStatusToBookOrbit } from './readwise-books-status-mapping';
+import { normalizeReadwiseReview } from './readwise-review.utils';
 import {
   READWISE_BOOKS_FULL_PASS_INTERVAL_MS,
   READWISE_BOOKS_LIST_LIMIT,
@@ -195,7 +196,7 @@ export class ReadwiseBooksPullService {
     }
 
     if (features.review !== false) {
-      const remoteReview = book.review ?? null;
+      const remoteReview = normalizeReadwiseReview(book.review);
       const action = mergeField(local.review, remoteReview, snapshot.review === undefined ? undefined : (snapshot.review ?? null));
       if (action.action === 'pull' && remoteReview !== local.review) {
         newReview = remoteReview;

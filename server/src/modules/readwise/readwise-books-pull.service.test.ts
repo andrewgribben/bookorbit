@@ -250,6 +250,22 @@ describe('ReadwiseBooksPullService', () => {
     expect(userBookReviewService.setReview).toHaveBeenCalledWith(1, 10, 'Loved it.');
   });
 
+  it('does not pull an empty-string remote review (treated as no change, not written as empty)', async () => {
+    const { service, client, readingServicesRepo, localBooks, userBookReviewService } = makeService();
+    client.listBooks = vi.fn().mockResolvedValueOnce({
+      results: [remoteBook({ id: 'r1', status: 'reading' as any, review: '   ' })],
+      next: null,
+    }) as any;
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(
+      link({ bookId: 10, externalBookId: 'r1', snapshot: { review: null } }),
+    );
+    (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, status: 'reading', review: null }));
+
+    await service.pullForUser(1);
+
+    expect(userBookReviewService.setReview).not.toHaveBeenCalled();
+  });
+
   it('review conflict: BookOrbit wins when both sides changed review since the snapshot', async () => {
     const { service, client, readingServicesRepo, localBooks, userBookReviewService } = makeService();
     client.listBooks = vi

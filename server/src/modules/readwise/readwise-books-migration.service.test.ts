@@ -220,6 +220,21 @@ describe('ReadwiseBooksMigrationService', () => {
       expect(counters).toMatchObject({ scanned: 1, created: 1 });
     });
 
+    it('coerces a whitespace-only review to null when creating an unmatched book', async () => {
+      const { service, client, localBooks } = makeService();
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any)
+        .mockResolvedValueOnce([book({ bookId: 21, title: 'Blank Review Book', status: 'want_to_read', review: '   ' })])
+        .mockResolvedValueOnce([]);
+      (client.createBooks as any).mockResolvedValueOnce([{ id: 'r10', status: 'created', book_id: 'r10' }]);
+
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      expect(client.createBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ review: null })]);
+    });
+
     it('chunks updates and creates to the Readwise batch limits instead of sending one oversized call', async () => {
       const { service, client, localBooks } = makeService();
       (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
