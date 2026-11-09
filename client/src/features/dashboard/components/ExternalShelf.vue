@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft, ChevronRight, Library, Loader2, MoreHorizontal, RefreshCw } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, Library, Loader2, RefreshCw } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 
 import type { ReadingServiceProvider, ReadingServiceShelf, ReadingServiceShelfItem } from '@bookorbit/types'
@@ -9,6 +9,7 @@ import { Permission } from '@bookorbit/types'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useExternalBookRequests, type ExternalBookRequestCandidate } from '@/features/book-requests/composables/useExternalBookRequests'
+import { useDashboardLabels } from '../composables/useDashboardLabels'
 import { useExternalShelf } from '../composables/useExternalShelf'
 
 /**
@@ -30,13 +31,10 @@ const { items, loading, error, refresh } = useExternalShelf(props.provider, prop
 const { t } = useI18n()
 const router = useRouter()
 const { hasPermission } = usePermissions()
+const { externalShelfViewInProviderName } = useDashboardLabels()
 
-// A "Request" action only ever makes sense on the owned-elsewhere shelf: those are books this
-// provider says the reader owns somewhere that are not matched to a BookOrbit book yet. Every
-// other shelf (friends, trending, recommendations) names books by someone else's reading, not by
-// ownership, so there is nothing here for the request module to be asked about.
-const canRequest = computed(() => props.shelf === 'owned-elsewhere' && hasPermission(Permission.BookRequestAccess))
-const { stateFor, requestOne, checkMany } = useExternalBookRequests()
+const canRequest = computed(() => hasPermission(Permission.BookRequestAccess))
+const { stateFor, requestOne, checkMany, ownedBookIdFor } = useExternalBookRequests()
 const openMenuKey = ref<string | null>(null)
 
 function cardKey(item: ReadingServiceShelfItem): string {
@@ -47,15 +45,9 @@ function candidateFor(item: ReadingServiceShelfItem): ExternalBookRequestCandida
   return { externalId: cardKey(item), title: item.title, author: item.authors[0] ?? null, coverUrl: item.coverUrl }
 }
 
-watch(
-  items,
-  (rows) => {
-    if (!canRequest.value) return
-    const unmatched = rows.filter((item) => item.bookId === null)
-    if (unmatched.length > 0) void checkMany(unmatched.map(candidateFor))
-  },
-  { immediate: true },
-)
+function providerNameFor(item: ReadingServiceShelfItem): string {
+  return externalShelfViewInProviderName(item.provider)
+}
 
 const scrollEl = ref<HTMLElement | null>(null)
 
@@ -75,9 +67,31 @@ function scrollBy(delta: number) {
 function openCard(item: ReadingServiceShelfItem) {
   if (item.bookId) {
     void router.push({ name: 'book-detail', params: { bookId: item.bookId } })
-  } else if (item.externalUrl) {
-    window.open(item.externalUrl, '_blank', 'noopener')
+    return
   }
+  if (!item.externalUrl && !canRequest.value) return
+  openMenuKey.value = cardKey(item)
+  void checkAvailability(item)
+}
+
+// Checks just this card against `/book-requests/availability` the moment its menu opens, rather
+// than the whole shelf upfront: a shelf can hold far more unmatched items than a user will ever
+// tap. A result that turns out to already be owned skips the request UI entirely and takes the
+// user straight to that book instead.
+async function checkAvailability(item: ReadingServiceShelfItem) {
+  if (!canRequest.value) return
+  const key = cardKey(item)
+  await checkMany([candidateFor(item)])
+  const ownedBookId = ownedBookIdFor(key)
+  if (ownedBookId && openMenuKey.value === key) {
+    openMenuKey.value = null
+    void router.push({ name: 'book-detail', params: { bookId: ownedBookId } })
+  }
+}
+
+function handleViewInProvider(item: ReadingServiceShelfItem) {
+  openMenuKey.value = null
+  if (item.externalUrl) window.open(item.externalUrl, '_blank', 'noopener')
 }
 
 function handleRequest(item: ReadingServiceShelfItem) {
@@ -137,52 +151,42 @@ function handleRequest(item: ReadingServiceShelfItem) {
     <div v-else ref="scrollEl" class="overflow-x-auto px-5 pb-5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div class="flex w-max gap-3">
         <div v-for="item in items" :key="`${item.provider}:${item.externalId}`" class="group/card relative w-[120px] shrink-0 text-left">
-          <button type="button" class="w-full text-left" @click="openCard(item)">
-            <!-- Cover-missing cards share the exact aspect ratio of real covers: no taller fallback tile. -->
-            <div class="relative overflow-hidden rounded-lg bg-muted" style="aspect-ratio: 2/3">
-              <img v-if="item.coverUrl" :src="item.coverUrl" :alt="item.title" class="h-full w-full object-cover" />
-              <div v-else class="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
-                <span class="line-clamp-3 text-[11px] font-medium text-foreground">{{ item.title }}</span>
-                <span v-if="item.authors.length > 0" class="line-clamp-2 text-[10px] text-muted-foreground">{{ item.authors.join(', ') }}</span>
-              </div>
-              <span
-                class="absolute left-1.5 top-1.5 rounded-full border border-border bg-background/80 px-1.5 py-0.5 text-[9px] font-medium capitalize text-foreground backdrop-blur-sm"
-              >
-                {{ item.provider }}
-              </span>
-            </div>
-            <p class="mt-1.5 truncate text-xs font-semibold leading-tight text-foreground">{{ item.title }}</p>
-            <p v-if="item.authors.length > 0" class="truncate text-[11px] text-muted-foreground">{{ item.authors.join(', ') }}</p>
-            <!-- Friends shelves (friends-reading/friends-finished): who is reading it and their status. -->
-            <div v-if="item.friend" class="mt-1 flex items-center gap-1">
-              <img
-                v-if="item.friend.avatarUrl"
-                :src="item.friend.avatarUrl"
-                :alt="item.friend.displayName"
-                class="h-4 w-4 rounded-full object-cover"
-              />
-              <span class="truncate text-[10px] text-muted-foreground">{{ item.friend.displayName }} &middot; {{ item.friend.status }}</span>
-            </div>
-          </button>
-
-          <DropdownMenu
-            v-if="canRequest && !item.bookId"
-            :open="openMenuKey === cardKey(item)"
-            @update:open="(open) => (openMenuKey = open ? cardKey(item) : null)"
-          >
+          <DropdownMenu :open="openMenuKey === cardKey(item)" @update:open="(open) => (openMenuKey = open ? cardKey(item) : null)">
             <DropdownMenuTrigger as-child>
-              <button
-                type="button"
-                class="absolute right-1.5 top-1.5 z-20 size-[22px] place-items-center rounded-md bg-black/45 text-white backdrop-blur-[2px] transition-colors hover:bg-black/65 focus-visible:grid group-focus-within/card:grid group-hover/card:grid"
-                :class="openMenuKey === cardKey(item) ? 'grid' : 'hidden'"
-                :aria-label="t('bookRequests.externalRequest.actionsFor', { title: item.title })"
-                @click.stop
-              >
-                <MoreHorizontal :size="12" />
+              <button type="button" class="w-full text-left" @click="openCard(item)">
+                <!-- Cover-missing cards share the exact aspect ratio of real covers: no taller fallback tile. -->
+                <div class="relative overflow-hidden rounded-lg bg-muted" style="aspect-ratio: 2/3">
+                  <img v-if="item.coverUrl" :src="item.coverUrl" :alt="item.title" class="h-full w-full object-cover" />
+                  <div v-else class="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
+                    <span class="line-clamp-3 text-[11px] font-medium text-foreground">{{ item.title }}</span>
+                    <span v-if="item.authors.length > 0" class="line-clamp-2 text-[10px] text-muted-foreground">{{ item.authors.join(', ') }}</span>
+                  </div>
+                  <span
+                    class="absolute left-1.5 top-1.5 rounded-full border border-border bg-background/80 px-1.5 py-0.5 text-[9px] font-medium capitalize text-foreground backdrop-blur-sm"
+                  >
+                    {{ item.provider }}
+                  </span>
+                </div>
+                <p class="mt-1.5 truncate text-xs font-semibold leading-tight text-foreground">{{ item.title }}</p>
+                <p v-if="item.authors.length > 0" class="truncate text-[11px] text-muted-foreground">{{ item.authors.join(', ') }}</p>
+                <!-- Friends shelves (friends-reading/friends-finished): who is reading it and their status. -->
+                <div v-if="item.friend" class="mt-1 flex items-center gap-1">
+                  <img
+                    v-if="item.friend.avatarUrl"
+                    :src="item.friend.avatarUrl"
+                    :alt="item.friend.displayName"
+                    class="h-4 w-4 rounded-full object-cover"
+                  />
+                  <span class="truncate text-[10px] text-muted-foreground">{{ item.friend.displayName }} &middot; {{ item.friend.status }}</span>
+                </div>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent v-if="!item.bookId && (item.externalUrl || canRequest)" align="end">
+              <DropdownMenuItem v-if="item.externalUrl" @click="handleViewInProvider(item)">
+                {{ t('bookRequests.externalRequest.viewInProvider', { provider: providerNameFor(item) }) }}
+              </DropdownMenuItem>
               <DropdownMenuItem
+                v-if="canRequest"
                 :disabled="['checking', 'requesting', 'requested', 'already-requested'].includes(stateFor(cardKey(item)))"
                 @click="handleRequest(item)"
               >
@@ -198,7 +202,7 @@ function handleRequest(item: ReadingServiceShelfItem) {
                           ? t('bookRequests.externalRequest.alreadyRequestedButton')
                           : stateFor(cardKey(item)) === 'error'
                             ? t('bookRequests.externalRequest.errorButton')
-                            : t('bookRequests.externalRequest.requestButton')
+                            : t('bookRequests.externalRequest.addToRequests')
                 }}
               </DropdownMenuItem>
             </DropdownMenuContent>

@@ -39,9 +39,14 @@ export function useExternalBookRequests() {
   const states = reactive(new Map<string, ExternalBookRequestState>())
   const errorMessages = reactive(new Map<string, string>())
   const requestIds = reactive(new Map<string, number>())
+  const ownedBookIds = reactive(new Map<string, number>())
 
   function stateFor(externalId: string): ExternalBookRequestState {
     return states.get(externalId) ?? 'idle'
+  }
+
+  function ownedBookIdFor(externalId: string): number | null {
+    return ownedBookIds.get(externalId) ?? null
   }
 
   function errorFor(externalId: string): string | null {
@@ -75,6 +80,7 @@ export function useExternalBookRequests() {
           const result = availability[index]
           if (result?.ownedBookId) {
             states.set(candidate.externalId, 'owned')
+            ownedBookIds.set(candidate.externalId, result.ownedBookId)
           } else if (result?.existingRequestId) {
             states.set(candidate.externalId, 'already-requested')
             requestIds.set(candidate.externalId, result.existingRequestId)
@@ -171,5 +177,5 @@ export function useExternalBookRequests() {
     return total
   }
 
-  return { stateFor, errorFor, requestIdFor, checkMany, requestOne, requestAll }
+  return { stateFor, errorFor, requestIdFor, ownedBookIdFor, checkMany, requestOne, requestAll }
 }
