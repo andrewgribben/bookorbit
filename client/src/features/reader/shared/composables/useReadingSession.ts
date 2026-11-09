@@ -11,6 +11,9 @@ export interface ProgressSnapshot {
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000
 const MIN_SESSION_MS = 10 * 1000
 const ELAPSED_UPDATE_INTERVAL_MS = 30 * 1000
+// A gap longer than this (hidden, idle, or app switched) ends the session at the
+// last-known activity time; the next reading signal starts a brand-new session.
+const SESSION_GAP_MS = 10 * 60 * 1000
 
 export type ReadingSessionType = 'read' | 'tts' | 'listen'
 
@@ -27,6 +30,10 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let startProgress: number | null = null
   let ended = false
+  // Set when the active clock pauses (tab hidden or app switched away). Used to
+  // decide, on the next reading signal, whether to resume this session or close it
+  // at this timestamp and start a new one.
+  let pausedAt: number | null = null
 
   const elapsedMinutes = ref(0)
   let elapsedInterval: ReturnType<typeof setInterval> | null = null
@@ -78,12 +85,32 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
       activeStart = null
     }
     clearIdleTimer()
+    pausedAt = Date.now()
   }
 
   function resumeTimer() {
     if (activeStart !== null) return
     activeStart = Date.now()
+    pausedAt = null
     resetIdleTimer()
+  }
+
+  function gapExceeded(): boolean {
+    return pausedAt !== null && Date.now() - pausedAt > SESSION_GAP_MS
+  }
+
+  // Called when a reading signal or visibility change follows a pause. Resumes the
+  // current session for a short gap, or closes it at the last activity time and
+  // lets the caller start a fresh session for a gap longer than SESSION_GAP_MS.
+  function resumeOrCloseForGap(): 'resumed' | 'closed' {
+    if (gapExceeded()) {
+      const endedAtMs = pausedAt as number
+      pausedAt = null
+      closeSessionAtLastActivity(endedAtMs)
+      return 'closed'
+    }
+    resumeTimer()
+    return 'resumed'
   }
 
   function resetIdleTimer() {
@@ -100,42 +127,32 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
 
   function onActivity() {
     if (!canTrack()) return
-    // No active session or previous session ended (e.g. after idle timeout) - start fresh.
+    // No active session or previous session ended (e.g. after idle timeout, or a
+    // gap-closed session) - start fresh.
     if (!startedAt || ended) {
       sessionId = createUuid()
       startSession()
       return
     }
-    if (activeStart === null) resumeTimer()
+    if (activeStart === null) {
+      if (resumeOrCloseForGap() === 'closed') {
+        sessionId = createUuid()
+        startSession()
+        return
+      }
+    }
     resetIdleTimer()
   }
 
-  function endSession(useBeacon = false) {
-    if (!canTrack()) {
-      clearIdleTimer()
-      stopElapsedInterval()
-      startedAt = null
-      activeStart = null
-      activeMs = 0
-      ended = true
-      elapsedMinutes.value = 0
-      return
-    }
-    if (ended || !startedAt) return
+  function finalizeSession(endedAtMs: number, useBeacon: boolean) {
     ended = true
     clearIdleTimer()
     stopElapsedInterval()
-
-    if (activeStart !== null) {
-      activeMs += Date.now() - activeStart
-      activeStart = null
-    }
-
     elapsedMinutes.value = 0
 
     if (activeMs < MIN_SESSION_MS) return
 
-    const endedAt = new Date()
+    const endedAt = new Date(endedAtMs)
     const snap = getProgress()
     const durationSeconds = Math.floor(activeMs / 1000)
     const progressDelta = startProgress !== null ? Number((snap.percentage - startProgress).toFixed(4)) : null
@@ -143,7 +160,7 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
 
     const payload = JSON.stringify({
       sessionId,
-      startedAt: startedAt.toISOString(),
+      startedAt: startedAt!.toISOString(),
       endedAt: endedAt.toISOString(),
       durationSeconds,
       progressDelta,
@@ -160,11 +177,41 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
     }
   }
 
+  function endSession(useBeacon = false) {
+    if (!canTrack()) {
+      clearIdleTimer()
+      stopElapsedInterval()
+      startedAt = null
+      activeStart = null
+      activeMs = 0
+      pausedAt = null
+      ended = true
+      elapsedMinutes.value = 0
+      return
+    }
+    if (ended || !startedAt) return
+
+    if (activeStart !== null) {
+      activeMs += Date.now() - activeStart
+      activeStart = null
+    }
+
+    finalizeSession(Date.now(), useBeacon)
+  }
+
+  // Closes the current session at a past timestamp (the last activity before a
+  // gap longer than SESSION_GAP_MS), instead of at "now". The active clock must
+  // already be paused (activeStart null, activeMs final) before calling this.
+  function closeSessionAtLastActivity(endedAtMs: number) {
+    if (!canTrack() || ended || !startedAt) return
+    finalizeSession(endedAtMs, false)
+  }
+
   function onVisibilityChange() {
     if (document.visibilityState === 'hidden') {
       pauseTimer()
     } else if (startedAt && !ended) {
-      resumeTimer()
+      resumeOrCloseForGap()
     }
   }
 
