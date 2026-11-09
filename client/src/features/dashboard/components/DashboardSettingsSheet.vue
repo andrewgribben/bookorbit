@@ -282,7 +282,7 @@ function handleCancel() {
           <button
             :class="[
               'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              activeTab === 'shelves' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              activeTab === 'shelves' ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
             ]"
             @click="selectShelvesTab"
           >
@@ -291,7 +291,7 @@ function handleCancel() {
           <button
             :class="[
               'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              activeTab === 'widgets' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              activeTab === 'widgets' ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
             ]"
             @click="selectWidgetsTab"
           >
@@ -421,9 +421,9 @@ function handleCancel() {
               v-for="(scroller, index) in draft"
               :key="scroller.id"
               draggable="true"
-              class="rounded-lg border border-border bg-card transition-all duration-150"
+              class="rounded-lg border border-border bg-card transition-[opacity,background-color,border-color] duration-150"
               :class="{
-                'border-primary/50 bg-primary/5 shadow-sm': dragOverIndex === index && draggedIndex !== index,
+                'border-primary/50 bg-primary/5': dragOverIndex === index && draggedIndex !== index,
                 'opacity-40': draggedIndex === index,
               }"
               @dragstart="onDragStart(index)"
@@ -461,7 +461,7 @@ function handleCancel() {
                   @click="toggleShelf(scroller)"
                 >
                   <span
-                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform duration-200"
+                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-xs ring-0 transition-transform duration-200"
                     :class="scroller.enabled ? 'translate-x-4' : 'translate-x-0'"
                   />
                 </button>
@@ -585,7 +585,7 @@ function handleCancel() {
                   @click="toggleExternalShelf(entry)"
                 >
                   <span
-                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform duration-200"
+                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-xs ring-0 transition-transform duration-200"
                     :class="entry.enabled ? 'translate-x-4' : 'translate-x-0'"
                   />
                 </button>
@@ -613,9 +613,9 @@ function handleCancel() {
               v-for="(widget, index) in widgetDraft"
               :key="widget.id"
               draggable="true"
-              class="rounded-lg border border-border bg-card transition-all duration-150"
+              class="rounded-lg border border-border bg-card transition-[opacity,background-color,border-color] duration-150"
               :class="{
-                'border-primary/50 bg-primary/5 shadow-sm': widgetDragOverIndex === index && widgetDraggedIndex !== index,
+                'border-primary/50 bg-primary/5': widgetDragOverIndex === index && widgetDraggedIndex !== index,
                 'opacity-40': widgetDraggedIndex === index,
               }"
               @dragstart="onWidgetDragStart(index)"
@@ -650,7 +650,7 @@ function handleCancel() {
                   @click="toggleWidget(widget)"
                 >
                   <span
-                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform duration-200"
+                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-xs ring-0 transition-transform duration-200"
                     :class="widget.enabled ? 'translate-x-4' : 'translate-x-0'"
                   />
                 </button>
