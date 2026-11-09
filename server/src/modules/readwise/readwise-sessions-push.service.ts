@@ -34,7 +34,13 @@ function isFeatureEnabled(features: Partial<Record<ReadingServiceFeature, boolea
   return features[feature] !== false;
 }
 
-function toCreateItem(session: PushableSession, externalBookId: string, timezone: string, publishToFeed: boolean): ReadwiseCreateSessionItem {
+function toCreateItem(
+  session: PushableSession,
+  externalBookId: string,
+  timezone: string,
+  publishToFeed: boolean,
+  audiobookTotalSeconds: number | null,
+): ReadwiseCreateSessionItem {
   const format: ReadwiseCreateSessionItem['format'] = session.sessionType === 'listen' ? 'audiobook' : 'ebook';
   const item: ReadwiseCreateSessionItem = {
     book_id: externalBookId,
@@ -53,8 +59,17 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
   if (session.endProgress !== null) {
     const startProgress = session.progressDelta !== null ? Math.max(0, session.endProgress - session.progressDelta) : session.endProgress;
     if (format === 'audiobook') {
-      item.position_seconds_at_start = Math.round((startProgress / 100) * session.durationSeconds);
-      item.position_seconds_at_end = Math.round((session.endProgress / 100) * session.durationSeconds);
+      // percent is of the whole audiobook, not of this session: scale by the book's total
+      // duration, not session.durationSeconds (readwise-sessions-push.service.test.ts covers the
+      // regression). When the total is unknown, fall back to [0, durationSeconds] so Readwise at
+      // least credits the session's own measured listening time, rather than a wrong position.
+      if (audiobookTotalSeconds !== null && audiobookTotalSeconds > 0) {
+        item.seconds_at_start = Math.round((startProgress / 100) * audiobookTotalSeconds);
+        item.seconds_at_end = Math.round((session.endProgress / 100) * audiobookTotalSeconds);
+      } else {
+        item.seconds_at_start = 0;
+        item.seconds_at_end = session.durationSeconds;
+      }
     } else {
       item.percent_at_start = Math.round((startProgress / 100) * 10_000) / 10_000;
       item.percent_at_end = Math.round((session.endProgress / 100) * 10_000) / 10_000;
@@ -193,10 +208,16 @@ export class ReadwiseSessionsPushService {
     }
     if (settled.length === 0) return { pushedCount: 0, nextSettleAt };
 
+    // One batched lookup per push page, not one per session: a listen session's position needs
+    // the audiobook's total duration, but every session in this page shares the same book.
+    const audiobookTotalSeconds = settled.some((session) => session.sessionType === 'listen')
+      ? await this.sessionsRepo.findAudiobookTotalSeconds(bookId)
+      : null;
+
     let pushedCount = 0;
     for (let i = 0; i < settled.length; i += READWISE_SESSIONS_CREATE_BATCH) {
       const batch = settled.slice(i, i + READWISE_SESSIONS_CREATE_BATCH);
-      pushedCount += await this.pushSessionBatch(userId, token, bookId, link.externalBookId, batch, timezone, publishToFeed);
+      pushedCount += await this.pushSessionBatch(userId, token, bookId, link.externalBookId, batch, timezone, publishToFeed, audiobookTotalSeconds);
     }
     return { pushedCount, nextSettleAt };
   }
@@ -216,8 +237,9 @@ export class ReadwiseSessionsPushService {
     batch: PushableSession[],
     timezone: string,
     publishToFeed: boolean,
+    audiobookTotalSeconds: number | null,
   ): Promise<number> {
-    const items = batch.map((session) => toCreateItem(session, externalBookId, timezone, publishToFeed));
+    const items = batch.map((session) => toCreateItem(session, externalBookId, timezone, publishToFeed, audiobookTotalSeconds));
     let results: Awaited<ReturnType<ReadwiseBooksClientService['createSessions']>>;
     try {
       results = await this.client.createSessions(userId, token, items);
@@ -234,7 +256,9 @@ export class ReadwiseSessionsPushService {
       let pushed = 0;
       for (const session of batch) {
         try {
-          const singleResult = await this.client.createSessions(userId, token, [toCreateItem(session, externalBookId, timezone, publishToFeed)]);
+          const singleResult = await this.client.createSessions(userId, token, [
+            toCreateItem(session, externalBookId, timezone, publishToFeed, audiobookTotalSeconds),
+          ]);
           pushed += await this.recordSessionResults(userId, [session], singleResult);
         } catch (itemErr) {
           if (itemErr instanceof ReadwiseUnauthorizedError || itemErr instanceof ReadwiseBooksForbiddenError) throw itemErr;

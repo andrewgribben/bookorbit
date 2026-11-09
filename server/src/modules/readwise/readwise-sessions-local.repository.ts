@@ -1,12 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { BOOK_FORMATS, isAudioFormat } from '@bookorbit/types';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
 import { splitReadingSessionByDay } from '../../common/utils/reading-daily-stats.utils';
 
 type Db = NodePgDatabase<typeof schema>;
+const AUDIO_FORMATS = BOOK_FORMATS.filter(isAudioFormat);
 
 export interface PushableSession {
   id: number;
@@ -102,6 +104,37 @@ export class ReadwiseSessionsLocalRepository {
       .limit(limit);
 
     return rows;
+  }
+
+  /**
+   * Total audiobook length for a book, in seconds, used to turn a listen session's progress
+   * percentage into Readwise's `seconds_at_start`/`seconds_at_end`. Mirrors the manifest's own
+   * total (`AudiobookService.loadManifestContext`): sum of every audio file's measured duration
+   * when all of them have one, otherwise the probed `book_metadata.duration_seconds` (set by the
+   * scanner from the file's own embedded duration tag when per-file ffprobe timing is missing).
+   * Null means "unknown" - the caller falls back to the session's own measured duration instead
+   * of a percentage-derived position (see `toCreateItem`).
+   */
+  async findAudiobookTotalSeconds(bookId: number): Promise<number | null> {
+    const [fileRows, [metaRow]] = await Promise.all([
+      this.db
+        .select({ durationSeconds: schema.bookFiles.durationSeconds })
+        .from(schema.bookFiles)
+        .where(and(eq(schema.bookFiles.bookId, bookId), inArray(schema.bookFiles.format, AUDIO_FORMATS))),
+      this.db
+        .select({ durationSeconds: schema.bookMetadata.durationSeconds })
+        .from(schema.bookMetadata)
+        .where(eq(schema.bookMetadata.bookId, bookId))
+        .limit(1),
+    ]);
+
+    const hasCompleteFileDurations = fileRows.length > 0 && fileRows.every((row) => row.durationSeconds !== null && row.durationSeconds > 0);
+    if (hasCompleteFileDurations) return fileRows.reduce((sum, row) => sum + row.durationSeconds!, 0);
+
+    if (metaRow?.durationSeconds !== null && metaRow?.durationSeconds !== undefined && metaRow.durationSeconds > 0) {
+      return metaRow.durationSeconds;
+    }
+    return null;
   }
 
   async resolveBookIdForFile(bookFileId: number): Promise<number | null> {

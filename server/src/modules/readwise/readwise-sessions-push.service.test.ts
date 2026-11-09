@@ -31,6 +31,7 @@ function makeService() {
   const sessionsRepo = {
     findPushableSessions: vi.fn().mockResolvedValue([]),
     resolveUserTimeZone: vi.fn().mockResolvedValue('UTC'),
+    findAudiobookTotalSeconds: vi.fn().mockResolvedValue(null),
   } as unknown as ReadwiseSessionsLocalRepository;
   const readwiseRepo = { upsertSettings: vi.fn() } as unknown as ReadwiseRepository;
   const readwiseSettings = { getToken: vi.fn().mockResolvedValue('tok') } as unknown as ReadwiseSettingsService;
@@ -181,6 +182,60 @@ describe('ReadwiseSessionsPushService', () => {
     await service.flushUser(1, [10]);
 
     expect((client.createSessions as any).mock.calls[0][2][0].paused_seconds).toBeUndefined();
+  });
+
+  it('scales an audiobook position by the book total duration, not the session duration', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({
+        id: 320,
+        sessionType: 'listen',
+        endedAt: new Date('2026-01-01T01:00:00Z'),
+        durationSeconds: 1200,
+        endProgress: 60,
+        progressDelta: 10,
+      }),
+    ]);
+    (sessionsRepo.findAudiobookTotalSeconds as any).mockResolvedValueOnce(36_000);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-320' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(sessionsRepo.findAudiobookTotalSeconds).toHaveBeenCalledWith(10);
+    const [item] = (client.createSessions as any).mock.calls[0][2];
+    expect(item.format).toBe('audiobook');
+    expect(item.seconds_at_start).toBe(18_000); // 50% of 36000s
+    expect(item.seconds_at_end).toBe(21_600); // 60% of 36000s
+    expect(item.position_seconds_at_start).toBeUndefined();
+    expect(item.percent_at_start).toBeUndefined();
+  });
+
+  it('falls back to [0, durationSeconds] when the audiobook total duration is unknown', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({ id: 321, sessionType: 'listen', endedAt: new Date('2026-01-01T01:00:00Z'), durationSeconds: 900 }),
+    ]);
+    (sessionsRepo.findAudiobookTotalSeconds as any).mockResolvedValueOnce(null);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-321' }]);
+
+    await service.flushUser(1, [10]);
+
+    const [item] = (client.createSessions as any).mock.calls[0][2];
+    expect(item.seconds_at_start).toBe(0);
+    expect(item.seconds_at_end).toBe(900);
+  });
+
+  it('does not look up the audiobook total duration for a page with only ebook sessions', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 322, sessionType: 'read' })]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-322' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(sessionsRepo.findAudiobookTotalSeconds).not.toHaveBeenCalled();
   });
 
   it('sets publish_to_feed from the publish_sessions toggle (default off)', async () => {
