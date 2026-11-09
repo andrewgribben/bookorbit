@@ -6,6 +6,7 @@ import type { ScrollerType } from '@bookorbit/types'
 
 import { useAuth } from '@/features/auth/composables/useAuth'
 import { getDashboardGreetingLabel } from '@/features/dashboard/lib/greeting'
+import { mergeShelfRows } from '@/features/dashboard/lib/shelf-order'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useLibraries } from '@/features/library/composables/useLibraries'
 import PageTitleRow from '@/components/page-header/PageTitleRow.vue'
@@ -24,7 +25,7 @@ const { t } = useI18n()
 const { hasPermission } = usePermissions()
 const { user } = useAuth()
 const { libraries, loading: librariesLoading, loaded: librariesLoaded, error: librariesError, fetchLibraries } = useLibraries()
-const { scrollers, shelfLayout, pruneDeletedSmartScopeScrollers } = useDashboardConfig()
+const { scrollers, shelfLayout, shelfOrderVersion, pruneDeletedSmartScopeScrollers } = useDashboardConfig()
 const { shelfTitle, externalShelfTitle, externalShelfDescription } = useDashboardLabels()
 const { enabledExternalShelves } = useExternalShelvesConfig()
 const { maybeStartTour } = useOnboardingTour()
@@ -35,9 +36,13 @@ const dashboardRevision = ref(0)
 const now = ref(new Date())
 let greetingTimer: number | null = null
 
-const enabledScrollers = computed(() =>
-  (Array.isArray(scrollers.value) ? scrollers.value : []).filter((s) => s.enabled).sort((a, b) => a.order - b.order),
-)
+const enabledScrollers = computed(() => (Array.isArray(scrollers.value) ? scrollers.value : []).filter((s) => s.enabled))
+
+// One merged, ordered list of enabled regular and external shelves (owner decision: any order
+// across all shelves) - `shelfOrderVersion` picks the right merge semantics for legacy vs
+// unified configs. Both arrays here are already filtered to what should actually render, so the
+// merge only has to decide relative order.
+const visibleShelfRows = computed(() => mergeShelfRows(enabledScrollers.value, enabledExternalShelves.value, shelfOrderVersion.value))
 
 interface DashboardShelf {
   key: string
@@ -49,8 +54,8 @@ interface DashboardShelf {
   maxAgeMonths?: number
 }
 
-const shelves = computed<DashboardShelf[]>(() =>
-  enabledScrollers.value.map((scroller) => ({
+function scrollerShelf(scroller: (typeof enabledScrollers.value)[number]): DashboardShelf {
+  return {
     key: `${scroller.id}-${scroller.type}-${scroller.smartScopeId ?? 0}-${scroller.rows}-${scroller.maxAgeMonths ?? 0}`,
     title: shelfTitle(scroller),
     limit: scroller.limit,
@@ -58,8 +63,8 @@ const shelves = computed<DashboardShelf[]>(() =>
     type: scroller.type,
     smartScopeId: scroller.smartScopeId,
     maxAgeMonths: scroller.maxAgeMonths,
-  })),
-)
+  }
+}
 
 const shelfLayoutClass = computed(() =>
   shelfLayout.value === SHELF_LAYOUT.TWO_COLUMNS ? 'grid min-w-0 items-start gap-5 xl:grid-cols-2' : 'space-y-5',
@@ -167,30 +172,32 @@ onUnmounted(() => {
         <DashboardWelcome v-else-if="libraryState === 'empty'" :can-create="hasPermission('manage_libraries')" />
         <template v-else>
           <DashboardWidgetRow :key="`widgets-${dashboardRevision}`" class="animate-fade-up" />
-          <template v-for="entry in enabledExternalShelves" :key="`${entry.provider}-${entry.shelf}`">
-            <OwnedElsewhereShelf
-              :provider="entry.provider"
-              :shelf="entry.shelf"
-              :title="externalShelfTitle(entry.provider, entry.shelf)"
-              :description="externalShelfDescription(entry.provider)"
-              class="animate-fade-up"
-            />
-          </template>
-          <div v-if="enabledScrollers.length > 0" :class="shelfLayoutClass">
-            <template v-for="(shelf, index) in shelves" :key="`${dashboardRevision}-${shelf.key}`">
+          <div v-if="visibleShelfRows.length > 0" :class="shelfLayoutClass">
+            <template v-for="(row, index) in visibleShelfRows" :key="row.id">
               <DashboardScroller
-                :type="shelf.type"
-                :title="shelf.title"
-                :limit="shelf.limit"
-                :rows="shelf.rows"
-                :smartScope-id="shelf.smartScopeId"
-                :max-age-months="shelf.maxAgeMonths"
+                v-if="row.kind === 'scroller'"
+                :key="`${dashboardRevision}-${scrollerShelf(row.scroller).key}`"
+                :type="scrollerShelf(row.scroller).type"
+                :title="scrollerShelf(row.scroller).title"
+                :limit="scrollerShelf(row.scroller).limit"
+                :rows="scrollerShelf(row.scroller).rows"
+                :smartScope-id="scrollerShelf(row.scroller).smartScopeId"
+                :max-age-months="scrollerShelf(row.scroller).maxAgeMonths"
+                class="min-w-0 animate-fade-up"
+                :style="{ animationDelay: `${index * 100}ms` }"
+              />
+              <OwnedElsewhereShelf
+                v-else
+                :provider="row.external.provider"
+                :shelf="row.external.shelf"
+                :title="externalShelfTitle(row.external.provider, row.external.shelf)"
+                :description="externalShelfDescription(row.external.provider)"
                 class="min-w-0 animate-fade-up"
                 :style="{ animationDelay: `${index * 100}ms` }"
               />
             </template>
           </div>
-          <div v-if="enabledScrollers.length === 0" class="px-2 py-12 text-center">
+          <div v-if="visibleShelfRows.length === 0" class="px-2 py-12 text-center">
             <p class="text-sm text-muted-foreground">{{ t('views.dashboard.allShelvesHidden') }}</p>
             <button class="mt-2 text-sm text-primary hover:underline" @click="handleOpenSettings">{{ t('views.dashboard.customize') }}</button>
           </div>

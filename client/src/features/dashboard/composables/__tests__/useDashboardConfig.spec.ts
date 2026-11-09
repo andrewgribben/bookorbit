@@ -373,7 +373,12 @@ describe('useDashboardConfig', () => {
     saveShelfSettings(scrollers.value, SHELF_LAYOUT.TWO_COLUMNS)
 
     expect(shelfLayout.value).toBe(SHELF_LAYOUT.TWO_COLUMNS)
-    expect(storedConfig()).toEqual({ scrollers: scrollers.value, shelfLayout: SHELF_LAYOUT.TWO_COLUMNS, externalShelves: [] })
+    expect(storedConfig()).toEqual({
+      scrollers: scrollers.value,
+      shelfLayout: SHELF_LAYOUT.TWO_COLUMNS,
+      externalShelves: [],
+      shelfOrderVersion: 2,
+    })
   })
 
   it('keeps external shelves from private adapter providers when saving', async () => {
@@ -524,5 +529,83 @@ describe('useDashboardConfig', () => {
     expect(setItemSpy).not.toHaveBeenCalled()
 
     setItemSpy.mockRestore()
+  })
+
+  it('migrates a legacy external-first config to one shared order sequence on first shelf save', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        scrollers: [{ id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 }],
+        externalShelves: [{ provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 1 }],
+      }),
+    )
+
+    const { mergeShelfRows, splitShelfRows } = await import('../../lib/shelf-order')
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const config = useDashboardConfig()
+    expect(config.shelfOrderVersion.value).toBeUndefined()
+
+    // Mirrors what the Customize sheet does: merge the legacy arrangement into the
+    // one-list view it edits, then split it back before handing it to save.
+    const merged = mergeShelfRows(config.scrollers.value, config.externalShelves.value, config.shelfOrderVersion.value)
+    const { scrollers, externalShelves, shelfOrderVersion } = splitShelfRows(merged)
+    await config.saveShelfSettings(scrollers, 'wide', false, externalShelves, shelfOrderVersion)
+
+    expect(config.shelfOrderVersion.value).toBe(2)
+    expect(config.externalShelves.value[0]?.order).toBe(1)
+    expect(config.scrollers.value[0]?.order).toBe(2)
+    expect(storedConfig()).toMatchObject({ shelfOrderVersion: 2 })
+  })
+
+  it('keeps a shared order sequence intact across a reload once migrated', async () => {
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const first = useDashboardConfig()
+    const mixedScrollers = [{ ...first.scrollers.value[0]!, order: 1 }]
+    const mixedExternal = [{ provider: 'readwise' as const, shelf: 'owned-elsewhere' as const, enabled: true, order: 2 }]
+
+    await first.saveShelfSettings(mixedScrollers, 'wide', false, mixedExternal, 2)
+
+    vi.resetModules()
+    const reloaded = (await import('../useDashboardConfig')).useDashboardConfig()
+
+    expect(reloaded.shelfOrderVersion.value).toBe(2)
+    expect(reloaded.scrollers.value[0]?.order).toBe(1)
+    expect(reloaded.externalShelves.value[0]?.order).toBe(2)
+  })
+
+  it('appends a newly available external shelf as disabled at the end of a shared order', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        scrollers: [{ id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 }],
+        externalShelves: [{ provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 2 }],
+        shelfOrderVersion: 2,
+      }),
+    )
+
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const { externalShelves, ensureExternalShelf } = useDashboardConfig()
+
+    ensureExternalShelf('hardcover', 'trending', false)
+
+    expect(externalShelves.value).toEqual([
+      { provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 2 },
+      { provider: 'hardcover', shelf: 'trending', enabled: false, order: 3 },
+    ])
+
+    ensureExternalShelf('hardcover', 'trending', true)
+    expect(externalShelves.value).toHaveLength(2)
+  })
+
+  it('preserves every other field across a shared-order save', async () => {
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const config = useDashboardConfig()
+    const base = config.scrollers.value.find((s) => s.type === 'up-next-in-series')!
+    const scroller = { ...base, limit: 33, rows: 2, maxAgeMonths: 6 }
+
+    await config.saveShelfSettings([scroller], 'two-columns', false, [], 2)
+
+    expect(config.scrollers.value[0]).toMatchObject({ limit: 33, rows: 2, maxAgeMonths: 6 })
+    expect(config.shelfLayout.value).toBe('two-columns')
   })
 })

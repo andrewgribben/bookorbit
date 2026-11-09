@@ -196,7 +196,7 @@ describe('DashboardSettingsSheet', () => {
     })
     const wrapper = await openSheet()
 
-    await wrapper.get('[role="switch"][aria-checked="false"]').trigger('click')
+    await wrapper.get('[data-testid="external-shelf-toggle"][aria-checked="false"]').trigger('click')
     await wrapper
       .findAll('button')
       .find((button) => button.text() === en.common.save)
