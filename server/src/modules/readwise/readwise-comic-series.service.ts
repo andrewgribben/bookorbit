@@ -25,8 +25,8 @@ export interface ComicSeriesRoutingContext {
 }
 
 /**
- * Resolves and maintains the shared Readwise book for a comic series (S10 owner decision: one
- * Readwise book per series when the library's series mode is on, instead of one per issue).
+ * Resolves and maintains the shared Readwise book for a comic series: one Readwise book per
+ * series when the library's series mode is on, instead of one per issue.
  * Routing is decided per book on every push (not cached), so toggling series mode, adding an
  * issue, or giving an issue its own individual link all take effect on the very next push
  * without a separate reconciliation pass.
@@ -56,7 +56,7 @@ export class ReadwiseComicSeriesService {
     const existingLink = await this.readingServicesRepo.findBookLink(userId, 'readwise', bookId);
     if (existingLink && existingLink.matchMethod !== 'series') return null;
 
-    const issues = await this.repo.findEligibleIssues(userId, series.seriesId);
+    const issues = await this.repo.findEligibleIssues(userId, series.seriesId, series.libraryId);
     if (issues.length === 0 || !issues.some((issue) => issue.bookId === bookId)) return null;
 
     const mapping = computeComicSeriesPageMapping(issues.map((issue) => ({ bookId: issue.bookId, pageCount: issue.pageCount })));
@@ -109,16 +109,18 @@ export class ReadwiseComicSeriesService {
       return result.book_id;
     }
 
-    if (existing.totalPages !== context.totalPages || existing.status !== context.status) {
+    // Never lower the total: earlier sessions may already reach past a smaller one.
+    const totalPages = Math.max(existing.totalPages, context.totalPages);
+    if (existing.totalPages !== totalPages || existing.status !== context.status) {
       const update: ReadwiseBookUpdateItem = {
         id: existing.externalBookId,
-        manual_total_pages: context.totalPages,
+        manual_total_pages: totalPages,
         ...(context.status ? { status: context.status } : {}),
       };
       await this.client.updateBooks(userId, token, [update]);
       await this.repo.upsertSeriesBookLink(userId, context.seriesId, {
         externalBookId: existing.externalBookId,
-        totalPages: context.totalPages,
+        totalPages,
         status: context.status,
       });
     }

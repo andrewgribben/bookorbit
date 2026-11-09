@@ -60,6 +60,7 @@ describe('ReadwiseComicSeriesService.resolveRouting', () => {
     const context = await service.resolveRouting(1, 10);
 
     expect(repo.findEligibleIssues).toHaveBeenCalledTimes(1);
+    expect(repo.findEligibleIssues).toHaveBeenCalledWith(1, 5, 2);
     expect(context?.totalPages).toBe(42);
     expect(context?.pageRanges.get(10)).toEqual({ pageOffset: 0, issuePages: 20 });
     expect(context?.pageRanges.get(11)).toEqual({ pageOffset: 20, issuePages: 22 });
@@ -157,5 +158,20 @@ describe('ReadwiseComicSeriesService.ensureSeriesExternalBook', () => {
 
     expect(client.updateBooks).not.toHaveBeenCalled();
     expect(repo.upsertSeriesBookLink).not.toHaveBeenCalled();
+  });
+
+  it('never lowers the total pages when an issue leaves the series', async () => {
+    const { service, repo, client } = makeService();
+    (repo.findSeriesBookLink as any).mockResolvedValueOnce({ externalBookId: 'series-ext-1', totalPages: 60, status: 'currently_reading' });
+
+    await service.ensureSeriesExternalBook(
+      1,
+      'tok',
+      { seriesId: 5, seriesName: 'Comic Series', totalPages: 40, status: 'finished', pageRanges: new Map() },
+      null,
+    );
+
+    expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [{ id: 'series-ext-1', manual_total_pages: 60, status: 'finished' }]);
+    expect(repo.upsertSeriesBookLink).toHaveBeenCalledWith(1, 5, { externalBookId: 'series-ext-1', totalPages: 60, status: 'finished' });
   });
 });

@@ -41,12 +41,13 @@ export class ReadwiseComicSeriesRepository {
   }
 
   /**
-   * One batched query for every issue of a series eligible for series-mode routing: an issue
+   * `book_series` is shared across libraries by name, so issues are limited to the library whose
+   * series mode is on. One batched query for every issue of a series eligible for series-mode routing: an issue
    * with no Readwise link yet, or one already routed to the series book (`matchMethod='series'`).
    * An issue with its own individual link is excluded entirely - it stays on its own book. This
    * is the one query the push services call per series per flush, not one query per issue.
    */
-  async findEligibleIssues(userId: number, seriesId: number): Promise<ComicSeriesIssueRow[]> {
+  async findEligibleIssues(userId: number, seriesId: number, libraryId: number): Promise<ComicSeriesIssueRow[]> {
     const rows = await this.db
       .select({
         bookId: schema.books.id,
@@ -70,6 +71,7 @@ export class ReadwiseComicSeriesRepository {
       .where(
         and(
           eq(schema.bookMetadata.seriesId, seriesId),
+          eq(schema.books.libraryId, libraryId),
           or(isNull(schema.readingServiceBookLinks.id), eq(schema.readingServiceBookLinks.matchMethod, 'series')),
         ),
       )

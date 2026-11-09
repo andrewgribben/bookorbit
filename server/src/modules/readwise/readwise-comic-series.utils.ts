@@ -24,8 +24,7 @@ export interface ComicSeriesPageMapping {
  * pages start right after issue N-1's. An issue's own progress (0-100%) maps to series pages via
  * `pageOffset + round(progress / 100 * issuePages)`. Inserting a new issue earlier in the order
  * later shifts every following issue's offset going forward; past sessions keep whatever page
- * numbers they were pushed with (Readwise sessions are immutable), which is accepted - see
- * AGENTS.md note on this feature.
+ * numbers they were pushed with (Readwise sessions are immutable), which is accepted.
  */
 export function computeComicSeriesPageMapping(
   issues: readonly ComicSeriesIssuePages[],
