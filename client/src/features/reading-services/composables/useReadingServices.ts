@@ -58,11 +58,12 @@ export function useReadingServices() {
   async function setLibrary(provider: ReadingServiceProvider, libraryId: number, update: ReadingServiceLibraryUpdate): Promise<boolean> {
     const summary = summaries.value.find((s: ReadingServiceSummary) => s.provider === provider)
     const entry = summary?.libraries.find((l: ReadingServiceLibrarySetting) => l.libraryId === libraryId)
-    const previous = entry ? { enabled: entry.enabled, features: { ...entry.features } } : null
+    const previous = entry ? { enabled: entry.enabled, features: { ...entry.features }, seriesMode: entry.seriesMode } : null
 
     if (entry) {
       if (update.enabled !== undefined) entry.enabled = update.enabled
       if (update.features) Object.assign(entry.features, update.features)
+      if (update.seriesMode !== undefined) entry.seriesMode = update.seriesMode
     }
 
     savingLibraryId.value = libraryId
@@ -72,12 +73,14 @@ export function useReadingServices() {
       if (entry) {
         entry.enabled = updated.enabled
         entry.features = updated.features as typeof entry.features
+        entry.seriesMode = updated.seriesMode
       }
       return true
     } catch (err) {
       if (entry && previous) {
         entry.enabled = previous.enabled
         entry.features = previous.features
+        entry.seriesMode = previous.seriesMode
       }
       error.value = err instanceof Error ? err.message : 'Failed to update synced library'
       return false
@@ -90,7 +93,7 @@ export function useReadingServices() {
   async function resetLibrary(provider: ReadingServiceProvider, libraryId: number): Promise<boolean> {
     const summary = summaries.value.find((s: ReadingServiceSummary) => s.provider === provider)
     const entry = summary?.libraries.find((l: ReadingServiceLibrarySetting) => l.libraryId === libraryId)
-    const previous = entry ? { enabled: entry.enabled, features: { ...entry.features } } : null
+    const previous = entry ? { enabled: entry.enabled, features: { ...entry.features }, seriesMode: entry.seriesMode } : null
 
     savingLibraryId.value = libraryId
     error.value = null
@@ -99,12 +102,14 @@ export function useReadingServices() {
       if (entry) {
         entry.enabled = reset.enabled
         entry.features = reset.features as typeof entry.features
+        entry.seriesMode = reset.seriesMode
       }
       return true
     } catch (err) {
       if (entry && previous) {
         entry.enabled = previous.enabled
         entry.features = previous.features
+        entry.seriesMode = previous.seriesMode
       }
       error.value = err instanceof Error ? err.message : 'Failed to reset library sync settings'
       return false

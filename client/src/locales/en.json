@@ -1817,7 +1817,11 @@
         "reset": "Reset",
         "inherits": "Follows the settings above.",
         "customised": "Some features are turned off just for this library.",
-        "empty": "No libraries yet. Add one from the library settings to choose what syncs."
+        "empty": "No libraries yet. Add one from the library settings to choose what syncs.",
+        "seriesMode": {
+          "label": "Sync each series as one book",
+          "helper": "For folder-per-series libraries: issues without their own Readwise link share one book per series. Issues already synced on their own keep syncing that way."
+        }
       },
       "whatSyncs": {
         "title": "What syncs",

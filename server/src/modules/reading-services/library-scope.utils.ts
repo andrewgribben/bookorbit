@@ -4,9 +4,10 @@ import type { ReadingServiceFeature } from '@bookorbit/types';
 export interface EffectiveLibrarySetting {
   enabled: boolean;
   features: Partial<Record<string, boolean>>;
+  seriesMode: boolean;
 }
 
-export const DEFAULT_LIBRARY_SETTING: EffectiveLibrarySetting = { enabled: true, features: {} };
+export const DEFAULT_LIBRARY_SETTING: EffectiveLibrarySetting = { enabled: true, features: {}, seriesMode: false };
 
 /**
  * Library ids (out of `accessibleLibraryIds`) where the given feature is effectively usable.

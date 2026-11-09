@@ -64,19 +64,31 @@ export class ReadingServicesRepository {
     userId: number,
     provider: ReadingServiceProvider,
     libraryId: number,
-    settings: { enabled: boolean; features: Partial<Record<string, boolean>> },
+    settings: { enabled: boolean; features: Partial<Record<string, boolean>>; seriesMode: boolean },
   ): Promise<void> {
     await this.db
       .insert(schema.readingServiceLibrarySettings)
-      .values({ userId, provider, libraryId, enabled: settings.enabled, features: settings.features })
+      .values({ userId, provider, libraryId, enabled: settings.enabled, features: settings.features, seriesMode: settings.seriesMode })
       .onConflictDoUpdate({
         target: [
           schema.readingServiceLibrarySettings.userId,
           schema.readingServiceLibrarySettings.provider,
           schema.readingServiceLibrarySettings.libraryId,
         ],
-        set: { enabled: settings.enabled, features: settings.features, updatedAt: new Date() },
+        set: { enabled: settings.enabled, features: settings.features, seriesMode: settings.seriesMode, updatedAt: new Date() },
       });
+  }
+
+  /** Single library's series-mode flag, for the push services' per-book routing decision. */
+  async getLibrarySeriesModeEnabled(userId: number, provider: ReadingServiceProvider, libraryId: number): Promise<boolean> {
+    const row = await this.db.query.readingServiceLibrarySettings.findFirst({
+      where: and(
+        eq(schema.readingServiceLibrarySettings.userId, userId),
+        eq(schema.readingServiceLibrarySettings.provider, provider),
+        eq(schema.readingServiceLibrarySettings.libraryId, libraryId),
+      ),
+    });
+    return row?.seriesMode ?? false;
   }
 
   /** Reverts a library back to "inherit" by deleting its override row. */

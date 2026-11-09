@@ -170,6 +170,12 @@ export class ReadwiseBooksPullService {
     const link = await this.readingServicesRepo.findBookLinkByExternalId(userId, 'readwise', book.id);
     if (!link) return false; // not yet linked; S3 only syncs already-migrated books
 
+    // A comic series' shared Readwise book has many local issues pointing at one externalBookId
+    // (matchMethod 'series'), so findBookLinkByExternalId above only ever returns one of them.
+    // Pulling the series book's aggregate status/rating back onto that single arbitrary issue
+    // would be wrong, so series mode is push-only in v1: nothing is pulled back for it.
+    if (link.matchMethod === 'series') return false;
+
     if (book.status === 'deleted') {
       if (!link.remoteDeleted) await this.readingServicesRepo.markRemoteDeleted(userId, 'readwise', link.bookId);
       return false;

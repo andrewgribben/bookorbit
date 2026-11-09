@@ -35,7 +35,7 @@ function entryFor(libraryId: number) {
 function hasCustomisation(libraryId: number): boolean {
   const entry = entryFor(libraryId)
   if (!entry) return false
-  return customisableFeatures.value.some((feature) => entry.features[feature] === false)
+  return customisableFeatures.value.some((feature) => entry.features[feature] === false) || entry.seriesMode
 }
 
 function isLibraryEnabled(libraryId: number): boolean {
@@ -66,6 +66,16 @@ async function handleReset(libraryId: number): Promise<void> {
 function featureLabel(feature: ReadingServiceFeature): string {
   return t(`settings.readingServices.features.${feature}.label`)
 }
+
+const showsSeriesMode = computed(() => props.provider === 'readwise')
+
+function isSeriesModeEnabled(libraryId: number): boolean {
+  return entryFor(libraryId)?.seriesMode ?? false
+}
+
+async function handleSeriesModeToggle(libraryId: number, value: boolean): Promise<void> {
+  await setLibrary(props.provider, libraryId, { seriesMode: value })
+}
 </script>
 
 <template>
@@ -77,7 +87,7 @@ function featureLabel(feature: ReadingServiceFeature): string {
         <span class="flex-1 text-sm font-medium truncate">{{ library.name }}</span>
 
         <button
-          v-if="customisableFeatures.length > 0 && isLibraryEnabled(library.id)"
+          v-if="(customisableFeatures.length > 0 || showsSeriesMode) && isLibraryEnabled(library.id)"
           type="button"
           class="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
           @click="toggleExpanded(library.id)"
@@ -115,6 +125,19 @@ function featureLabel(feature: ReadingServiceFeature): string {
             :model-value="isFeatureEnabled(library.id, feature)"
             :disabled="savingLibraryId === library.id"
             @update:model-value="(value) => handleFeatureToggle(library.id, feature, value)"
+          />
+        </div>
+
+        <div v-if="showsSeriesMode" class="flex items-start justify-between gap-3 pt-1">
+          <div>
+            <p class="text-xs text-muted-foreground">{{ t('settings.readingServices.libraries.seriesMode.label') }}</p>
+            <p class="text-xs text-muted-foreground">{{ t('settings.readingServices.libraries.seriesMode.helper') }}</p>
+          </div>
+          <ToggleSwitch
+            :id="`reading-service-${provider}-library-${library.id}-series-mode`"
+            :model-value="isSeriesModeEnabled(library.id)"
+            :disabled="savingLibraryId === library.id"
+            @update:model-value="(value) => handleSeriesModeToggle(library.id, value)"
           />
         </div>
       </div>

@@ -9,31 +9,31 @@ describe('effectiveLibraryIdsForFeature', () => {
   });
 
   it('a library override can narrow a provider feature that is on', () => {
-    const settings = new Map([[2, { enabled: true, features: { owned: false } }]]);
+    const settings = new Map([[2, { enabled: true, features: { owned: false }, seriesMode: false }]]);
     const result = effectiveLibraryIdsForFeature([1, 2, 3], settings, 'owned');
     expect(result).toEqual([1, 3]);
   });
 
   it('a library override can never widen a provider feature that is off', () => {
-    const settings = new Map([[2, { enabled: true, features: { owned: true } }]]);
+    const settings = new Map([[2, { enabled: true, features: { owned: true }, seriesMode: false }]]);
     const result = effectiveLibraryIdsForFeature([1, 2, 3], settings, 'owned', false);
     expect(result).toEqual([]);
   });
 
   it('a disabled library excludes all features, including ones explicitly turned on for it', () => {
-    const settings = new Map([[2, { enabled: false, features: { owned: true } }]]);
+    const settings = new Map([[2, { enabled: false, features: { owned: true }, seriesMode: false }]]);
     const result = effectiveLibraryIdsForFeature([1, 2, 3], settings, 'owned');
     expect(result).toEqual([1, 3]);
   });
 
   it('feature=null checks only the enabled flag, for providers with no per-field push yet', () => {
-    const settings = new Map([[2, { enabled: false, features: {} }]]);
+    const settings = new Map([[2, { enabled: false, features: {}, seriesMode: false }]]);
     const result = effectiveLibraryIdsForFeature([1, 2, 3], settings, null);
     expect(result).toEqual([1, 3]);
   });
 
-  it('DEFAULT_LIBRARY_SETTING is the inherited default: enabled, no feature overrides', () => {
-    expect(DEFAULT_LIBRARY_SETTING).toEqual({ enabled: true, features: {} });
+  it('DEFAULT_LIBRARY_SETTING is the inherited default: enabled, no feature overrides, series mode off', () => {
+    expect(DEFAULT_LIBRARY_SETTING).toEqual({ enabled: true, features: {}, seriesMode: false });
   });
 });
 

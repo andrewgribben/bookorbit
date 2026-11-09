@@ -71,6 +71,12 @@ export type ReadingServiceLibrarySetting = {
   libraryId: number;
   enabled: boolean;
   features: Partial<Record<ReadingServiceFeature, boolean>>;
+  /**
+   * Comic series mode (Readwise only): routes every issue in a folder-per-series library to one
+   * shared Readwise book per series instead of one book per issue. Applies only to issues
+   * without their own individual Readwise link already; already-linked issues are untouched.
+   */
+  seriesMode: boolean;
 };
 
 /**

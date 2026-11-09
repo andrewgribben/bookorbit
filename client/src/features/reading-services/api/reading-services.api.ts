@@ -35,13 +35,13 @@ export async function updateReadingServiceFeatures(
   return res.json()
 }
 
-export type ReadingServiceLibraryUpdate = { enabled?: boolean; features?: Partial<Record<string, boolean>> }
+export type ReadingServiceLibraryUpdate = { enabled?: boolean; features?: Partial<Record<string, boolean>>; seriesMode?: boolean }
 
 export async function updateReadingServiceLibrary(
   provider: ReadingServiceProvider,
   libraryId: number,
   update: ReadingServiceLibraryUpdate,
-): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }> {
+): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>>; seriesMode: boolean }> {
   const res = await api(`${BASE}/${provider}/libraries/${libraryId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -54,7 +54,7 @@ export async function updateReadingServiceLibrary(
 export async function resetReadingServiceLibrary(
   provider: ReadingServiceProvider,
   libraryId: number,
-): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }> {
+): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>>; seriesMode: boolean }> {
   const res = await api(`${BASE}/${provider}/libraries/${libraryId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await errorMessage(res, 'Failed to reset library sync settings'))
   return res.json()

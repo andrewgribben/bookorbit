@@ -15,4 +15,9 @@ export class UpdateReadingServiceLibraryDto {
   @IsOptional()
   @IsObject()
   features?: Partial<Record<string, boolean>>;
+
+  /** Comic series mode (Readwise only): see `ReadingServiceLibrarySetting.seriesMode` in @bookorbit/types. */
+  @IsOptional()
+  @IsBoolean()
+  seriesMode?: boolean;
 }

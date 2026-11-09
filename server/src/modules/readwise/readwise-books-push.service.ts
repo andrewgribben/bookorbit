@@ -10,6 +10,7 @@ import { ReadwiseBooksLocalBooksRepository } from './readwise-books-local-books.
 import type { ReadwiseBookCreateItem, ReadwiseBookUpdateItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
+import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 import { normalizeReadwiseReview } from './readwise-review.utils';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
@@ -40,6 +41,7 @@ export class ReadwiseBooksPushService {
     private readonly readwiseSettings: ReadwiseSettingsService,
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly featuresService: ReadingServiceFeaturesService,
+    private readonly comicSeries: ReadwiseComicSeriesService,
   ) {}
 
   async flushUser(userId: number, bookIds: number[]): Promise<void> {
@@ -77,6 +79,27 @@ export class ReadwiseBooksPushService {
     if (failed > 0) throw new Error(`${failed} of ${bookIds.length} books failed to push to Readwise`);
   }
 
+  /**
+   * Routes a book that belongs to a series-mode library to the series' shared Readwise book
+   * instead of its own. Returns 'not_routed' for a book that pushes normally (no series, series
+   * mode off, or already individually linked) so the caller falls through to that logic.
+   */
+  private async pushSeriesBookIfRouted(
+    userId: number,
+    token: string,
+    bookId: number,
+    local: LocalBookForMigration,
+  ): Promise<'pushed' | 'skipped' | 'not_routed'> {
+    const context = await this.comicSeries.resolveRouting(userId, bookId);
+    if (!context) return 'not_routed';
+
+    const externalBookId = await this.comicSeries.ensureSeriesExternalBook(userId, token, context, local.author);
+    if (!externalBookId) return 'skipped'; // series has had no reading activity yet
+
+    await this.comicSeries.linkIssueToSeries(userId, bookId, externalBookId);
+    return 'pushed';
+  }
+
   private async pushBook(
     userId: number,
     token: string,
@@ -85,6 +108,11 @@ export class ReadwiseBooksPushService {
   ): Promise<'pushed' | 'skipped'> {
     const local = await this.localBooks.findOne(userId, bookId);
     if (!local) return 'skipped';
+
+    if (isFeatureEnabled(features, 'status')) {
+      const seriesResult = await this.pushSeriesBookIfRouted(userId, token, bookId, local);
+      if (seriesResult !== 'not_routed') return seriesResult;
+    }
 
     const link = await this.readingServicesRepo.findBookLink(userId, 'readwise', bookId);
     const snapshot: BookSnapshot = (link?.snapshot as BookSnapshot) ?? {};
