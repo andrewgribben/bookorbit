@@ -205,6 +205,21 @@ describe('useReadingSession - session gap rule', () => {
     expect(elapsedMinutes.value).toBe(0)
     expect(apiMock).toHaveBeenCalledTimes(1)
   })
+
+  it('ends an idle session at the last activity and does not count the idle minutes', async () => {
+    vi.setSystemTime(new Date('2026-01-01T12:00:00Z'))
+    const { onActivity } = useReadingSession(1, () => ({ percentage: 10 }))
+
+    onActivity()
+    await vi.advanceTimersByTimeAsync(3 * 60 * 1000)
+    onActivity()
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1000)
+
+    expect(apiMock).toHaveBeenCalledTimes(1)
+    const body = JSON.parse((apiMock.mock.calls[0]![1] as { body: string }).body)
+    expect(body.durationSeconds).toBe(180)
+    expect(body.endedAt).toBe('2026-01-01T12:03:00.000Z')
+  })
 })
 
 describe('useReadingSession - sessionType', () => {

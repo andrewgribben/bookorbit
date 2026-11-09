@@ -34,6 +34,7 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
   // decide, on the next reading signal, whether to resume this session or close it
   // at this timestamp and start a new one.
   let pausedAt: number | null = null
+  let lastActivityAt = 0
 
   const elapsedMinutes = ref(0)
   let elapsedInterval: ReturnType<typeof setInterval> | null = null
@@ -115,7 +116,22 @@ export function useReadingSession(bookFileId: number, getProgress: () => Progres
 
   function resetIdleTimer() {
     clearIdleTimer()
-    idleTimer = setTimeout(endSession, IDLE_TIMEOUT_MS)
+    lastActivityAt = Date.now()
+    idleTimer = setTimeout(endIdleSession, IDLE_TIMEOUT_MS)
+  }
+
+  // The idle timeout fires IDLE_TIMEOUT_MS after the last activity, so the session
+  // ends at that last activity and the idle minutes are not counted as reading.
+  function endIdleSession() {
+    if (!canTrack() || ended || !startedAt) {
+      endSession()
+      return
+    }
+    if (activeStart !== null) {
+      activeMs += Math.max(0, lastActivityAt - activeStart)
+      activeStart = null
+    }
+    finalizeSession(lastActivityAt, false)
   }
 
   function clearIdleTimer() {
