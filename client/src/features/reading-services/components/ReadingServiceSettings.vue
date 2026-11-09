@@ -61,7 +61,11 @@ const hasFeatures = computed(() => summary.value && Object.keys(summary.value.ca
       </SettingsSection>
       <p v-else class="text-sm text-muted-foreground">{{ t('settings.readingServices.generic.noFeatures') }}</p>
 
-      <SettingsSection :title="t('settings.readingServices.libraries.title')" :brief="t('settings.readingServices.libraries.subtitle')">
+      <SettingsSection
+        v-if="!props.embedded"
+        :title="t('settings.readingServices.libraries.title')"
+        :brief="t('settings.readingServices.libraries.subtitle')"
+      >
         <ReadingServiceLibraries :provider="provider as ReadingServiceProvider" :summary="summary" />
       </SettingsSection>
 

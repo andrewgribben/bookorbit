@@ -18,6 +18,7 @@ import { Throttle } from '@nestjs/throttler';
 import {
   READING_SERVICE_SHELVES,
   Permission,
+  READING_SERVICE_PROVIDERS,
   type ReadingServiceAvailableShelf,
   type ReadingServiceDeviceAuthPollResult,
   type ReadingServiceDeviceAuthStart,
@@ -361,7 +362,10 @@ export class ReadingServicesController {
       if (item.title) titlesLower.add(item.title.toLowerCase());
     }
 
-    const candidates = await this.matchRepository.findCandidates(userId, provider, [...isbn13s], [...titlesLower]);
+    // A sub-adapter like `readwise-social` has no library settings of its own; it follows its parent's.
+    const parent = provider.split('-')[0] as ReadingServiceProvider;
+    const scopeProvider = (READING_SERVICE_PROVIDERS as readonly string[]).includes(parent) ? parent : provider;
+    const candidates = await this.matchRepository.findCandidates(userId, scopeProvider, [...isbn13s], [...titlesLower]);
     if (candidates.length === 0) return items.map((item) => this.stripMatchHints(item));
 
     const index = buildRemoteIndex(candidates);

@@ -94,7 +94,7 @@ export class ReadingServiceLibraryScopeService {
 
     const current = (await this.getSettingsMap(user, provider)).get(libraryId) ?? DEFAULT_LIBRARY_SETTING;
     const enabled = input.enabled ?? current.enabled;
-    const features = input.features ? sanitizedFeatures : current.features;
+    const features = { ...current.features, ...sanitizedFeatures };
     // Comic series mode is Readwise-only (owner decision); any value sent for another provider is ignored.
     const seriesMode = provider === 'readwise' ? (input.seriesMode ?? current.seriesMode) : false;
 

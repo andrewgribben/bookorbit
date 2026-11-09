@@ -42,3 +42,17 @@ describe('ReadingServiceLibraryScopeService.setLibrarySetting series mode', () =
     expect(repo.setLibrarySetting).toHaveBeenCalledWith(1, 'hardcover', 1, expect.objectContaining({ seriesMode: false }));
   });
 });
+
+describe('ReadingServiceLibraryScopeService.setLibrarySetting features', () => {
+  it('merges one toggled feature into the existing overrides instead of replacing them', async () => {
+    const { service, repo } = makeService(true);
+    (repo.findLibrarySettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { libraryId: 5, enabled: true, features: { status: false }, seriesMode: false },
+    ]);
+
+    const result = await service.setLibrarySetting({ id: 1, isSuperuser: true } as never, 'readwise', 5, { features: { rating: false } });
+
+    expect(result.features).toEqual({ status: false, rating: false });
+    expect(repo.setLibrarySetting).toHaveBeenCalledWith(1, 'readwise', 5, expect.objectContaining({ features: { status: false, rating: false } }));
+  });
+});
