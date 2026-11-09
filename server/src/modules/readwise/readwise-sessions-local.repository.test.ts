@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { readingServiceItemLinks, readingSessions, userReadingDailyStats } from '../../db/schema';
+import { bookFiles, bookMetadata, readingServiceItemLinks, readingSessions, userReadingDailyStats } from '../../db/schema';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 
 function makeDbHarness(options?: { libraryRow?: { libraryId: number } | null; insertedSessionIds?: Array<{ id: number }> }) {
@@ -138,5 +138,36 @@ describe('ReadwiseSessionsLocalRepository', () => {
     await repo.unlinkSessions(1, []);
 
     expect(update).not.toHaveBeenCalled();
+  });
+
+  describe('findAudiobookTotalSeconds', () => {
+    function makeTotalsHarness(fileRows: { durationSeconds: number | null }[], metaRows: { durationSeconds: number | null }[]) {
+      const fileWhere = vi.fn().mockResolvedValue(fileRows);
+      const metaLimit = vi.fn().mockResolvedValue(metaRows);
+      const metaWhere = vi.fn().mockReturnValue({ limit: metaLimit });
+      const from = vi.fn((table: unknown) => {
+        if (table === bookFiles) return { where: fileWhere };
+        if (table === bookMetadata) return { where: metaWhere };
+        throw new Error('Unexpected table in select');
+      });
+      const select = vi.fn().mockReturnValue({ from });
+      const db = { select } as never;
+      return { repo: new ReadwiseSessionsLocalRepository(db), select, from, fileWhere, metaWhere, metaLimit };
+    }
+
+    it('sums every audio file duration when all of them are known', async () => {
+      const { repo } = makeTotalsHarness([{ durationSeconds: 1800 }, { durationSeconds: 1200 }], [{ durationSeconds: null }]);
+      await expect(repo.findAudiobookTotalSeconds(42)).resolves.toBe(3000);
+    });
+
+    it('falls back to book_metadata.duration_seconds when a file duration is missing', async () => {
+      const { repo } = makeTotalsHarness([{ durationSeconds: 1800 }, { durationSeconds: null }], [{ durationSeconds: 5000 }]);
+      await expect(repo.findAudiobookTotalSeconds(42)).resolves.toBe(5000);
+    });
+
+    it('returns null when neither the files nor the metadata carry a usable duration', async () => {
+      const { repo } = makeTotalsHarness([], [{ durationSeconds: null }]);
+      await expect(repo.findAudiobookTotalSeconds(42)).resolves.toBeNull();
+    });
   });
 });
