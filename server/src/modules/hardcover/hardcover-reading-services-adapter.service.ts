@@ -3,6 +3,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type { ReadingServiceCapabilities, ReadingServiceShelf, ReadingServiceShelfItem, SyncRunProgressCounters } from '@bookorbit/types';
 import { Permission } from '@bookorbit/types';
 
+import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceRegistry } from '../reading-services/reading-service-registry.service';
 import type { ReadingServiceProviderAdapter } from '../reading-services/reading-service-provider';
@@ -70,11 +71,10 @@ export class HardcoverReadingServicesAdapterService implements ReadingServicePro
     const shelves: ReadingServiceShelf[] = ['friends-reading', 'friends-finished', 'trending', 'recommendations'];
     for (const shelf of shelves) {
       try {
-        const items = await this.socialService.getShelf(userId, token, shelf);
-        await this.cache.set(userId, this.provider, SHELF_CACHE_KEY(shelf), items, SHELF_CACHE_TTL_MS);
+        await this.cacheShelf(userId, shelf, await this.socialService.getShelf(userId, token, shelf));
       } catch (err) {
         this.logger.warn(
-          `[hardcover.social_pull] [fail] userId=${userId} shelf=${shelf} error="${err instanceof Error ? err.message : String(err)}" - shelf refresh failed`,
+          `[hardcover.social_pull] [fail] userId=${userId} shelf=${shelf} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - shelf refresh failed`,
         );
       }
     }
@@ -82,13 +82,20 @@ export class HardcoverReadingServicesAdapterService implements ReadingServicePro
 
   async getShelf(userId: number, shelf: ReadingServiceShelf): Promise<ReadingServiceShelfItem[]> {
     const cached = await this.cache.get<ReadingServiceShelfItem[]>(userId, this.provider, SHELF_CACHE_KEY(shelf));
-    if (cached) return cached;
+    if (cached && cached.length > 0) return cached;
 
     const token = await this.settingsService.getTokenForUser(userId);
     if (!token) return [];
 
     const items = await this.socialService.getShelf(userId, token, shelf);
-    await this.cache.set(userId, this.provider, SHELF_CACHE_KEY(shelf), items, SHELF_CACHE_TTL_MS);
+    await this.cacheShelf(userId, shelf, items);
     return items;
+  }
+
+  // The social service answers a failed Hardcover call with an empty shelf, so caching empty
+  // results would hide a shelf for the whole TTL after one failure.
+  private async cacheShelf(userId: number, shelf: ReadingServiceShelf, items: ReadingServiceShelfItem[]): Promise<void> {
+    if (items.length === 0) return;
+    await this.cache.set(userId, this.provider, SHELF_CACHE_KEY(shelf), items, SHELF_CACHE_TTL_MS);
   }
 }

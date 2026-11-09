@@ -76,6 +76,20 @@ describe('HardcoverReadingServicesAdapterService', () => {
     expect(cache.set).toHaveBeenCalledWith(1, 'hardcover', 'shelf:trending', [{ externalId: '2' }], expect.any(Number));
   });
 
+  it('getShelf refetches a cached empty shelf and does not cache an empty result', async () => {
+    const { adapter, cache, socialService, settingsService } = makeDeps();
+    (cache.get as any).mockResolvedValue([]);
+    (settingsService.getTokenForUser as any).mockResolvedValue('tok');
+    (socialService.getShelf as any).mockResolvedValueOnce([{ externalId: '3' }]).mockResolvedValueOnce([]);
+
+    expect(await adapter.getShelf(1, 'trending')).toEqual([{ externalId: '3' }]);
+    expect(await adapter.getShelf(1, 'recommendations')).toEqual([]);
+
+    expect(socialService.getShelf).toHaveBeenCalledTimes(2);
+    expect(cache.set).toHaveBeenCalledTimes(1);
+    expect(cache.set).toHaveBeenCalledWith(1, 'hardcover', 'shelf:trending', [{ externalId: '3' }], expect.any(Number));
+  });
+
   it('getShelf returns empty when not connected and nothing is cached', async () => {
     const { adapter, cache, settingsService, socialService } = makeDeps();
     (cache.get as any).mockResolvedValue(null);
