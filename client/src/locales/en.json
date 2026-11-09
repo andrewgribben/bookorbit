@@ -1754,6 +1754,10 @@
     "readwise": {
       "disabledReasons": {
         "noReadwiseBooks": "Your Readwise account doesn't have access to the Books API, so sync is paused."
+      },
+      "social": {
+        "title": "Social",
+        "description": "Friends shelves from Readwise."
       }
     },
     "readingServices": {

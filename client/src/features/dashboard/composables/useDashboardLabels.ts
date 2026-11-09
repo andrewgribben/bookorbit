@@ -96,8 +96,15 @@ export function useDashboardLabels() {
     return t(`dashboard.externalShelves.shelfNames.${EXTERNAL_SHELF_NAME_KEYS[shelf]}`)
   }
 
-  /** Composed title for a generic provider shelf, e.g. "Hardcover: Trending", used by both the dashboard and the picker. */
+  /**
+   * Composed title for a shelf, e.g. "Hardcover: Trending" for a built-in provider, used by
+   * both the dashboard and the picker. A private adapter (not in `EXTERNAL_SHELF_PROVIDER_KEYS`,
+   * e.g. a friends/social adapter) drops the provider prefix and shows just the shelf name, since
+   * its own settings section already names the provider.
+   */
   function externalShelfTitle(provider: string, shelf: ReadingServiceShelf): string {
+    const key = EXTERNAL_SHELF_PROVIDER_KEYS[provider as ReadingServiceProvider]
+    if (!key) return externalShelfName(shelf)
     return t('dashboard.externalShelves.title', { provider: externalShelfProviderName(provider), shelf: externalShelfName(shelf) })
   }
 
