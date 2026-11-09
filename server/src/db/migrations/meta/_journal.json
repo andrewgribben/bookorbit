@@ -1016,6 +1016,13 @@
       "when": 1794138512917,
       "tag": "0144_add_reading_service_private_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1794249812674,
+      "tag": "0145_add_comic_series_mode",
+      "breakpoints": true
     }
   ]
 }

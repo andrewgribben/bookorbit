@@ -16,6 +16,8 @@ import { ReadwiseBooksPullService } from './readwise-books-pull.service';
 import { ReadwiseBooksPushSchedulerService } from './readwise-books-push-scheduler.service';
 import { ReadwiseBooksPushService } from './readwise-books-push.service';
 import { ReadwiseClientService } from './readwise-client.service';
+import { ReadwiseComicSeriesRepository } from './readwise-comic-series.repository';
+import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 import { ReadwiseEventListener } from './readwise-event-listener.service';
 import { ReadwiseHighlightsLedgerBackfillService } from './readwise-highlights-ledger-backfill.service';
 import { ReadwiseHighlightsLocalRepository } from './readwise-highlights-local.repository';
@@ -72,6 +74,8 @@ import { ReadwiseTokenService } from './readwise-token.service';
     ReadwiseSessionsPullService,
     ReadwiseRecapService,
     ReadwiseOwnedElsewhereService,
+    ReadwiseComicSeriesRepository,
+    ReadwiseComicSeriesService,
   ],
   exports: [ReadwiseSettingsService, ReadwiseSyncService, ReadwiseRecapService, ReadwiseOwnedElsewhereService],
 })

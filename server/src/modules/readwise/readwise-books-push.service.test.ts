@@ -5,6 +5,7 @@ import { ReadingServicesRepository } from '../reading-services/reading-services.
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { ReadwiseBooksPushService } from './readwise-books-push.service';
+import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
@@ -30,9 +31,10 @@ function makeService() {
   const readwiseSettings = { getToken: vi.fn().mockResolvedValue('tok') } as unknown as ReadwiseSettingsService;
   const readingServicesRepo = { findBookLink: vi.fn(), upsertBookLink: vi.fn() } as unknown as ReadingServicesRepository;
   const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
+  const comicSeries = { resolveRouting: vi.fn().mockResolvedValue(null) } as unknown as ReadwiseComicSeriesService;
 
-  const service = new ReadwiseBooksPushService(client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService);
-  return { service, client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService };
+  const service = new ReadwiseBooksPushService(client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, comicSeries);
+  return { service, client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, comicSeries };
 }
 
 describe('ReadwiseBooksPushService', () => {
@@ -196,5 +198,45 @@ describe('ReadwiseBooksPushService', () => {
 
     await expect(service.flushUser(1, [16, 17])).rejects.toThrow();
     expect(readwiseRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'no_readwise_books', enabled: false });
+  });
+
+  it('routes a series-mode issue to the shared series book instead of creating its own', async () => {
+    const { service, client, localBooks, readingServicesRepo, comicSeries } = makeService();
+    (localBooks.findOne as any).mockResolvedValueOnce(book({ bookId: 20, status: 'reading', author: 'Author A' }));
+    (comicSeries.resolveRouting as any).mockResolvedValueOnce({
+      seriesId: 5,
+      seriesName: 'Comic Series',
+      totalPages: 40,
+      status: 'currently_reading',
+      pageRanges: new Map([[20, { pageOffset: 0, issuePages: 20 }]]),
+    });
+    (comicSeries.ensureSeriesExternalBook as any) = vi.fn().mockResolvedValueOnce('series-ext-1');
+    (comicSeries.linkIssueToSeries as any) = vi.fn().mockResolvedValueOnce(undefined);
+
+    await service.flushUser(1, [20]);
+
+    expect(comicSeries.ensureSeriesExternalBook).toHaveBeenCalledWith(1, 'tok', expect.objectContaining({ seriesId: 5 }), 'Author A');
+    expect(comicSeries.linkIssueToSeries).toHaveBeenCalledWith(1, 20, 'series-ext-1');
+    expect(client.createBooks).not.toHaveBeenCalled();
+    expect(readingServicesRepo.findBookLink).not.toHaveBeenCalled();
+  });
+
+  it('skips a series-mode issue until the series has had any activity', async () => {
+    const { service, client, localBooks, comicSeries } = makeService();
+    (localBooks.findOne as any).mockResolvedValueOnce(book({ bookId: 21, status: 'unread' }));
+    (comicSeries.resolveRouting as any).mockResolvedValueOnce({
+      seriesId: 6,
+      seriesName: 'Unstarted Series',
+      totalPages: 20,
+      status: null,
+      pageRanges: new Map([[21, { pageOffset: 0, issuePages: 20 }]]),
+    });
+    (comicSeries.ensureSeriesExternalBook as any) = vi.fn().mockResolvedValueOnce(null);
+    (comicSeries.linkIssueToSeries as any) = vi.fn();
+
+    await service.flushUser(1, [21]);
+
+    expect(comicSeries.linkIssueToSeries).not.toHaveBeenCalled();
+    expect(client.createBooks).not.toHaveBeenCalled();
   });
 });

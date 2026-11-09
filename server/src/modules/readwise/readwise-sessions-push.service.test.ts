@@ -4,6 +4,7 @@ import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-s
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
+import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsLocalRepository, type PushableSession } from './readwise-sessions-local.repository';
@@ -48,6 +49,7 @@ function makeService() {
   const lock = {
     runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
   } as unknown as ReadingServiceAdvisoryLockService;
+  const comicSeries = { resolveRouting: vi.fn(), ensureSeriesExternalBook: vi.fn() } as unknown as ReadwiseComicSeriesService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -61,6 +63,7 @@ function makeService() {
     repair,
     sweep,
     lock,
+    comicSeries,
   );
   return {
     service,
@@ -75,6 +78,7 @@ function makeService() {
     repair,
     sweep,
     lock,
+    comicSeries,
   };
 }
 
@@ -382,5 +386,35 @@ describe('ReadwiseSessionsPushService', () => {
 
     const pushedBookIds = (readingServicesRepo.findBookLink as any).mock.calls.map((call: unknown[]) => call[2]);
     expect(pushedBookIds).toEqual([10, 30]);
+  });
+
+  it('pushes a series-linked issue as page-based paper sessions within its series range', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client, comicSeries } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'series-ext', matchMethod: 'series', remoteDeleted: false });
+    (comicSeries.resolveRouting as any).mockResolvedValueOnce({
+      seriesId: 5,
+      seriesName: 'Comic Series',
+      totalPages: 40,
+      status: 'currently_reading',
+      pageRanges: new Map([[10, { pageOffset: 20, issuePages: 20 }]]),
+    });
+    (comicSeries.ensureSeriesExternalBook as any).mockResolvedValueOnce('series-ext');
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 600, endProgress: 50, progressDelta: 50 })]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-600' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(client.createSessions).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ format: 'paper', page_at_start: 20, page_at_end: 30 })]);
+  });
+
+  it('freezes a series-linked issue when its library has since turned series mode off', async () => {
+    const { service, readingServicesRepo, sessionsRepo, comicSeries } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'series-ext', matchMethod: 'series', remoteDeleted: false });
+    (comicSeries.resolveRouting as any).mockResolvedValueOnce(null);
+
+    await service.flushUser(1, [10]);
+
+    expect(sessionsRepo.findPushableSessions).not.toHaveBeenCalled();
+    expect(comicSeries.ensureSeriesExternalBook).not.toHaveBeenCalled();
   });
 });

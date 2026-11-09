@@ -84,11 +84,38 @@ describe('ReadingServiceLibraries', () => {
     expect(mocks.setLibrary).toHaveBeenCalledWith('hardcover', 2, { enabled: false })
   })
 
+  it('does not show the series mode toggle for a non-Readwise provider', () => {
+    const wrapper = mount(ReadingServiceLibraries, {
+      props: { provider: 'hardcover', summary: makeSummary({ libraries: [{ libraryId: 2, enabled: true, features: {}, seriesMode: false }] }) },
+    })
+
+    expect(wrapper.text()).not.toContain('Sync each series as one book')
+  })
+
+  it('shows and toggles the Readwise comic series mode setting once Customise is clicked', async () => {
+    const wrapper = mount(ReadingServiceLibraries, {
+      props: {
+        provider: 'readwise',
+        summary: makeSummary({ provider: 'readwise', libraries: [{ libraryId: 2, enabled: true, features: {}, seriesMode: false }] }),
+      },
+    })
+
+    const customiseButtons = wrapper.findAll('button').filter((b: { text: () => string }) => b.text() === 'Customise')
+    expect(customiseButtons).toHaveLength(2)
+    await customiseButtons[1]!.trigger('click')
+
+    expect(wrapper.text()).toContain('Sync each series as one book')
+    const switches = wrapper.findAll('[role="switch"]')
+    await switches[switches.length - 1]!.trigger('click')
+
+    expect(mocks.setLibrary).toHaveBeenCalledWith('readwise', 2, { seriesMode: true })
+  })
+
   it('shows "customised" when a library has a feature overridden off', () => {
     const wrapper = mount(ReadingServiceLibraries, {
       props: {
         provider: 'hardcover',
-        summary: makeSummary({ libraries: [{ libraryId: 2, enabled: true, features: { rating: false } }] }),
+        summary: makeSummary({ libraries: [{ libraryId: 2, enabled: true, features: { rating: false }, seriesMode: false }] }),
       },
     })
 
@@ -99,7 +126,7 @@ describe('ReadingServiceLibraries', () => {
     const wrapper = mount(ReadingServiceLibraries, {
       props: {
         provider: 'hardcover',
-        summary: makeSummary({ libraries: [{ libraryId: 2, enabled: true, features: {} }] }),
+        summary: makeSummary({ libraries: [{ libraryId: 2, enabled: true, features: {}, seriesMode: false }] }),
       },
     })
 
@@ -118,7 +145,7 @@ describe('ReadingServiceLibraries', () => {
     const wrapper = mount(ReadingServiceLibraries, {
       props: {
         provider: 'hardcover',
-        summary: makeSummary({ libraries: [{ libraryId: 2, enabled: false, features: {} }] }),
+        summary: makeSummary({ libraries: [{ libraryId: 2, enabled: false, features: {}, seriesMode: false }] }),
       },
     })
 

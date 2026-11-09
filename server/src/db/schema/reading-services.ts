@@ -5,6 +5,7 @@ import type { SyncRunProgressCounters } from '@bookorbit/types';
 
 import { users } from './auth';
 import { books } from './books';
+import { bookSeries } from './series';
 import { libraries } from './libraries';
 
 export const readingServiceFeatures = pgTable(
@@ -131,9 +132,45 @@ export const readingServiceLibrarySettings = pgTable(
       .references(() => libraries.id, { onDelete: 'cascade' }),
     enabled: boolean('enabled').notNull().default(true),
     features: jsonb('features').$type<Partial<Record<string, boolean>>>().notNull().default({}),
+    // Comic series mode (Readwise only): routes every issue in a folder-per-series library to
+    // one shared Readwise book per series instead of one book per issue. This is a dedicated
+    // column rather than a `features` key on purpose: `features` only ever narrows a
+    // provider-level feature that is already on (see the class doc comment above), while series
+    // mode is an orthogonal routing mode that changes which remote book an issue's activity goes
+    // to, not whether a feature pushes at all.
+    seriesMode: boolean('series_mode').notNull().default(false),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.provider, t.libraryId] })],
+);
+
+/**
+ * Stable mapping from (user, provider, series) to the one shared remote book that represents
+ * every issue of that series once comic series mode is on for its library. `totalPages` is the
+ * last total BookOrbit pushed via `manual_total_pages`, kept so a session push can tell whether
+ * it needs to PATCH the total up before posting pages past it (Readwise rejects a session page
+ * beyond the book's current manual total).
+ */
+export const readingServiceSeriesBookLinks = pgTable(
+  'reading_service_series_book_links',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    seriesId: integer('series_id')
+      .notNull()
+      .references(() => bookSeries.id, { onDelete: 'cascade' }),
+    externalBookId: varchar('external_book_id', { length: 128 }).notNull(),
+    totalPages: integer('total_pages').notNull().default(0),
+    status: varchar('status', { length: 32 }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('rs_series_book_links_user_provider_series').on(t.userId, t.provider, t.seriesId),
+    index('rs_series_book_links_user_provider_external').on(t.userId, t.provider, t.externalBookId),
+  ],
 );
 
 /**
@@ -177,3 +214,5 @@ export type ReadingServiceCacheRow = typeof readingServiceCache.$inferSelect;
 export type NewReadingServiceCacheRow = typeof readingServiceCache.$inferInsert;
 export type ReadingServiceLibrarySettingRow = typeof readingServiceLibrarySettings.$inferSelect;
 export type NewReadingServiceLibrarySettingRow = typeof readingServiceLibrarySettings.$inferInsert;
+export type ReadingServiceSeriesBookLinkRow = typeof readingServiceSeriesBookLinks.$inferSelect;
+export type NewReadingServiceSeriesBookLinkRow = typeof readingServiceSeriesBookLinks.$inferInsert;

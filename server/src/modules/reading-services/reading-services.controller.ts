@@ -237,7 +237,7 @@ export class ReadingServicesController {
     @Param('provider') provider: string,
     @Param('libraryId', ParseIntPipe) libraryId: number,
     @Body() dto: UpdateReadingServiceLibraryDto,
-  ): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }> {
+  ): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>>; seriesMode: boolean }> {
     const typedProvider = this.assertProviderAccess(user, provider) as ReadingServiceProvider;
     return this.libraryScopeService.setLibrarySetting(user, typedProvider, libraryId, dto);
   }
@@ -248,10 +248,10 @@ export class ReadingServicesController {
     @CurrentUser() user: RequestUser,
     @Param('provider') provider: string,
     @Param('libraryId', ParseIntPipe) libraryId: number,
-  ): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>> }> {
+  ): Promise<{ libraryId: number; enabled: boolean; features: Partial<Record<string, boolean>>; seriesMode: boolean }> {
     const typedProvider = this.assertProviderAccess(user, provider) as ReadingServiceProvider;
     await this.libraryScopeService.resetLibrarySetting(user, typedProvider, libraryId);
-    return { libraryId, enabled: true, features: {} };
+    return { libraryId, enabled: true, features: {}, seriesMode: false };
   }
 
   @Post(':provider/migration/preview')

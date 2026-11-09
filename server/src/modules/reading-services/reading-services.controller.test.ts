@@ -479,12 +479,12 @@ describe('ReadingServicesController', () => {
         pull: () => Promise.resolve(undefined),
       });
       const user = makeUser([Permission.ReadwiseSync]);
-      vi.mocked(libraryScopeService.setLibrarySetting).mockResolvedValue({ libraryId: 2, enabled: false, features: {} });
+      vi.mocked(libraryScopeService.setLibrarySetting).mockResolvedValue({ libraryId: 2, enabled: false, features: {}, seriesMode: false });
 
       const result = await controller.updateLibrary(user, 'readwise', 2, { enabled: false });
 
       expect(libraryScopeService.setLibrarySetting).toHaveBeenCalledWith(user, 'readwise', 2, { enabled: false });
-      expect(result).toEqual({ libraryId: 2, enabled: false, features: {} });
+      expect(result).toEqual({ libraryId: 2, enabled: false, features: {}, seriesMode: false });
     });
 
     it('rejects a PUT for a provider the user lacks permission for', async () => {
@@ -517,7 +517,7 @@ describe('ReadingServicesController', () => {
       const result = await controller.resetLibrary(user, 'hardcover', 3);
 
       expect(libraryScopeService.resetLibrarySetting).toHaveBeenCalledWith(user, 'hardcover', 3);
-      expect(result).toEqual({ libraryId: 3, enabled: true, features: {} });
+      expect(result).toEqual({ libraryId: 3, enabled: true, features: {}, seriesMode: false });
     });
 
     it('includes the libraries array from the scope service in the provider summary', async () => {
@@ -531,11 +531,11 @@ describe('ReadingServicesController', () => {
         pull: () => Promise.resolve(undefined),
       });
       const user = makeUser([Permission.ReadwiseSync]);
-      vi.mocked(libraryScopeService.getLibrarySummaries).mockResolvedValue([{ libraryId: 1, enabled: true, features: {} }]);
+      vi.mocked(libraryScopeService.getLibrarySummaries).mockResolvedValue([{ libraryId: 1, enabled: true, features: {}, seriesMode: false }]);
 
       const [summary] = await controller.list(user);
 
-      expect(summary?.libraries).toEqual([{ libraryId: 1, enabled: true, features: {} }]);
+      expect(summary?.libraries).toEqual([{ libraryId: 1, enabled: true, features: {}, seriesMode: false }]);
     });
   });
 

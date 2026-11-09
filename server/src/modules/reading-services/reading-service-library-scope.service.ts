@@ -43,7 +43,7 @@ export class ReadingServiceLibraryScopeService {
     const map = new Map<number, EffectiveLibrarySetting>();
     for (const row of rows) {
       if (!accessible.has(row.libraryId)) continue;
-      map.set(row.libraryId, { enabled: row.enabled, features: row.features ?? {} });
+      map.set(row.libraryId, { enabled: row.enabled, features: row.features ?? {}, seriesMode: row.seriesMode });
     }
     return map;
   }
@@ -59,7 +59,12 @@ export class ReadingServiceLibraryScopeService {
     const settings = await this.getSettingsMap(user, provider);
     return accessible.map((libraryId) => {
       const setting = settings.get(libraryId) ?? DEFAULT_LIBRARY_SETTING;
-      return { libraryId, enabled: setting.enabled, features: setting.features as Partial<Record<ReadingServiceFeature, boolean>> };
+      return {
+        libraryId,
+        enabled: setting.enabled,
+        features: setting.features as Partial<Record<ReadingServiceFeature, boolean>>,
+        seriesMode: setting.seriesMode,
+      };
     });
   }
 
@@ -72,7 +77,7 @@ export class ReadingServiceLibraryScopeService {
     user: RequestUser,
     provider: ReadingServiceProvider,
     libraryId: number,
-    input: { enabled?: boolean; features?: Partial<Record<string, boolean>> },
+    input: { enabled?: boolean; features?: Partial<Record<string, boolean>>; seriesMode?: boolean },
   ): Promise<ReadingServiceLibrarySetting> {
     const accessible = new Set(await this.libraryService.findAccessibleLibraryIds(user));
     if (!accessible.has(libraryId)) {
@@ -90,9 +95,11 @@ export class ReadingServiceLibraryScopeService {
     const current = (await this.getSettingsMap(user, provider)).get(libraryId) ?? DEFAULT_LIBRARY_SETTING;
     const enabled = input.enabled ?? current.enabled;
     const features = input.features ? sanitizedFeatures : current.features;
+    // Comic series mode is Readwise-only (owner decision); any value sent for another provider is ignored.
+    const seriesMode = provider === 'readwise' ? (input.seriesMode ?? current.seriesMode) : false;
 
-    await this.repo.setLibrarySetting(user.id, provider, libraryId, { enabled, features });
-    return { libraryId, enabled, features: features as Partial<Record<ReadingServiceFeature, boolean>> };
+    await this.repo.setLibrarySetting(user.id, provider, libraryId, { enabled, features, seriesMode });
+    return { libraryId, enabled, features: features as Partial<Record<ReadingServiceFeature, boolean>>, seriesMode };
   }
 
   /** Resets a library back to "inherit" by deleting its override row. */

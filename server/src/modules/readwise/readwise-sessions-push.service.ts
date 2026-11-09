@@ -11,6 +11,8 @@ import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksH
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { readwiseSessionContentHash } from './readwise-session-hash.utils';
 import { computePausedSeconds, isSessionSettled, settleAtFor } from './readwise-session-timing.utils';
+import type { ComicSeriesPageRange } from './readwise-comic-series.service';
+import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
@@ -41,8 +43,9 @@ function toCreateItem(
   timezone: string,
   publishToFeed: boolean,
   audiobookTotalSeconds: number | null,
+  seriesPageRange: ComicSeriesPageRange | null,
 ): ReadwiseCreateSessionItem {
-  const format: ReadwiseCreateSessionItem['format'] = session.sessionType === 'listen' ? 'audiobook' : 'ebook';
+  const format: ReadwiseCreateSessionItem['format'] = seriesPageRange ? 'paper' : session.sessionType === 'listen' ? 'audiobook' : 'ebook';
   const item: ReadwiseCreateSessionItem = {
     book_id: externalBookId,
     started_at: session.startedAt.toISOString(),
@@ -56,10 +59,16 @@ function toCreateItem(
   // Readwise counts ended_at - started_at - paused_seconds as reading time; durationSeconds is active time only.
   // Audiobook duration comes from the positions instead, so paused_seconds would not apply there.
   const pausedSeconds = computePausedSeconds(session);
-  if (format === 'ebook' && pausedSeconds > 0) item.paused_seconds = pausedSeconds;
+  if (format !== 'audiobook' && pausedSeconds > 0) item.paused_seconds = pausedSeconds;
   if (session.endProgress !== null) {
     const startProgress = session.progressDelta !== null ? Math.max(0, session.endProgress - session.progressDelta) : session.endProgress;
-    if (format === 'audiobook') {
+    if (seriesPageRange) {
+      // A comic series shares one Readwise book across issues, so progress is expressed as
+      // absolute pages within the series' page range, not a percent of the series as a whole -
+      // see readwise-comic-series.utils.ts for how `pageOffset`/`issuePages` are derived.
+      item.page_at_start = seriesPageRange.pageOffset + Math.round((startProgress / 100) * seriesPageRange.issuePages);
+      item.page_at_end = seriesPageRange.pageOffset + Math.round((session.endProgress / 100) * seriesPageRange.issuePages);
+    } else if (format === 'audiobook') {
       // percent is of the whole audiobook, not of this session: scale by the book's total
       // duration, not session.durationSeconds (readwise-sessions-push.service.test.ts covers the
       // regression). When the total is unknown, fall back to [0, durationSeconds] so Readwise at
@@ -117,6 +126,7 @@ export class ReadwiseSessionsPushService {
     private readonly repair: ReadwiseSessionsRepairService,
     private readonly sweep: ReadwiseSessionsBackfillSweepService,
     private readonly lock: ReadingServiceAdvisoryLockService,
+    private readonly comicSeries: ReadwiseComicSeriesService,
   ) {}
 
   /**
@@ -198,6 +208,20 @@ export class ReadwiseSessionsPushService {
     const link = await this.readingServicesRepo.findBookLink(userId, 'readwise', bookId);
     if (!link || link.remoteDeleted) return { pushedCount: 0, nextSettleAt: null }; // only push sessions for books already on Readwise
 
+    // A book linked to a comic series re-resolves its routing on every push rather than trusting
+    // the stored link blindly: if the library's series mode has since been turned off, routing
+    // comes back null and this issue's sessions are frozen (owner decision) until it's either
+    // re-enabled or the issue gets its own individual link.
+    let seriesPageRange: ComicSeriesPageRange | null = null;
+    if (link.matchMethod === 'series') {
+      const context = await this.comicSeries.resolveRouting(userId, bookId);
+      if (!context) return { pushedCount: 0, nextSettleAt: null };
+      const externalBookId = await this.comicSeries.ensureSeriesExternalBook(userId, token, context, null);
+      if (!externalBookId) return { pushedCount: 0, nextSettleAt: null };
+      seriesPageRange = context.pageRanges.get(bookId) ?? null;
+      if (!seriesPageRange) return { pushedCount: 0, nextSettleAt: null };
+    }
+
     // Unlinks any session whose startedAt/endedAt/durationSeconds changed since it was pushed
     // (a koreader session that grew), so the push below re-POSTs it with the current numbers.
     await this.repair.repairBook(userId, token, bookId);
@@ -224,14 +248,25 @@ export class ReadwiseSessionsPushService {
 
     // One batched lookup per push page, not one per session: a listen session's position needs
     // the audiobook's total duration, but every session in this page shares the same book.
-    const audiobookTotalSeconds = settled.some((session) => session.sessionType === 'listen')
-      ? await this.sessionsRepo.findAudiobookTotalSeconds(bookId)
-      : null;
+    const audiobookTotalSeconds =
+      !seriesPageRange && settled.some((session) => session.sessionType === 'listen')
+        ? await this.sessionsRepo.findAudiobookTotalSeconds(bookId)
+        : null;
 
     let pushedCount = 0;
     for (let i = 0; i < settled.length; i += READWISE_SESSIONS_CREATE_BATCH) {
       const batch = settled.slice(i, i + READWISE_SESSIONS_CREATE_BATCH);
-      pushedCount += await this.pushSessionBatch(userId, token, bookId, link.externalBookId, batch, timezone, publishToFeed, audiobookTotalSeconds);
+      pushedCount += await this.pushSessionBatch(
+        userId,
+        token,
+        bookId,
+        link.externalBookId,
+        batch,
+        timezone,
+        publishToFeed,
+        audiobookTotalSeconds,
+        seriesPageRange,
+      );
     }
     return { pushedCount, nextSettleAt };
   }
@@ -252,8 +287,9 @@ export class ReadwiseSessionsPushService {
     timezone: string,
     publishToFeed: boolean,
     audiobookTotalSeconds: number | null,
+    seriesPageRange: ComicSeriesPageRange | null,
   ): Promise<number> {
-    const items = batch.map((session) => toCreateItem(session, externalBookId, timezone, publishToFeed, audiobookTotalSeconds));
+    const items = batch.map((session) => toCreateItem(session, externalBookId, timezone, publishToFeed, audiobookTotalSeconds, seriesPageRange));
     let results: Awaited<ReturnType<ReadwiseBooksClientService['createSessions']>>;
     try {
       results = await this.client.createSessions(userId, token, items);
@@ -271,7 +307,7 @@ export class ReadwiseSessionsPushService {
       for (const session of batch) {
         try {
           const singleResult = await this.client.createSessions(userId, token, [
-            toCreateItem(session, externalBookId, timezone, publishToFeed, audiobookTotalSeconds),
+            toCreateItem(session, externalBookId, timezone, publishToFeed, audiobookTotalSeconds, seriesPageRange),
           ]);
           pushed += await this.recordSessionResults(userId, [session], singleResult);
         } catch (itemErr) {
