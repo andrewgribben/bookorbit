@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
@@ -31,6 +32,7 @@ function makeService() {
   const sessionsRepo = {
     findPushableSessions: vi.fn().mockResolvedValue([]),
     resolveUserTimeZone: vi.fn().mockResolvedValue('UTC'),
+    findAudiobookTotalSeconds: vi.fn().mockResolvedValue(null),
   } as unknown as ReadwiseSessionsLocalRepository;
   const readwiseRepo = { upsertSettings: vi.fn() } as unknown as ReadwiseRepository;
   const readwiseSettings = { getToken: vi.fn().mockResolvedValue('tok') } as unknown as ReadwiseSettingsService;
@@ -43,6 +45,9 @@ function makeService() {
   const correction = { correctUser: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsCorrectionService;
   const repair = { repairBook: vi.fn().mockResolvedValue(0) } as unknown as ReadwiseSessionsRepairService;
   const sweep = { ensureSwept: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsBackfillSweepService;
+  const lock = {
+    runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
+  } as unknown as ReadingServiceAdvisoryLockService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -55,6 +60,7 @@ function makeService() {
     correction,
     repair,
     sweep,
+    lock,
   );
   return {
     service,
@@ -68,11 +74,43 @@ function makeService() {
     correction,
     repair,
     sweep,
+    lock,
   };
 }
 
 describe('ReadwiseSessionsPushService', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('skips the flush when the advisory lock is already held, returning no settle retries', async () => {
+    const { service, lock, reconcile } = makeService();
+    (lock.runExclusive as any).mockResolvedValueOnce(null);
+    const result = await service.flushUser(1, [10]);
+    expect(result).toEqual({ settleRetries: [] });
+    expect(reconcile.ensureReconciled).not.toHaveBeenCalled();
+  });
+
+  it('a second concurrent flush for the same user is skipped while the first holds the lock', async () => {
+    const { service, lock } = makeService();
+    let releaseFirst: (() => void) | undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    (lock.runExclusive as any)
+      .mockImplementationOnce(async (_op: string, _userId: number, fn: () => Promise<unknown>) => {
+        const result = await fn();
+        releaseFirst?.();
+        return result;
+      })
+      .mockImplementationOnce(async () => {
+        await firstHeld;
+        return null;
+      });
+
+    const [first, second] = await Promise.all([service.flushUser(1, [10]), service.flushUser(1, [20])]);
+    expect(first).toEqual({ settleRetries: [] });
+    expect(second).toEqual({ settleRetries: [] });
+    expect(lock.runExclusive).toHaveBeenCalledTimes(2);
+  });
 
   it('runs the reconcile pass before pushing', async () => {
     const { service, reconcile, sessionsRepo } = makeService();
@@ -181,6 +219,60 @@ describe('ReadwiseSessionsPushService', () => {
     await service.flushUser(1, [10]);
 
     expect((client.createSessions as any).mock.calls[0][2][0].paused_seconds).toBeUndefined();
+  });
+
+  it('scales an audiobook position by the book total duration, not the session duration', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({
+        id: 320,
+        sessionType: 'listen',
+        endedAt: new Date('2026-01-01T01:00:00Z'),
+        durationSeconds: 1200,
+        endProgress: 60,
+        progressDelta: 10,
+      }),
+    ]);
+    (sessionsRepo.findAudiobookTotalSeconds as any).mockResolvedValueOnce(36_000);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-320' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(sessionsRepo.findAudiobookTotalSeconds).toHaveBeenCalledWith(10);
+    const [item] = (client.createSessions as any).mock.calls[0][2];
+    expect(item.format).toBe('audiobook');
+    expect(item.seconds_at_start).toBe(18_000); // 50% of 36000s
+    expect(item.seconds_at_end).toBe(21_600); // 60% of 36000s
+    expect(item.position_seconds_at_start).toBeUndefined();
+    expect(item.percent_at_start).toBeUndefined();
+  });
+
+  it('falls back to [0, durationSeconds] when the audiobook total duration is unknown', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({ id: 321, sessionType: 'listen', endedAt: new Date('2026-01-01T01:00:00Z'), durationSeconds: 900 }),
+    ]);
+    (sessionsRepo.findAudiobookTotalSeconds as any).mockResolvedValueOnce(null);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-321' }]);
+
+    await service.flushUser(1, [10]);
+
+    const [item] = (client.createSessions as any).mock.calls[0][2];
+    expect(item.seconds_at_start).toBe(0);
+    expect(item.seconds_at_end).toBe(900);
+  });
+
+  it('does not look up the audiobook total duration for a page with only ebook sessions', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 322, sessionType: 'read' })]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-322' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(sessionsRepo.findAudiobookTotalSeconds).not.toHaveBeenCalled();
   });
 
   it('sets publish_to_feed from the publish_sessions toggle (default off)', async () => {

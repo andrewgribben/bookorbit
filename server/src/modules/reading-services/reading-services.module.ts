@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { CommonModule } from '../../common/common.module';
 import { LibraryModule } from '../library/library.module';
+import { ReadingServiceAdvisoryLockService } from './reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from './reading-service-cache.service';
 import { ReadingServiceFeaturesService } from './reading-service-features.service';
 import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
@@ -28,6 +29,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServicePrivateAdapterLoaderService,
     ReadingServiceMatchRepository,
     ReadingServiceLibraryScopeService,
+    ReadingServiceAdvisoryLockService,
   ],
   exports: [
     ReadingServicesRepository,
@@ -39,6 +41,7 @@ import { ReadingServicesRepository } from './reading-services.repository';
     ReadingServiceFeaturesService,
     ReadingServiceMatchRepository,
     ReadingServiceLibraryScopeService,
+    ReadingServiceAdvisoryLockService,
   ],
 })
 export class ReadingServicesModule {}

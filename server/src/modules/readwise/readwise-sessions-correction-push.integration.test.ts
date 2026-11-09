@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService } from './readwise-books-client.service';
@@ -81,6 +82,9 @@ describe('Readwise session correction -> push integration', () => {
     const reconcile = { ensureReconciled: vi.fn().mockResolvedValue(undefined) } as unknown as ReadwiseSessionsReconcileService;
     const repair = new ReadwiseSessionsRepairService(sessionsRepo, readingServicesRepo, deleteUnlinkService);
     const sweep = new ReadwiseSessionsBackfillSweepService(sessionsRepo, cache);
+    const lock = {
+      runExclusive: (_op: string, _userId: number, fn: () => Promise<unknown>) => fn(),
+    } as unknown as ReadingServiceAdvisoryLockService;
 
     const pushService = new ReadwiseSessionsPushService(
       client,
@@ -93,6 +97,7 @@ describe('Readwise session correction -> push integration', () => {
       correction,
       repair,
       sweep,
+      lock,
     );
 
     await pushService.flushUser(1, [10]);

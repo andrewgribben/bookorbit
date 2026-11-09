@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { BookService } from '../book/book.service';
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -71,6 +72,9 @@ function makeService() {
   const userBookStatusService = { updateManual: vi.fn() } as unknown as UserBookStatusService;
   const userBookReviewService = { setReview: vi.fn() } as unknown as UserBookReviewService;
   const bookService = { bulkSetRating: vi.fn() } as unknown as BookService;
+  const lock = {
+    runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
+  } as unknown as ReadingServiceAdvisoryLockService;
 
   const service = new ReadwiseBooksPullService(
     client,
@@ -83,6 +87,7 @@ function makeService() {
     userBookStatusService,
     userBookReviewService,
     bookService,
+    lock,
   );
   return {
     service,
@@ -96,6 +101,7 @@ function makeService() {
     userBookStatusService,
     userBookReviewService,
     bookService,
+    lock,
   };
 }
 
@@ -107,6 +113,38 @@ describe('ReadwiseBooksPullService', () => {
     (readwiseSettings.getToken as any).mockResolvedValueOnce(null);
     await service.pullForUser(1);
     expect(client.listBooks).not.toHaveBeenCalled();
+  });
+
+  it('skips the pull when the advisory lock is already held, leaving the cursor untouched', async () => {
+    const { service, client, cache, lock } = makeService();
+    (lock.runExclusive as any).mockResolvedValueOnce(null);
+    await service.pullForUser(1);
+    expect(client.listBooks).not.toHaveBeenCalled();
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it('a second concurrent pull for the same user is skipped while the first holds the lock', async () => {
+    const { service, client, lock } = makeService();
+    client.listBooks = vi.fn().mockResolvedValue({ results: [], next: null }) as any;
+    let releaseFirst: (() => void) | undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    (lock.runExclusive as any)
+      .mockImplementationOnce(async (_op: string, _userId: number, fn: () => Promise<unknown>) => {
+        const result = fn();
+        releaseFirst?.();
+        return result;
+      })
+      .mockImplementationOnce(async () => {
+        await firstHeld;
+        return null;
+      });
+
+    const [first, second] = await Promise.all([service.pullForUser(1), service.pullForUser(1)]);
+    expect(first).toBeUndefined();
+    expect(second).toBeUndefined();
+    expect(lock.runExclusive).toHaveBeenCalledTimes(2);
   });
 
   describe('status mapping rows (section 4.1)', () => {

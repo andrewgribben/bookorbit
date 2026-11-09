@@ -107,8 +107,12 @@ export interface ReadwiseCreateSessionItem {
   format: 'ebook' | 'audiobook' | 'paper';
   percent_at_start?: number;
   percent_at_end?: number;
-  position_seconds_at_start?: number;
-  position_seconds_at_end?: number;
+  // Field names per readwise.io/books_api "Sessions": for format "audiobook", the server reads
+  // seconds_at_start/seconds_at_end, not position_seconds_at_*; an unrecognised field is
+  // silently ignored (docs, "Unknown parameters and fields"), so the wrong name would drop the
+  // position silently rather than erroring.
+  seconds_at_start?: number;
+  seconds_at_end?: number;
   page_at_start?: number;
   page_at_end?: number;
   timezone?: string;

@@ -436,6 +436,10 @@ class FakeLocalDb {
     return this.bookLinks.filter((l) => l.userId === userId && l.provider === provider);
   }
 
+  findBookLinksForBookIds(userId: number, provider: ReadingServiceProvider, bookIds: number[]) {
+    return this.bookLinks.filter((l) => l.userId === userId && l.provider === provider && bookIds.includes(l.bookId));
+  }
+
   recordItemLinks(
     items: { userId: number; provider: ReadingServiceProvider; kind: string; localId: number; externalId: string; contentHash?: string }[],
   ): void {
@@ -505,6 +509,8 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     findBookLinkByExternalId: async (userId: number, provider: ReadingServiceProvider, externalBookId: string) =>
       db.findBookLinkByExternalId(userId, provider, externalBookId),
     findBookLinksForProvider: async (userId: number, provider: ReadingServiceProvider) => db.findBookLinksForProvider(userId, provider),
+    findBookLinksForBookIds: async (userId: number, provider: ReadingServiceProvider, bookIds: number[]) =>
+      db.findBookLinksForBookIds(userId, provider, bookIds),
     recordItemLinks: async (items: any[]) => db.recordItemLinks(items),
     findItemLinkByExternalId: async (userId: number, provider: ReadingServiceProvider, kind: string, externalId: string) =>
       db.findItemLinkByExternalId(userId, provider, kind, externalId),
@@ -578,6 +584,11 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
   const correctionService = new ReadwiseSessionsCorrectionService(sessionsRepo, readwiseRepo, cache, deleteUnlinkService);
   const repairService = new ReadwiseSessionsRepairService(sessionsRepo, readingServicesRepo, deleteUnlinkService);
   const sweepService = new ReadwiseSessionsBackfillSweepService(sessionsRepo, cache);
+  // Fake, single-process stand-in for the real Postgres advisory lock: always free, since this
+  // harness models two instances as two userIds, not two overlapping calls for the same userId.
+  const advisoryLock = {
+    runExclusive: async <T>(_operation: string, _userId: number, fn: () => Promise<T>) => fn(),
+  } as unknown as import('../reading-services/reading-service-advisory-lock.service').ReadingServiceAdvisoryLockService;
   const sessionsPushService = new ReadwiseSessionsPushService(
     booksClient,
     sessionsRepo,
@@ -589,6 +600,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     correctionService,
     repairService,
     sweepService,
+    advisoryLock,
   );
   const sessionsPullService = new ReadwiseSessionsPullService(
     booksClient,
@@ -598,6 +610,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     featuresService,
     cache,
     sessionsRepo,
+    advisoryLock,
   );
 
   const ledgerBackfillStub = {

@@ -5,6 +5,7 @@ import type { ReadStatus } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { BookService } from '../book/book.service';
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -63,6 +64,7 @@ export class ReadwiseBooksPullService {
     private readonly userBookStatusService: UserBookStatusService,
     private readonly userBookReviewService: UserBookReviewService,
     private readonly bookService: BookService,
+    private readonly lock: ReadingServiceAdvisoryLockService,
   ) {}
 
   @Interval(READWISE_BOOKS_PULL_INTERVAL_MS)
@@ -74,7 +76,18 @@ export class ReadwiseBooksPullService {
     }
   }
 
+  /**
+   * Serialized per user via an advisory lock: an overlapping run (two @Interval ticks racing,
+   * or two instances/replicas sharing one database) would apply the same remote change twice
+   * and could race on the pull cursor. A run that loses the race is skipped and retried on the
+   * next interval.
+   */
   async pullForUser(userId: number): Promise<void> {
+    const ran = await this.lock.runExclusive('readwise_books_pull', userId, () => this.pullForUserLocked(userId));
+    if (ran === null) this.logger.debug(`[${EVENT}] [end] userId=${userId} - skipped, another pull already running`);
+  }
+
+  private async pullForUserLocked(userId: number): Promise<void> {
     const token = await this.readwiseSettings.getToken(userId);
     if (!token) return;
 
