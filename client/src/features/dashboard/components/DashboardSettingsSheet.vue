@@ -121,6 +121,16 @@ const {
   moveUp: widgetMoveUp,
   moveDown: widgetMoveDown,
 } = useDraggableList(widgetDraft)
+const {
+  draggedIndex: externalDraggedIndex,
+  dragOverIndex: externalDragOverIndex,
+  onDragStart: onExternalDragStart,
+  onDragOver: onExternalDragOver,
+  onDrop: onExternalDrop,
+  onDragEnd: onExternalDragEnd,
+  moveUp: externalMoveUp,
+  moveDown: externalMoveDown,
+} = useDraggableList(externalShelvesDraft)
 // ── Add / Remove ─────────────────────────────────────────────
 const ALL_TYPES: ScrollerType[] = [
   'continue-reading',
@@ -571,10 +581,42 @@ function handleCancel() {
 
             <div v-else class="mt-3 space-y-2">
               <div
-                v-for="entry in externalShelvesDraft"
+                v-for="(entry, index) in externalShelvesDraft"
                 :key="`${entry.provider}-${entry.shelf}`"
-                class="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+                draggable="true"
+                class="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-[opacity,background-color,border-color] duration-150"
+                :class="{
+                  'border-primary/50 bg-primary/5': externalDragOverIndex === index && externalDraggedIndex !== index,
+                  'opacity-40': externalDraggedIndex === index,
+                }"
+                @dragstart="onExternalDragStart(index)"
+                @dragover="onExternalDragOver($event, index)"
+                @drop="onExternalDrop(index)"
+                @dragend="onExternalDragEnd"
               >
+                <div class="flex shrink-0 flex-col items-center">
+                  <button
+                    type="button"
+                    class="touch-reorder-btn flex h-5 w-5 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-20"
+                    :aria-label="t('dashboard.settings.externalShelvesPicker.moveUp')"
+                    :disabled="index === 0"
+                    @click="externalMoveUp(index)"
+                  >
+                    <ChevronUp :size="13" />
+                  </button>
+                  <div class="drag-handle cursor-grab text-muted-foreground active:cursor-grabbing">
+                    <GripVertical :size="16" />
+                  </div>
+                  <button
+                    type="button"
+                    class="touch-reorder-btn flex h-5 w-5 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-20"
+                    :aria-label="t('dashboard.settings.externalShelvesPicker.moveDown')"
+                    :disabled="index === externalShelvesDraft.length - 1"
+                    @click="externalMoveDown(index)"
+                  >
+                    <ChevronDown :size="13" />
+                  </button>
+                </div>
                 <button
                   type="button"
                   class="relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"

@@ -404,6 +404,41 @@ describe('ReadingServicesController', () => {
     ]);
   });
 
+  it('matches a readwise-* sub-adapter shelf against the Readwise library scope', async () => {
+    const { controller, registry, matchRepository } = makeController();
+    const getShelf = vi.fn().mockResolvedValue([
+      {
+        provider: 'readwise-social',
+        externalId: 'ext1',
+        title: 'Dune',
+        authors: ['Frank Herbert'],
+        bookId: null,
+        friend: null,
+        isbn: '9780441013593',
+      },
+    ]);
+    registry.register({
+      provider: 'readwise-social' as never,
+      permission: Permission.KoboSync,
+      capabilities: { trending_shelf: 'read' },
+      isConnected: () => Promise.resolve(true),
+      migratePage: () => Promise.resolve(null),
+      pull: () => Promise.resolve(undefined),
+      getShelf,
+    });
+    (matchRepository.findCandidates as any).mockResolvedValue([
+      { externalId: '42', isbn13: '9780441013593', isbn10: null, title: 'Dune', author: 'Frank Herbert' },
+    ]);
+    const user = makeUser([Permission.KoboSync]);
+
+    const result = await controller.getShelf(user, 'readwise-social', 'trending');
+
+    expect(matchRepository.findCandidates).toHaveBeenCalledWith(1, 'readwise', ['9780441013593'], ['dune']);
+    expect(result).toEqual([
+      { provider: 'readwise-social', externalId: 'ext1', title: 'Dune', authors: ['Frank Herbert'], bookId: 42, friend: null },
+    ]);
+  });
+
   it('strips isbn/asin hints from a response even when no match was found', async () => {
     const { controller, registry, matchRepository } = makeController();
     const getShelf = vi.fn().mockResolvedValue([
