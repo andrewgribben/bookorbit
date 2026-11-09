@@ -34,6 +34,10 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
     timezone,
     publish_to_feed: publishToFeed,
   };
+  // Readwise counts ended_at - started_at - paused_seconds as reading time; durationSeconds is active time only.
+  // Audiobook duration comes from the positions instead, so paused_seconds would not apply there.
+  const pausedSeconds = Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 1000) - session.durationSeconds;
+  if (format === 'ebook' && pausedSeconds > 0) item.paused_seconds = pausedSeconds;
   if (session.endProgress !== null) {
     const startProgress = session.progressDelta !== null ? Math.max(0, session.endProgress - session.progressDelta) : session.endProgress;
     if (format === 'audiobook') {

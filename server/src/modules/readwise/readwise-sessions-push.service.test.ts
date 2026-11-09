@@ -117,6 +117,35 @@ describe('ReadwiseSessionsPushService', () => {
     ]);
   });
 
+  it('sends idle time inside a reading session as paused_seconds so Readwise counts active time only', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({ id: 300, startedAt: new Date('2026-01-01T00:00:00Z'), endedAt: new Date('2026-01-01T01:00:00Z'), durationSeconds: 1200 }),
+      session({ id: 301 }),
+    ]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-300' }, { id: 'ext-301' }]);
+
+    await service.flushUser(1, [10]);
+
+    const [first, second] = (client.createSessions as any).mock.calls[0][2];
+    expect(first.paused_seconds).toBe(2400);
+    expect(second.paused_seconds).toBeUndefined();
+  });
+
+  it('does not send paused_seconds for listening sessions', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({ id: 310, sessionType: 'listen', endedAt: new Date('2026-01-01T01:00:00Z'), durationSeconds: 1200 }),
+    ]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-310' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect((client.createSessions as any).mock.calls[0][2][0].paused_seconds).toBeUndefined();
+  });
+
   it('sets publish_to_feed from the publish_sessions toggle (default off)', async () => {
     const { service, readingServicesRepo, sessionsRepo, client, featuresService } = makeService();
     (featuresService.getFeatures as any).mockResolvedValueOnce({ publish_sessions: true });
