@@ -149,6 +149,12 @@ export const READWISE_SESSIONS_CORRECTION_DONE_TTL_MS = READWISE_BOOKS_PULL_CURS
 // communicate through exported services only (AGENTS.md). Other sources are pushed as soon as
 // eligible; see the plan doc for what was checked on web/Android.
 export const READWISE_KOREADER_SETTLE_GAP_SECONDS = 1800;
+// Web, Android and iOS also checkpoint an open session and later supersede it with the same id,
+// so their sessions can grow too. The readers close a session after 10 minutes away, so a session
+// quiet for that long is final. Waiting avoids pushing a partial session and then deleting and
+// re-posting it (which would also recreate its feed post).
+export const READWISE_SESSION_SETTLE_GAP_SECONDS = 600;
+export const READWISE_SESSIONS_FEED_MAX_AGE_MS = 24 * 60 * 60_000;
 // Bounds for the scheduler's "retry once settled" timer: never fire sooner than this (avoids a
 // tight retry loop) and never wait longer than this even if a session's settle time is far off
 // (a later READING_SESSION_SAVED event will requestPush again anyway).

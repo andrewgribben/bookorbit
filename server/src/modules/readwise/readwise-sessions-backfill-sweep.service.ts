@@ -4,7 +4,6 @@ import { ReadingServiceCacheService } from '../reading-services/reading-service-
 import { isSessionSettled } from './readwise-session-timing.utils';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 import {
-  READWISE_KOREADER_SETTLE_GAP_SECONDS,
   READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS,
   READWISE_SESSIONS_SWEEP_CURSOR_CACHE_KEY,
   READWISE_SESSIONS_SWEEP_CURSOR_TTL_MS,
@@ -59,7 +58,7 @@ export class ReadwiseSessionsBackfillSweepService {
       scanned += rows.length;
 
       for (const row of rows) {
-        if (isSessionSettled(row, READWISE_KOREADER_SETTLE_GAP_SECONDS)) bookIds.add(row.bookId);
+        if (isSessionSettled(row)) bookIds.add(row.bookId);
       }
 
       cursor = rows[rows.length - 1]!.id;

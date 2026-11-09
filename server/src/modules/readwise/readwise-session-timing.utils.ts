@@ -1,3 +1,5 @@
+import { READWISE_KOREADER_SETTLE_GAP_SECONDS, READWISE_SESSION_SETTLE_GAP_SECONDS } from './readwise.constants';
+
 /** Minimal shape needed to work out how much of a session was idle time, not reading time. */
 export interface TimedSession {
   startedAt: Date;
@@ -35,10 +37,14 @@ export interface SettleCheckSession {
  * `settleGapSeconds` since modules don't import each other's internals): a later upload within
  * that gap of the session's current `endedAt` extends the same row instead of starting a new
  * one. So a koreader session has only truly finished growing once that gap has elapsed since it
- * last ended. Every other source is pushed as soon as it is eligible, matching existing
- * behaviour (see docs/plans/readwise-session-timing.md for what was checked on web/Android).
+ * last ended. Other sources checkpoint open sessions and supersede them later, so they wait
+ * for READWISE_SESSION_SETTLE_GAP_SECONDS of quiet, matching the readers' 10-minute session gap.
  */
-export function isSessionSettled(session: SettleCheckSession, settleGapSeconds: number, now: Date = new Date()): boolean {
-  if (session.source !== 'koreader') return true;
-  return now.getTime() - session.endedAt.getTime() >= settleGapSeconds * 1000;
+export function settleAtFor(session: SettleCheckSession): Date {
+  const gapSeconds = session.source === 'koreader' ? READWISE_KOREADER_SETTLE_GAP_SECONDS : READWISE_SESSION_SETTLE_GAP_SECONDS;
+  return new Date(session.endedAt.getTime() + gapSeconds * 1000);
+}
+
+export function isSessionSettled(session: SettleCheckSession, now: Date = new Date()): boolean {
+  return now.getTime() >= settleAtFor(session).getTime();
 }

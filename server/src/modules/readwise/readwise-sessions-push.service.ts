@@ -9,7 +9,7 @@ import type { ReadwiseCreateSessionItem } from './readwise-books-client.service'
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { readwiseSessionContentHash } from './readwise-session-hash.utils';
-import { computePausedSeconds, isSessionSettled } from './readwise-session-timing.utils';
+import { computePausedSeconds, isSessionSettled, settleAtFor } from './readwise-session-timing.utils';
 import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
@@ -17,7 +17,7 @@ import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correctio
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
 import { ReadwiseSessionsRepairService } from './readwise-sessions-repair.service';
 import {
-  READWISE_KOREADER_SETTLE_GAP_SECONDS,
+  READWISE_SESSIONS_FEED_MAX_AGE_MS,
   READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS,
   READWISE_SESSIONS_PUSH_PAGE_SIZE,
   READWISE_SESSIONS_CREATE_BATCH,
@@ -42,7 +42,9 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
     ended_at: session.endedAt.toISOString(),
     format,
     timezone,
-    publish_to_feed: publishToFeed,
+    // Old sessions (a backfill, a sweep, or a correction re-post) count on Readwise but must not
+    // flood the feed with posts for reading done days or weeks ago.
+    publish_to_feed: publishToFeed && Date.now() - session.endedAt.getTime() <= READWISE_SESSIONS_FEED_MAX_AGE_MS,
   };
   // Readwise counts ended_at - started_at - paused_seconds as reading time; durationSeconds is active time only.
   // Audiobook duration comes from the positions instead, so paused_seconds would not apply there.
@@ -182,11 +184,11 @@ export class ReadwiseSessionsPushService {
     const settled: PushableSession[] = [];
     let nextSettleAt: Date | null = null;
     for (const session of sessions) {
-      if (isSessionSettled(session, READWISE_KOREADER_SETTLE_GAP_SECONDS)) {
+      if (isSessionSettled(session)) {
         settled.push(session);
         continue;
       }
-      const settleAt = new Date(session.endedAt.getTime() + READWISE_KOREADER_SETTLE_GAP_SECONDS * 1000);
+      const settleAt = settleAtFor(session);
       if (!nextSettleAt || settleAt < nextSettleAt) nextSettleAt = settleAt;
     }
     if (settled.length === 0) return { pushedCount: 0, nextSettleAt };

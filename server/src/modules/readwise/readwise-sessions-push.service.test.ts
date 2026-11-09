@@ -187,12 +187,27 @@ describe('ReadwiseSessionsPushService', () => {
     const { service, readingServicesRepo, sessionsRepo, client, featuresService } = makeService();
     (featuresService.getFeatures as any).mockResolvedValueOnce({ publish_sessions: true });
     (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
-    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 200 })]);
+    const endedAt = new Date(Date.now() - 60 * 60_000);
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([
+      session({ id: 200, startedAt: new Date(endedAt.getTime() - 600_000), endedAt }),
+    ]);
     (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-200' }]);
 
     await service.flushUser(1, [10]);
 
     expect(client.createSessions).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ publish_to_feed: true })]);
+  });
+
+  it('does not publish sessions that ended more than a day ago, even with publish_sessions on', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client, featuresService } = makeService();
+    (featuresService.getFeatures as any).mockResolvedValueOnce({ publish_sessions: true });
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 201 })]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-201' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(client.createSessions).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ publish_to_feed: false })]);
   });
 
   it('disables the connection on a 403 and stops the batch', async () => {
