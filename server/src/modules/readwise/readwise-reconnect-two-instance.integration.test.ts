@@ -519,7 +519,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     getFeatures: async () => ({}),
   } as unknown as import('../reading-services/reading-service-features.service').ReadingServiceFeaturesService;
   const libraryScopeService = {
-    getEffectiveLibraryIds: async () => [1],
+    getEffectiveLibraryIdsForUserId: async () => [1],
   } as unknown as import('../reading-services/reading-service-library-scope.service').ReadingServiceLibraryScopeService;
 
   const sessionsRepo = {

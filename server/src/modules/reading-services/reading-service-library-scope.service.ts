@@ -27,6 +27,15 @@ export class ReadingServiceLibraryScopeService {
     return effectiveLibraryIdsForFeature(accessible, settings, feature);
   }
 
+  /**
+   * For background work that only has a user id. Superusers get every library without access rows,
+   * so a stand-in user that is never a superuser would see no libraries at all.
+   */
+  async getEffectiveLibraryIdsForUserId(userId: number, provider: ReadingServiceProvider, feature: ReadingServiceFeature | null): Promise<number[]> {
+    const isSuperuser = await this.repo.isSuperuser(userId);
+    return this.getEffectiveLibraryIds({ id: userId, isSuperuser } as RequestUser, provider, feature);
+  }
+
   /** Raw settings map keyed by library id, dropping ids the user has since lost access to. */
   private async getSettingsMap(user: RequestUser, provider: ReadingServiceProvider): Promise<Map<number, EffectiveLibrarySetting>> {
     const accessible = new Set(await this.libraryService.findAccessibleLibraryIds(user));

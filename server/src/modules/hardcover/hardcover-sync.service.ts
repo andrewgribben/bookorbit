@@ -39,7 +39,6 @@ import {
 } from './hardcover-sync-policy';
 import { isLibraryInEffectiveScope } from '../reading-services/library-scope.utils';
 import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
-import type { RequestUser } from '../../common/types/request-user';
 
 const LINKED_BOOKS_LIMIT = 200;
 
@@ -183,8 +182,7 @@ export class HardcoverSyncService {
 
   /** Enabled-only (no per-field push yet): a library is in scope for the overall decision when it's enabled. */
   private getLibraryScope(userId: number): Promise<number[]> {
-    const pseudoUser = { id: userId, isSuperuser: false } as RequestUser;
-    return this.libraryScopeService.getEffectiveLibraryIds(pseudoUser, 'hardcover', null);
+    return this.libraryScopeService.getEffectiveLibraryIdsForUserId(userId, 'hardcover', null);
   }
 
   async syncBook(userId: number, bookId: number): Promise<HardcoverSyncBookResult> {

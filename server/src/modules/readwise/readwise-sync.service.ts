@@ -95,8 +95,7 @@ export class ReadwiseSyncService {
 
   /** Library ids where the `highlights` feature is effectively allowed; intersected with access. */
   private async resolveScopedLibraryIds(userId: number): Promise<number[]> {
-    const pseudoUser = { id: userId, isSuperuser: false } as import('../../common/types/request-user').RequestUser;
-    return this.libraryScopeService.getEffectiveLibraryIds(pseudoUser, 'readwise', 'highlights');
+    return this.libraryScopeService.getEffectiveLibraryIdsForUserId(userId, 'readwise', 'highlights');
   }
 
   /** Runs the export-based ledger backfill once per user; a no-op on every later flush. */

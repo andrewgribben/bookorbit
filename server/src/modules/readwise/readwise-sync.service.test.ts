@@ -40,7 +40,7 @@ const mockLedgerBackfill = {
 };
 
 const mockLibraryScopeService = {
-  getEffectiveLibraryIds: vi.fn(),
+  getEffectiveLibraryIdsForUserId: vi.fn(),
 };
 
 function makeService() {
@@ -91,7 +91,7 @@ describe('ReadwiseSyncService', () => {
     mockTokenService.getToken.mockResolvedValue('tok');
     mockCache.get.mockResolvedValue(true); // ledger already backfilled by default
     mockCache.set.mockResolvedValue(undefined);
-    mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValue([1]);
+    mockLibraryScopeService.getEffectiveLibraryIdsForUserId.mockResolvedValue([1]);
   });
 
   describe('flush guards', () => {
@@ -125,9 +125,9 @@ describe('ReadwiseSyncService', () => {
 
     it('skips the push entirely when the highlights feature is scoped out of every accessible library', async () => {
       mockRepo.findSettings.mockResolvedValue(enabledSettings());
-      mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValueOnce([]);
+      mockLibraryScopeService.getEffectiveLibraryIdsForUserId.mockResolvedValueOnce([]);
       await makeService().flush(1);
-      expect(mockLibraryScopeService.getEffectiveLibraryIds).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 'readwise', 'highlights');
+      expect(mockLibraryScopeService.getEffectiveLibraryIdsForUserId).toHaveBeenCalledWith(1, 'readwise', 'highlights');
       expect(mockClient.createHighlights).not.toHaveBeenCalled();
       expect(mockRepo.findPushableHighlights).not.toHaveBeenCalled();
     });

@@ -48,6 +48,11 @@ export class ReadingServicesRepository {
 
   // ---- Library settings ----
 
+  async isSuperuser(userId: number): Promise<boolean> {
+    const [user] = await this.db.select({ isSuperuser: schema.users.isSuperuser }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    return user?.isSuperuser ?? false;
+  }
+
   /** Only rows that override the "inherit" default; the service layer fills in defaults for the rest. */
   async findLibrarySettings(userId: number, provider: ReadingServiceProvider): Promise<ReadingServiceLibrarySettingRow[]> {
     return this.db.query.readingServiceLibrarySettings.findMany({
