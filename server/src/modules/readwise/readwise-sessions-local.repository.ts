@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
@@ -29,6 +29,16 @@ export interface PulledReadwiseSession {
   startedAt: Date;
   endedAt: Date;
   format: 'ebook' | 'audiobook' | 'paper';
+}
+
+export interface LinkedSessionForCorrection {
+  id: number;
+  bookId: number;
+  externalId: string;
+  startedAt: Date;
+  endedAt: Date;
+  durationSeconds: number;
+  sessionType: string;
 }
 
 /**
@@ -133,6 +143,68 @@ export class ReadwiseSessionsLocalRepository {
       )
       .orderBy(asc(schema.readingSessions.id))
       .limit(limit);
+  }
+
+  /**
+   * One-time correction pass (docs/plans/readwise-session-timing.md §2d): pages through every
+   * session this user already pushed to Readwise (has a `reading_service_item_links` row),
+   * oldest local id first, keyset-paginated by `afterId` so a resumed run never re-scans
+   * earlier rows. Excludes pulled-back sessions (`source='readwise'`, already correct) and
+   * listening sessions (`sessionType='listen'`, Readwise derives their duration from position
+   * fields, not `paused_seconds`).
+   */
+  async findLinkedSessionsForCorrection(userId: number, afterId: number, limit: number): Promise<LinkedSessionForCorrection[]> {
+    return this.db
+      .select({
+        id: schema.readingSessions.id,
+        bookId: schema.readingSessions.bookId,
+        externalId: schema.readingServiceItemLinks.externalId,
+        startedAt: schema.readingSessions.startedAt,
+        endedAt: schema.readingSessions.endedAt,
+        durationSeconds: schema.readingSessions.durationSeconds,
+        sessionType: schema.readingSessions.sessionType,
+      })
+      .from(schema.readingServiceItemLinks)
+      .innerJoin(
+        schema.readingSessions,
+        and(eq(schema.readingServiceItemLinks.localId, schema.readingSessions.id), eq(schema.readingSessions.userId, userId)),
+      )
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'session'),
+          isNull(schema.readingServiceItemLinks.deletedAt),
+          ne(schema.readingSessions.source, 'readwise'),
+          ne(schema.readingSessions.sessionType, 'listen'),
+          sql`${schema.readingSessions.id} > ${afterId}`,
+        ),
+      )
+      .orderBy(asc(schema.readingSessions.id))
+      .limit(limit);
+  }
+
+  /**
+   * Soft-deletes the readwise session links for these local ids, scoped to this user. Used by
+   * the one-time correction pass right after the matching Readwise session was confirmed gone
+   * (deleted, or already `not_found`), so the existing push path - which already sends
+   * `paused_seconds` for every session it pushes - re-POSTs it with the correct numbers on the
+   * same or next flush.
+   */
+  async unlinkSessions(userId: number, localIds: number[]): Promise<void> {
+    if (localIds.length === 0) return;
+    await this.db
+      .update(schema.readingServiceItemLinks)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'session'),
+          inArray(schema.readingServiceItemLinks.localId, localIds),
+          isNull(schema.readingServiceItemLinks.deletedAt),
+        ),
+      );
   }
 
   /**

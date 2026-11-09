@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
+import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsLocalRepository, type PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
@@ -36,6 +37,7 @@ function makeService() {
   } as unknown as ReadingServicesRepository;
   const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
   const reconcile = { ensureReconciled: vi.fn().mockResolvedValue(undefined) } as unknown as ReadwiseSessionsReconcileService;
+  const correction = { correctUser: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsCorrectionService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -45,8 +47,9 @@ function makeService() {
     readingServicesRepo,
     featuresService,
     reconcile,
+    correction,
   );
-  return { service, client, sessionsRepo, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, reconcile };
+  return { service, client, sessionsRepo, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, reconcile, correction };
 }
 
 describe('ReadwiseSessionsPushService', () => {
@@ -57,6 +60,21 @@ describe('ReadwiseSessionsPushService', () => {
     await service.flushUser(1, [10]);
     expect(reconcile.ensureReconciled).toHaveBeenCalledWith(1, 'tok');
     expect(sessionsRepo.findPushableSessions).not.toHaveBeenCalled();
+  });
+
+  it('runs the correction pass after reconcile, before pushing', async () => {
+    const { service, reconcile, correction } = makeService();
+    await service.flushUser(1, [10]);
+    expect(correction.correctUser).toHaveBeenCalledWith(1, 'tok');
+    expect(reconcile.ensureReconciled).toHaveBeenCalled();
+  });
+
+  it('pushes books whose sessions the correction unlinked, even when they had no new activity', async () => {
+    const { service, correction, readingServicesRepo } = makeService();
+    (correction.correctUser as any).mockResolvedValueOnce([20, 10]);
+    await service.flushUser(1, [10]);
+    const pushedBookIds = (readingServicesRepo.findBookLink as any).mock.calls.map((call: unknown[]) => call[2]);
+    expect(pushedBookIds).toEqual([10, 20]);
   });
 
   it('does nothing when there is no token', async () => {

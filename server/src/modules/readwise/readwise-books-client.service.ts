@@ -115,6 +115,18 @@ export interface ReadwiseCreateSessionItem {
   publish_to_feed?: boolean;
 }
 
+/**
+ * One result per id requested from `DELETE /sessions`, in order (readwise.io/books_api,
+ * "Delete sessions"). `error.code` is `not_found` for an id that is not this account's, or
+ * already deleted; the correction pass (readwise-sessions-correction.service.ts) treats that
+ * the same as `status: 'deleted'`, since the end state (gone from Readwise) is identical.
+ */
+export interface ReadwiseDeleteSessionResult {
+  id: string;
+  status: 'deleted' | 'error';
+  error: { code?: string; message?: string } | null;
+}
+
 export interface ReadwiseStatsSummary {
   books_started: number;
   books_finished: number;
@@ -200,6 +212,7 @@ interface ReadwiseWriteResponse<T> {
 
 type RawBookWriteResult = Omit<ReadwiseBookCreateResult, 'book_id' | 'id'> & { book_id?: string | number | null; id?: string | number | null };
 type RawSessionWriteResult = { status?: string; session_id?: string | number | null; id?: string | number | null; error?: string | null };
+type RawDeleteSessionResult = { id?: string | number | null; status?: string; error?: { code?: string; message?: string } | null };
 
 /** Thrown when a write call succeeded at HTTP level but the body is not the documented shape; the write may have landed, so callers must not blindly retry. */
 export class ReadwiseUnexpectedResponseError extends Error {
@@ -284,9 +297,24 @@ export class ReadwiseBooksClientService {
     }));
   }
 
-  async deleteSessions(userId: number, token: string, ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    await this.request<void>(userId, token, 'DELETE', READWISE_SESSIONS_URL, { ids });
+  /**
+   * DELETEs 1-100 sessions by Readwise session id, via the query string as the live docs
+   * (readwise.io/books_api, "Delete sessions") require: "Times and positions cannot change.
+   * To correct them, delete the session and record it again." An id that is not this
+   * account's, or already deleted, comes back as a per-id `error.code: 'not_found'` result,
+   * not an HTTP error - the whole request still answers 200.
+   */
+  async deleteSessions(userId: number, token: string, ids: string[]): Promise<ReadwiseDeleteSessionResult[]> {
+    if (ids.length === 0) return [];
+    const query = toQueryString({ ids: ids.join(',') });
+    const result = await this.request<{ results?: RawDeleteSessionResult[] }>(userId, token, 'DELETE', `${READWISE_SESSIONS_URL}${query}`);
+    const results = result?.results;
+    if (!Array.isArray(results) || results.length !== ids.length) throw new ReadwiseUnexpectedResponseError('DELETE /sessions');
+    return results.map((r) => ({
+      id: r.id != null ? String(r.id) : '',
+      status: r.status === 'deleted' ? 'deleted' : 'error',
+      error: r.error ?? null,
+    }));
   }
 
   async statsSummary(userId: number, token: string, year: number): Promise<ReadwiseStatsSummary> {

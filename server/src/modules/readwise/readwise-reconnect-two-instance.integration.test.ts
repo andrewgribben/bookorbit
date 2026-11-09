@@ -7,6 +7,7 @@ import { ReadingServiceRegistry } from '../reading-services/reading-service-regi
 import { ReadwiseBooksMigrationService } from './readwise-books-migration.service';
 import type { LocalBookForMigration } from './readwise-books-local-books.repository';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
+import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsPullService } from './readwise-sessions-pull.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
 import { ReadwiseSyncService } from './readwise-sync.service';
@@ -532,6 +533,10 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     insertPulledSession: async (userId: number, session: any) => db.insertPulledSession(userId, session),
     removePulledSession: async (userId: number, localId: number) => db.removePulledSession(userId, localId),
     resolveUserTimeZone: async () => 'UTC',
+    // No previously-pushed sessions exist in this harness's dataset, so the one-time correction
+    // pass always finds nothing to correct; this file exercises reconnect-safety, not correction.
+    findLinkedSessionsForCorrection: async () => [] as never[],
+    unlinkSessions: async () => undefined,
   } as unknown as import('./readwise-sessions-local.repository').ReadwiseSessionsLocalRepository;
 
   const registry = new ReadingServiceRegistry();
@@ -565,6 +570,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     sessionsRepo,
     syncRunServiceStub,
   );
+  const correctionService = new ReadwiseSessionsCorrectionService(booksClient, sessionsRepo, readwiseRepo, cache);
   const sessionsPushService = new ReadwiseSessionsPushService(
     booksClient,
     sessionsRepo,
@@ -573,6 +579,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     readingServicesRepo,
     featuresService,
     reconcileService,
+    correctionService,
   );
   const sessionsPullService = new ReadwiseSessionsPullService(
     booksClient,

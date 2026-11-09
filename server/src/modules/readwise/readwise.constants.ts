@@ -117,6 +117,31 @@ export const READWISE_HIGHLIGHTS_EXPORT_PAGE_SIZE = 1000;
 export const READWISE_RECAP_CACHE_KEY_PREFIX = 'recap';
 export const READWISE_RECAP_CACHE_TTL_MS = 60 * 60_000;
 
+// One-time correction pass (docs/plans/readwise-session-timing.md §2d): sessions pushed before
+// `paused_seconds` existed have an inflated reading time on Readwise. Per readwise.io/books_api
+// ("Update sessions" / "Delete sessions"): PATCH cannot change times or positions ("delete the
+// session and record it again"), and `POST /sessions` is never deduped, so the only correct fix
+// is DELETE first, then unlink locally so the existing push path (which already sends
+// paused_seconds) re-POSTs the session with the right numbers. See
+// readwise-sessions-correction.service.ts.
+// How many linked sessions to scan per DB page, and how many pages per call; keeps one
+// `flushUser` call bounded even with a large correction backlog.
+export const READWISE_SESSIONS_CORRECTION_PAGE_SIZE = 200;
+export const READWISE_SESSIONS_CORRECTION_MAX_PAGES_PER_RUN = 2;
+// Kept well under the documented 1-100 items/request for DELETE, matching the push path's
+// create-batch size for one consistent, conservative batch size across sessions endpoints.
+export const READWISE_SESSIONS_CORRECTION_BATCH = READWISE_SESSIONS_CREATE_BATCH;
+export const READWISE_SESSIONS_CORRECTION_CURSOR_CACHE_KEY = 'sessions-correction-cursor';
+export const READWISE_SESSIONS_CORRECTION_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+// A session only needs correcting once its wall-clock span (ended_at - started_at) diverges from
+// BookOrbit's own active-time measurement by at least this much; smaller gaps are normal clock
+// skew/rounding, not worth a delete-and-resend round trip.
+export const READWISE_SESSIONS_CORRECTION_MIN_GAP_SECONDS = 60;
+// Marks the pass fully done per user (every linked session scanned, nothing left to correct) so
+// it never runs again, the same mechanism as READWISE_SESSIONS_RECONCILED_CACHE_KEY above.
+export const READWISE_SESSIONS_CORRECTION_DONE_CACHE_KEY = 'sessions-correction-done';
+export const READWISE_SESSIONS_CORRECTION_DONE_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+
 // S7 "Owned elsewhere" shelf: Readwise-only books classified as owned (readwise-book-ownership.ts),
 // excluding anything already linked to a BookOrbit book. Cached longer than the recap widget
 // since it needs a full remote-library page plus a full local-library page to build.
