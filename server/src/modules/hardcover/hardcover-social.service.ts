@@ -15,57 +15,78 @@ const FRIENDS_FINISHED_WINDOW_DAYS = 90;
 const STATUS_CURRENTLY_READING = 2;
 const STATUS_READ = 3;
 
+// Sentinel used in place of a real "since" date when no time window applies, so a single
+// query shape can always include the `last_read_date` filter (Hasura null comparisons are
+// unreliable, so we avoid `{ _gte: null }` entirely).
+const EPOCH_DATE = '1970-01-01';
+
 /**
- * UNVERIFIED query. `followed_user_books` and its argument shapes are confirmed as existing root
- * fields (research/hardcover-api.md §4, ACT/UB) but their exact `where`/`order_by` arguments are
- * inferred from the general Hasura pattern Hardcover uses elsewhere, not from introspection or a
- * live call. Verify with `__schema` against a real token before relying on this in production.
+ * Verified against docs.hardcover.app/api/graphql/schemas/userbooks and the published
+ * schema.graphql (github.com/hardcoverapp/hardcover-docs). `followed_user_books` itself only
+ * exposes `book`, `book_id`, `follower_user`, `follower_user_id`, `user`, `user_book`,
+ * `user_book_id` and `user_id`; reading status (`status_id`) and completion date
+ * (`last_read_date`) live on the related `user_books` row, reached via the `user_book`
+ * relation, and must be filtered/ordered through `where: { user_book: { ... } }` rather than
+ * as top-level fields (the live bug: `last_read_date` does not exist directly on
+ * `followed_user_books_bool_exp`).
  */
 const FOLLOWED_USER_BOOKS_QUERY = `
-query FollowedUserBooks($statusId: Int!, $sinceDate: date, $limit: Int!) {
+query FollowedUserBooks($statusId: Int!, $sinceDate: date!, $limit: Int!) {
   followed_user_books(
-    where: { status_id: { _eq: $statusId }, last_read_date: { _gte: $sinceDate } }
-    order_by: { last_read_date: desc }
+    where: { user_book: { status_id: { _eq: $statusId }, last_read_date: { _gte: $sinceDate } } }
+    order_by: { user_book: { last_read_date: desc } }
     limit: $limit
   ) {
-    id
-    status_id
-    last_read_date
-    user {
-      id
-      username
-      name
-      image { url }
-    }
-    book {
-      id
-      slug
-      title
-      cached_contributors { author { name } }
-      image { url }
-      editions(limit: 1, order_by: { users_count: desc }) {
-        isbn_10
-        isbn_13
+    user_book_id
+    user_book {
+      status_id
+      last_read_date
+      user {
+        id
+        username
+        name
+        image { url }
+      }
+      book {
+        id
+        slug
+        title
+        contributions { author { name } }
+        image { url }
+        editions(limit: 1, order_by: { users_count: desc }) {
+          isbn_10
+          isbn_13
+        }
       }
     }
   }
 }`;
 
 /**
- * UNVERIFIED query. `books_trending` is confirmed as a root field name only (research
- * §4: "C for the root name; I for arguments"). Its arguments and return shape are not documented
- * anywhere scraped for that research pass. This assumes a `limit` argument and a flat list of
- * book-shaped rows; `parseTrendingResponse` below treats any other shape as empty rather than
- * throwing, and a real call must confirm this before the trending/recommendations shelves are
- * considered reliable.
+ * Verified against docs.hardcover.app/api/graphql/schemas/books. `books_trending` returns a
+ * `TrendingBookType` (`{ error, ids }`) of ranked book ids only, not book rows, so the fields
+ * selected here must stay scalar (the live bug: selecting `id` as a sub-field failed because
+ * `TrendingBookType` has no `id` field). Book details are fetched separately below.
  */
 const BOOKS_TRENDING_QUERY = `
 query BooksTrending($limit: Int!) {
-  books_trending(limit: $limit) {
+  books_trending(duration: month, limit: $limit) {
+    ids
+    error
+  }
+}`;
+
+/**
+ * Verified against docs.hardcover.app/api/graphql/schemas/books: `id` accepts the standard
+ * Hasura `Int_comparison_exp`, so `_in` is a supported filter for a batched lookup.
+ */
+const BOOKS_BY_IDS_QUERY = `
+query BooksByIds($ids: [Int!]!) {
+  books(where: { id: { _in: $ids } }) {
     id
     slug
     title
-    cached_contributors { author { name } }
+    contributions { author { name } }
     image { url }
     editions(limit: 1, order_by: { users_count: desc }) {
       isbn_10
@@ -75,10 +96,10 @@ query BooksTrending($limit: Int!) {
 }`;
 
 /**
- * Hardcover has no algorithmic recommendations endpoint (research §4: "NA as an algorithmic
- * feed"). This is a documented best-effort proxy: the most-added books (`users_count desc`),
- * with books already linked to the user's library filtered out below. Revisit once a real
- * recommendations field is confirmed to exist.
+ * Hardcover has no algorithmic recommendations endpoint as of this writing. This remains a
+ * documented best-effort proxy: the most-shelved books (`users_count desc`), with books already
+ * linked to the user's library filtered out below. Revisit if a real recommendations field is
+ * ever added.
  */
 const POPULAR_BOOKS_QUERY = `
 query PopularBooks($limit: Int!) {
@@ -86,7 +107,7 @@ query PopularBooks($limit: Int!) {
     id
     slug
     title
-    cached_contributors { author { name } }
+    contributions { author { name } }
     image { url }
     editions(limit: 1, order_by: { users_count: desc }) {
       isbn_10
@@ -99,23 +120,29 @@ interface HardcoverSocialBook {
   id: number;
   slug?: string | null;
   title?: string | null;
-  cached_contributors?: { author?: { name?: string | null } | null }[] | null;
+  contributions?: { author?: { name?: string | null } | null }[] | null;
   image?: { url?: string | null } | null;
   editions?: { isbn_10?: string | null; isbn_13?: string | null }[] | null;
 }
 
 interface FollowedUserBooksResult {
   followed_user_books?: {
-    id: number;
-    status_id: number;
-    last_read_date?: string | null;
-    user?: { id?: number; username?: string | null; name?: string | null; image?: { url?: string | null } | null } | null;
-    book?: HardcoverSocialBook | null;
+    user_book_id?: number | null;
+    user_book?: {
+      status_id: number;
+      last_read_date?: string | null;
+      user?: { id?: number; username?: string | null; name?: string | null; image?: { url?: string | null } | null } | null;
+      book?: HardcoverSocialBook | null;
+    } | null;
   }[];
 }
 
 interface TrendingResult {
-  books_trending?: unknown;
+  books_trending?: { ids?: (number | null)[] | null; error?: string | null } | null;
+}
+
+interface BooksByIdsResult {
+  books?: HardcoverSocialBook[];
 }
 
 interface PopularBooksResult {
@@ -123,7 +150,7 @@ interface PopularBooksResult {
 }
 
 function bookAuthors(book: HardcoverSocialBook): string[] {
-  return (book.cached_contributors ?? []).map((c) => c.author?.name).filter((name): name is string => Boolean(name));
+  return (book.contributions ?? []).map((c) => c.author?.name).filter((name): name is string => Boolean(name));
 }
 
 function bookIsbns(book: HardcoverSocialBook): { isbn13: string | null; isbn10: string | null } {
@@ -161,7 +188,7 @@ export class HardcoverSocialService {
   }
 
   private async getFriendsShelf(userId: number, token: string, statusId: number, sinceDays: number | null): Promise<ReadingServiceShelfItem[]> {
-    const sinceDate = sinceDays ? new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : null;
+    const sinceDate = sinceDays ? new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : EPOCH_DATE;
 
     let data: FollowedUserBooksResult;
     try {
@@ -175,14 +202,17 @@ export class HardcoverSocialService {
       return [];
     }
 
-    const rows = (data.followed_user_books ?? []).filter((row) => row.book != null);
+    const userBooks = (data.followed_user_books ?? [])
+      .map((row) => row.user_book)
+      .filter((userBook): userBook is NonNullable<typeof userBook> => userBook?.book != null);
+
     const matches = await this.matchAgainstLibrary(
       userId,
-      rows.map((row) => row.book!),
+      userBooks.map((userBook) => userBook.book!),
     );
 
-    return rows.map((row) => {
-      const book = row.book!;
+    return userBooks.map((userBook) => {
+      const book = userBook.book!;
       const { isbn13 } = bookIsbns(book);
       return {
         provider: 'hardcover' as const,
@@ -193,25 +223,45 @@ export class HardcoverSocialService {
         externalUrl: hardcoverBookUrl(book),
         bookId: matches.get(String(book.id)) ?? matches.get(isbn13 ?? '') ?? null,
         friend: {
-          displayName: row.user?.name ?? row.user?.username ?? 'A Hardcover friend',
-          avatarUrl: row.user?.image?.url ?? null,
+          displayName: userBook.user?.name ?? userBook.user?.username ?? 'A Hardcover friend',
+          avatarUrl: userBook.user?.image?.url ?? null,
           status: statusId === STATUS_READ ? 'finished' : 'reading',
-          date: row.last_read_date ?? null,
+          date: userBook.last_read_date ?? null,
         },
       };
     });
   }
 
   private async getTrendingShelf(userId: number, token: string): Promise<ReadingServiceShelfItem[]> {
-    let data: TrendingResult;
+    let trending: TrendingResult;
     try {
-      data = await this.client.query<TrendingResult>(userId, token, BOOKS_TRENDING_QUERY, { limit: SHELF_ITEM_LIMIT });
+      trending = await this.client.query<TrendingResult>(userId, token, BOOKS_TRENDING_QUERY, { limit: SHELF_ITEM_LIMIT });
     } catch (err) {
       this.logFail(userId, 'trending_shelf', err);
       return [];
     }
 
-    const books = this.parseTrendingResponse(userId, data.books_trending);
+    if (trending.books_trending?.error) {
+      this.logger.warn(
+        `[hardcover.trending_shelf] [fail] userId=${userId} error="${sanitizeLogValue(trending.books_trending.error)}" - books_trending returned an error`,
+      );
+      return [];
+    }
+
+    const ids = (trending.books_trending?.ids ?? []).filter((id): id is number => typeof id === 'number');
+    if (ids.length === 0) return [];
+
+    let data: BooksByIdsResult;
+    try {
+      data = await this.client.query<BooksByIdsResult>(userId, token, BOOKS_BY_IDS_QUERY, { ids });
+    } catch (err) {
+      this.logFail(userId, 'trending_shelf_lookup', err);
+      return [];
+    }
+
+    const byId = new Map((data.books ?? []).map((book) => [book.id, book]));
+    const books = ids.map((id) => byId.get(id)).filter((book): book is HardcoverSocialBook => book != null);
+
     return this.toShelfItems(userId, books, null);
   }
 
@@ -273,17 +323,6 @@ export class HardcoverSocialService {
     }
 
     return result;
-  }
-
-  /** Defensive by design (research risk #1, "beta API"): an unrecognised shape yields no items. */
-  private parseTrendingResponse(userId: number, raw: unknown): HardcoverSocialBook[] {
-    if (!Array.isArray(raw)) {
-      this.logger.warn(`[hardcover.social_trending] [fail] userId=${userId} errorClass=UnexpectedShape - books_trending did not return an array`);
-      return [];
-    }
-    return raw.filter(
-      (entry): entry is HardcoverSocialBook => typeof entry === 'object' && entry !== null && typeof (entry as { id?: unknown }).id === 'number',
-    );
   }
 
   private logFail(userId: number, event: string, err: unknown): void {
