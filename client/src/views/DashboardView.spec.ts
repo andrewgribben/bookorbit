@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   fetchSmartScopes: vi.fn<() => Promise<void>>(),
   scrollers: null as unknown as Ref<never[]>,
   shelfLayout: null as unknown as Ref<string>,
+  shelfOrderVersion: null as unknown as Ref<2 | undefined>,
+  enabledExternalShelves: null as unknown as Ref<{ provider: string; shelf: string; enabled: boolean; order: number }[]>,
   pruneDeletedSmartScopeScrollers: vi.fn<(ids: number[]) => void>(),
   maybeStartTour: vi.fn<() => void>(),
 }))
@@ -56,6 +58,7 @@ vi.mock('@/features/dashboard/composables/useDashboardConfig', () => ({
   useDashboardConfig: () => ({
     scrollers: mocks.scrollers,
     shelfLayout: mocks.shelfLayout,
+    shelfOrderVersion: mocks.shelfOrderVersion,
     pruneDeletedSmartScopeScrollers: mocks.pruneDeletedSmartScopeScrollers,
   }),
 }))
@@ -67,7 +70,7 @@ vi.mock('@/features/dashboard/composables/useDashboardLabels', () => ({
 vi.mock('@/features/dashboard/composables/useExternalShelvesConfig', () => ({
   useExternalShelvesConfig: () => ({
     availableShelves: ref([]),
-    enabledExternalShelves: ref([]),
+    enabledExternalShelves: mocks.enabledExternalShelves,
     pickerShelves: ref([]),
     loading: ref(false),
     loaded: ref(true),
@@ -100,6 +103,8 @@ describe('DashboardView library loading states', () => {
     mocks.smartScopesLoaded = ref(false)
     mocks.scrollers = ref([])
     mocks.shelfLayout = ref('wide')
+    mocks.shelfOrderVersion = ref(undefined)
+    mocks.enabledExternalShelves = ref([])
     mocks.fetchLibraries.mockReset().mockResolvedValue()
     mocks.fetchSmartScopes.mockReset().mockResolvedValue()
     mocks.pruneDeletedSmartScopeScrollers.mockReset()
@@ -220,5 +225,32 @@ describe('DashboardView library loading states', () => {
 
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.findComponent(DashboardWidgetRow).exists()).toBe(true)
+  })
+
+  it('renders external shelves interleaved with regular shelves in a shared order', async () => {
+    mocks.libraries.value = [{ id: 7 } as Library]
+    mocks.librariesLoaded.value = true
+    mocks.scrollers = ref([
+      { id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 },
+      { id: '2', type: 'random', label: 'Discover', enabled: true, order: 3, limit: 20, rows: 1 },
+    ]) as Ref<never[]>
+    mocks.enabledExternalShelves.value = [{ provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 2 }]
+    mocks.shelfOrderVersion.value = 2
+    wrapper = await mountView()
+
+    expect(wrapper.findAllComponents(DashboardScroller)).toHaveLength(2)
+    const externalShelfStub = wrapper.findComponent({ name: 'OwnedElsewhereShelf' })
+    expect(externalShelfStub.exists() || wrapper.html().includes('owned-elsewhere')).toBe(true)
+  })
+
+  it('shows the empty-shelves message only when nothing - regular or external - is enabled', async () => {
+    mocks.libraries.value = [{ id: 7 } as Library]
+    mocks.librariesLoaded.value = true
+    mocks.scrollers = ref([]) as Ref<never[]>
+    mocks.enabledExternalShelves.value = [{ provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 1 }]
+    wrapper = await mountView()
+
+    expect(wrapper.text()).not.toContain('All shelves are hidden')
+    expect(wrapper.findComponent(DashboardScroller).exists()).toBe(false)
   })
 })

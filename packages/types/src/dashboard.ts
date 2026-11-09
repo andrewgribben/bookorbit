@@ -105,6 +105,15 @@ export interface DashboardShelfConfig {
   scrollers?: ScrollerConfig[];
   shelfLayout?: DashboardShelfLayout;
   externalShelves?: ExternalShelfConfig[];
+  /**
+   * When 2, `scrollers[].order` and `externalShelves[].order` share one sequence (1..N, no
+   * gaps) across both arrays, so regular and external shelves can be ordered freely among each
+   * other. Omitted (legacy) means the pre-unification arrangement: every external shelf first
+   * in its own order, then every scroller in its own order - the fixed layout the dashboard
+   * rendered before shelves could mix. Written by the client on save; the server stores it
+   * as-is.
+   */
+  shelfOrderVersion?: 2;
 }
 
 export const WIDGET_TYPE = {
