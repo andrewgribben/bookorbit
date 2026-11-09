@@ -98,6 +98,10 @@ describe('Readwise session correction -> push integration', () => {
       repair,
       sweep,
       lock,
+      undefined as unknown as import('./readwise-comic-series.service').ReadwiseComicSeriesService,
+      {
+        getEffectiveLibrarySettingsForUserId: () => Promise.resolve(new Map()),
+      } as unknown as import('../reading-services/reading-service-library-scope.service').ReadingServiceLibraryScopeService,
     );
 
     await pushService.flushUser(1, [10]);

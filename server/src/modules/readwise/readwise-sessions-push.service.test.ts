@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
@@ -50,6 +51,9 @@ function makeService() {
     runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
   } as unknown as ReadingServiceAdvisoryLockService;
   const comicSeries = { resolveRouting: vi.fn(), ensureSeriesExternalBook: vi.fn() } as unknown as ReadwiseComicSeriesService;
+  const libraryScopeService = {
+    getEffectiveLibrarySettingsForUserId: vi.fn().mockResolvedValue(new Map()),
+  } as unknown as ReadingServiceLibraryScopeService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -64,6 +68,7 @@ function makeService() {
     sweep,
     lock,
     comicSeries,
+    libraryScopeService,
   );
   return {
     service,
@@ -79,6 +84,7 @@ function makeService() {
     sweep,
     lock,
     comicSeries,
+    libraryScopeService,
   };
 }
 
@@ -394,6 +400,7 @@ describe('ReadwiseSessionsPushService', () => {
     (comicSeries.resolveRouting as any).mockResolvedValueOnce({
       seriesId: 5,
       seriesName: 'Comic Series',
+      libraryId: 2,
       totalPages: 40,
       status: 'currently_reading',
       pageRanges: new Map([[10, { pageOffset: 20, issuePages: 20 }]]),
@@ -416,5 +423,28 @@ describe('ReadwiseSessionsPushService', () => {
 
     expect(sessionsRepo.findPushableSessions).not.toHaveBeenCalled();
     expect(comicSeries.ensureSeriesExternalBook).not.toHaveBeenCalled();
+  });
+
+  it('does not send the series book status when the library has the status feature off', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client, comicSeries, libraryScopeService } = makeService();
+    (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+      new Map([[2, { enabled: true, features: { status: false }, seriesMode: true }]]),
+    );
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'series-ext', matchMethod: 'series', remoteDeleted: false });
+    (comicSeries.resolveRouting as any).mockResolvedValueOnce({
+      seriesId: 5,
+      seriesName: 'Comic Series',
+      libraryId: 2,
+      totalPages: 40,
+      status: 'finished',
+      pageRanges: new Map([[10, { pageOffset: 20, issuePages: 20 }]]),
+    });
+    (comicSeries.ensureSeriesExternalBook as any).mockResolvedValueOnce('series-ext');
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 601, endProgress: 50, progressDelta: 50 })]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-601' }]);
+
+    await service.flushUser(1, [10]);
+
+    expect(comicSeries.ensureSeriesExternalBook).toHaveBeenCalledWith(1, 'tok', expect.objectContaining({ libraryId: 2 }), null, false);
   });
 });

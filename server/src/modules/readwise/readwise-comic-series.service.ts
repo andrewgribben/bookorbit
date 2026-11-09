@@ -19,6 +19,7 @@ export interface ComicSeriesPageRange {
 export interface ComicSeriesRoutingContext {
   seriesId: number;
   seriesName: string;
+  libraryId: number;
   totalPages: number;
   status: ReadwiseBookStatus | null;
   pageRanges: ReadonlyMap<number, ComicSeriesPageRange>;
@@ -87,7 +88,14 @@ export class ReadwiseComicSeriesService {
       })),
     );
 
-    const context = { seriesId: series.seriesId, seriesName: series.seriesName, totalPages: mapping.totalPages, status, pageRanges };
+    const context = {
+      seriesId: series.seriesId,
+      seriesName: series.seriesName,
+      libraryId: series.libraryId,
+      totalPages: mapping.totalPages,
+      status,
+      pageRanges,
+    };
     seriesCache?.set(series.seriesId, context);
     return context;
   }

@@ -609,6 +609,8 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     repairService,
     sweepService,
     advisoryLock,
+    undefined as unknown as import('./readwise-comic-series.service').ReadwiseComicSeriesService,
+    libraryScopeServiceStub,
   );
   const sessionsPullService = new ReadwiseSessionsPullService(
     booksClient,
