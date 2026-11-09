@@ -25,6 +25,7 @@ import { ReadwiseQueueService } from './readwise-queue.service';
 import { ReadwiseRecapService } from './readwise-recap.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSessionsEventListener } from './readwise-sessions-event-listener.service';
+import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsPullService } from './readwise-sessions-pull.service';
 import { ReadwiseSessionsPushSchedulerService } from './readwise-sessions-push-scheduler.service';
@@ -59,6 +60,7 @@ import { ReadwiseTokenService } from './readwise-token.service';
     ReadwiseSessionsLocalRepository,
     ReadwiseSessionsPushService,
     ReadwiseSessionsReconcileService,
+    ReadwiseSessionsCorrectionService,
     ReadwiseSessionsPushSchedulerService,
     ReadwiseSessionsEventListener,
     ReadwiseSessionsPullService,

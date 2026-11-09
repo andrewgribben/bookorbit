@@ -115,6 +115,20 @@ export interface ReadwiseCreateSessionItem {
   publish_to_feed?: boolean;
 }
 
+/**
+ * PATCH /sessions request item. The live Readwise docs (readwise.io/books_api, "Update
+ * sessions") only document `caption` as patchable on `UpdateSessionItem`: "Times and
+ * positions cannot change [via PATCH]." `paused_seconds` is not a documented PATCH field; it
+ * is declared here for the stage 2 correction job (readwise-sessions-correction.service.ts),
+ * which is kept behind `READWISE_SESSIONS_CORRECTION_ENABLED = false` until Readwise confirms
+ * the field is actually applied rather than silently ignored as an unknown field.
+ */
+export interface ReadwiseUpdateSessionItem {
+  id: string;
+  paused_seconds?: number;
+  caption?: string | null;
+}
+
 export interface ReadwiseStatsSummary {
   books_started: number;
   books_finished: number;
@@ -279,6 +293,21 @@ export class ReadwiseBooksClientService {
     if (items.length === 0) return [];
     const result = await this.request<ReadwiseWriteResponse<RawSessionWriteResult>>(userId, token, 'POST', READWISE_SESSIONS_URL, { items });
     return readWriteResults(result, items.length, 'POST /sessions').map((r) => ({
+      ...r,
+      id: r.session_id != null ? String(r.session_id) : r.id != null ? String(r.id) : '',
+    }));
+  }
+
+  /**
+   * PATCHes 1-100 sessions by Readwise session id (`items[].id`), reusing the create path's
+   * throttle/retry/response-shape handling. Never used to create a session; Readwise has no
+   * dedupe for `POST /sessions`, so a correction must always go through this, never a resend.
+   * See `ReadwiseUpdateSessionItem` for the caveat on which fields Readwise actually applies.
+   */
+  async updateSessions(userId: number, token: string, items: ReadwiseUpdateSessionItem[]): Promise<{ id: string }[]> {
+    if (items.length === 0) return [];
+    const result = await this.request<ReadwiseWriteResponse<RawSessionWriteResult>>(userId, token, 'PATCH', READWISE_SESSIONS_URL, { items });
+    return readWriteResults(result, items.length, 'PATCH /sessions').map((r) => ({
       ...r,
       id: r.session_id != null ? String(r.session_id) : r.id != null ? String(r.id) : '',
     }));

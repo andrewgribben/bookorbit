@@ -31,6 +31,15 @@ export interface PulledReadwiseSession {
   format: 'ebook' | 'audiobook' | 'paper';
 }
 
+export interface LinkedSessionForCorrection {
+  id: number;
+  externalId: string;
+  startedAt: Date;
+  endedAt: Date;
+  durationSeconds: number;
+  sessionType: string;
+}
+
 /**
  * Direct DB access to `reading_sessions` for the S4 Readwise sync, following the existing
  * cross-module read pattern (`readwise-books-local-books.repository.ts`). The pull side also
@@ -129,6 +138,43 @@ export class ReadwiseSessionsLocalRepository {
           sql`${schema.readingSessions.durationSeconds} >= ${minDurationSeconds}`,
           sql`${schema.readingSessions.id} > ${afterId}`,
           notInArray(schema.readingSessions.id, linked),
+        ),
+      )
+      .orderBy(asc(schema.readingSessions.id))
+      .limit(limit);
+  }
+
+  /**
+   * Stage 2 correction pass (docs/plans/readwise-session-timing.md §2d): pages through every
+   * session this user already pushed to Readwise (has a `reading_service_item_links` row),
+   * oldest local id first, keyset-paginated by `afterId` so a resumed run never re-scans
+   * earlier rows. Excludes pulled-back sessions (`source='readwise'`, already correct) and
+   * listening sessions (`sessionType='listen'`, Readwise ignores `paused_seconds` for those).
+   */
+  async findLinkedSessionsForCorrection(userId: number, afterId: number, limit: number): Promise<LinkedSessionForCorrection[]> {
+    return this.db
+      .select({
+        id: schema.readingSessions.id,
+        externalId: schema.readingServiceItemLinks.externalId,
+        startedAt: schema.readingSessions.startedAt,
+        endedAt: schema.readingSessions.endedAt,
+        durationSeconds: schema.readingSessions.durationSeconds,
+        sessionType: schema.readingSessions.sessionType,
+      })
+      .from(schema.readingServiceItemLinks)
+      .innerJoin(
+        schema.readingSessions,
+        and(eq(schema.readingServiceItemLinks.localId, schema.readingSessions.id), eq(schema.readingSessions.userId, userId)),
+      )
+      .where(
+        and(
+          eq(schema.readingServiceItemLinks.userId, userId),
+          eq(schema.readingServiceItemLinks.provider, 'readwise'),
+          eq(schema.readingServiceItemLinks.kind, 'session'),
+          isNull(schema.readingServiceItemLinks.deletedAt),
+          ne(schema.readingSessions.source, 'readwise'),
+          ne(schema.readingSessions.sessionType, 'listen'),
+          sql`${schema.readingSessions.id} > ${afterId}`,
         ),
       )
       .orderBy(asc(schema.readingSessions.id))

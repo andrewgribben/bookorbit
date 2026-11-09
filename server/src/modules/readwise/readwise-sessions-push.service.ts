@@ -8,8 +8,10 @@ import { ReadingServicesRepository } from '../reading-services/reading-services.
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
+import { computePausedSeconds } from './readwise-session-timing.utils';
 import type { PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
+import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
 import { READWISE_SESSIONS_MIN_PUSH_DURATION_SECONDS, READWISE_SESSIONS_PUSH_PAGE_SIZE, READWISE_SESSIONS_CREATE_BATCH } from './readwise.constants';
 import { ReadwiseRepository } from './readwise.repository';
@@ -36,7 +38,7 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
   };
   // Readwise counts ended_at - started_at - paused_seconds as reading time; durationSeconds is active time only.
   // Audiobook duration comes from the positions instead, so paused_seconds would not apply there.
-  const pausedSeconds = Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 1000) - session.durationSeconds;
+  const pausedSeconds = computePausedSeconds(session);
   if (format === 'ebook' && pausedSeconds > 0) item.paused_seconds = pausedSeconds;
   if (session.endProgress !== null) {
     const startProgress = session.progressDelta !== null ? Math.max(0, session.endProgress - session.progressDelta) : session.endProgress;
@@ -74,6 +76,7 @@ export class ReadwiseSessionsPushService {
     private readonly readingServicesRepo: ReadingServicesRepository,
     private readonly featuresService: ReadingServiceFeaturesService,
     private readonly reconcile: ReadwiseSessionsReconcileService,
+    private readonly correction: ReadwiseSessionsCorrectionService,
   ) {}
 
   async flushUser(userId: number, bookIds: number[]): Promise<void> {
@@ -88,6 +91,11 @@ export class ReadwiseSessionsPushService {
     // (pushed there by another BookOrbit instance connected to the same account) before the
     // per-book push below would otherwise try to create it again. A no-op after the first call.
     await this.reconcile.ensureReconciled(userId, token);
+
+    // Stage 2 backfill (docs/plans/readwise-session-timing.md §2d): corrects paused_seconds on
+    // sessions pushed before that field existed. Bounded per call, resumable via its own cursor,
+    // and a no-op while READWISE_SESSIONS_CORRECTION_ENABLED is false (see that constant).
+    await this.correction.correctUser(userId, token);
 
     const timezone = await this.sessionsRepo.resolveUserTimeZone(userId);
     const publishToFeed = isFeatureEnabled(features, 'publish_sessions');

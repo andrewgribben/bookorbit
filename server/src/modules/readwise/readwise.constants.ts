@@ -117,6 +117,27 @@ export const READWISE_HIGHLIGHTS_EXPORT_PAGE_SIZE = 1000;
 export const READWISE_RECAP_CACHE_KEY_PREFIX = 'recap';
 export const READWISE_RECAP_CACHE_TTL_MS = 60 * 60_000;
 
+// Stage 2 correction pass (docs/plans/readwise-session-timing.md §2d): PATCHes paused_seconds
+// in place on sessions that were pushed before that field existed (readwise-sessions-correction
+// .service.ts). Per readwise.io/books_api ("Update sessions"), PATCH /books/api/v1/sessions
+// only documents `caption` as a patchable field on UpdateSessionItem; `paused_seconds` is not
+// listed there (it is a CreateSessionItem-only field), and the docs state outright: "Times and
+// positions cannot change [via PATCH]. To correct them, delete the session and record it
+// again." Deleting and re-recording would require re-POSTing, which the plan explicitly
+// forbids (Readwise does not dedupe sessions). This job is therefore built and tested but kept
+// off until the owner confirms with Readwise (or a docs update) that paused_seconds is
+// genuinely patchable; flip this to true only after that is confirmed.
+export const READWISE_SESSIONS_CORRECTION_ENABLED = false;
+// How many linked sessions to scan per DB page, and how many pages per call; keeps one
+// `flushUser` call bounded even with a large correction backlog.
+export const READWISE_SESSIONS_CORRECTION_PAGE_SIZE = 200;
+export const READWISE_SESSIONS_CORRECTION_MAX_PAGES_PER_RUN = 2;
+// Kept well under the documented 1-100 items/request for PATCH, matching the push path's
+// create-batch size for one consistent, conservative batch size across sessions endpoints.
+export const READWISE_SESSIONS_CORRECTION_BATCH = READWISE_SESSIONS_CREATE_BATCH;
+export const READWISE_SESSIONS_CORRECTION_CURSOR_CACHE_KEY = 'sessions-correction-cursor';
+export const READWISE_SESSIONS_CORRECTION_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+
 // S7 "Owned elsewhere" shelf: Readwise-only books classified as owned (readwise-book-ownership.ts),
 // excluding anything already linked to a BookOrbit book. Cached longer than the recap widget
 // since it needs a full remote-library page plus a full local-library page to build.
