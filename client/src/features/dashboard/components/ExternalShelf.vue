@@ -181,7 +181,7 @@ function handleRequest(item: ReadingServiceShelfItem) {
                 </div>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent v-if="!item.bookId" align="end">
+            <DropdownMenuContent v-if="!item.bookId && (item.externalUrl || canRequest)" align="end">
               <DropdownMenuItem v-if="item.externalUrl" @click="handleViewInProvider(item)">
                 {{ t('bookRequests.externalRequest.viewInProvider', { provider: providerNameFor(item) }) }}
               </DropdownMenuItem>
