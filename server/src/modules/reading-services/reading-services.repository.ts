@@ -202,6 +202,18 @@ export class ReadingServicesRepository {
     });
   }
 
+  /** One batched lookup for a page of bookIds, so the migration push phase does not issue a query per book. */
+  async findBookLinksForBookIds(userId: number, provider: ReadingServiceProvider, bookIds: number[]): Promise<ReadingServiceBookLink[]> {
+    if (bookIds.length === 0) return [];
+    return this.db.query.readingServiceBookLinks.findMany({
+      where: and(
+        eq(schema.readingServiceBookLinks.userId, userId),
+        eq(schema.readingServiceBookLinks.provider, provider),
+        inArray(schema.readingServiceBookLinks.bookId, bookIds),
+      ),
+    });
+  }
+
   async markRemoteDeleted(userId: number, provider: ReadingServiceProvider, bookId: number): Promise<void> {
     await this.db
       .update(schema.readingServiceBookLinks)

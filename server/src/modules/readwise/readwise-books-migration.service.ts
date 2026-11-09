@@ -255,6 +255,20 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
       return null;
     }
 
+    // One batched lookup for the whole page: a book already linked to Readwise (from an earlier
+    // migration run or from the two-way sync) must reuse that link instead of being matched or
+    // created again, since the remote index's isbn/title matching can miss a book Readwise
+    // itself normalized or left blank (see the duplicate-book bug this guards against).
+    const existingLinksByBookId = new Map(
+      (
+        await this.readingServicesRepo.findBookLinksForBookIds(
+          userId,
+          this.provider,
+          page.map((b) => b.bookId),
+        )
+      ).map((l) => [l.bookId, l]),
+    );
+
     const createItems: { book: LocalBookForMigration; item: ReadwiseBookCreateItem }[] = [];
     const updateItems: { book: LocalBookForMigration; externalId: string; matchMethod: string; item: ReadwiseBookUpdateItem }[] = [];
     // Matched books whose remote values already equal BookOrbit's: linked silently, no PATCH sent.
@@ -262,8 +276,35 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
 
     for (const book of page) {
       counters.scanned += 1;
-      const result = matchBook({ isbn13: book.isbn13, isbn10: book.isbn10, title: book.title, author: book.author }, index);
       const pushStatus = mapBookOrbitStatusToReadwise(book.status);
+      const existingLink = existingLinksByBookId.get(book.bookId);
+
+      if (existingLink) {
+        // A remote-deleted link never changes local state (same rule the pull-side status
+        // mapping follows for a Readwise 'deleted' book), so it is left alone rather than
+        // re-matched or re-created against a book Readwise no longer has.
+        if (existingLink.remoteDeleted) {
+          counters.skipped += 1;
+          continue;
+        }
+        matchedSoFar.add(existingLink.externalBookId);
+        counters.matched += 1;
+        const remote = remoteByExternalId.get(existingLink.externalBookId);
+        if (remote && this.remoteAlreadyMatches(remote, book, pushStatus)) {
+          silentlyLinkedItems.push({ book, externalId: existingLink.externalBookId, matchMethod: existingLink.matchMethod });
+        } else {
+          if (remote) this.logOverwrite(userId, book.bookId, existingLink.externalBookId, remote, pushStatus);
+          updateItems.push({
+            book,
+            externalId: existingLink.externalBookId,
+            matchMethod: existingLink.matchMethod,
+            item: toUpdateItem(existingLink.externalBookId, book, pushStatus),
+          });
+        }
+        continue;
+      }
+
+      const result = matchBook({ isbn13: book.isbn13, isbn10: book.isbn10, title: book.title, author: book.author }, index);
 
       if (result) {
         matchedSoFar.add(result.externalId);

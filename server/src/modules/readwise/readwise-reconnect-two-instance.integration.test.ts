@@ -436,6 +436,10 @@ class FakeLocalDb {
     return this.bookLinks.filter((l) => l.userId === userId && l.provider === provider);
   }
 
+  findBookLinksForBookIds(userId: number, provider: ReadingServiceProvider, bookIds: number[]) {
+    return this.bookLinks.filter((l) => l.userId === userId && l.provider === provider && bookIds.includes(l.bookId));
+  }
+
   recordItemLinks(
     items: { userId: number; provider: ReadingServiceProvider; kind: string; localId: number; externalId: string; contentHash?: string }[],
   ): void {
@@ -505,6 +509,8 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     findBookLinkByExternalId: async (userId: number, provider: ReadingServiceProvider, externalBookId: string) =>
       db.findBookLinkByExternalId(userId, provider, externalBookId),
     findBookLinksForProvider: async (userId: number, provider: ReadingServiceProvider) => db.findBookLinksForProvider(userId, provider),
+    findBookLinksForBookIds: async (userId: number, provider: ReadingServiceProvider, bookIds: number[]) =>
+      db.findBookLinksForBookIds(userId, provider, bookIds),
     recordItemLinks: async (items: any[]) => db.recordItemLinks(items),
     findItemLinkByExternalId: async (userId: number, provider: ReadingServiceProvider, kind: string, externalId: string) =>
       db.findItemLinkByExternalId(userId, provider, kind, externalId),
