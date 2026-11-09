@@ -10,6 +10,7 @@ import { ReadwiseRepository } from './readwise.repository';
 
 function linkedSession(partial: Partial<LinkedSessionForCorrection> & { id: number; externalId: string }): LinkedSessionForCorrection {
   return {
+    bookId: 10,
     startedAt: new Date('2026-01-01T00:00:00Z'),
     endedAt: new Date('2026-01-01T00:10:00Z'),
     durationSeconds: 600,

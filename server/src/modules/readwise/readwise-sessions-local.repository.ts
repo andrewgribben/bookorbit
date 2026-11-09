@@ -33,6 +33,7 @@ export interface PulledReadwiseSession {
 
 export interface LinkedSessionForCorrection {
   id: number;
+  bookId: number;
   externalId: string;
   startedAt: Date;
   endedAt: Date;
@@ -156,6 +157,7 @@ export class ReadwiseSessionsLocalRepository {
     return this.db
       .select({
         id: schema.readingSessions.id,
+        bookId: schema.readingSessions.bookId,
         externalId: schema.readingServiceItemLinks.externalId,
         startedAt: schema.readingSessions.startedAt,
         endedAt: schema.readingSessions.endedAt,

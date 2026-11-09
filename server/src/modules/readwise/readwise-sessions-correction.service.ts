@@ -24,6 +24,7 @@ const EVENT = 'readwise.sessions_correction';
 
 interface PendingCorrection {
   localId: number;
+  bookId: number;
   externalId: string;
 }
 
@@ -56,10 +57,15 @@ export class ReadwiseSessionsCorrectionService {
     private readonly cache: ReadingServiceCacheService,
   ) {}
 
-  /** Runs a bounded, resumable slice of the one-time correction pass. Never throws. */
-  async correctUser(userId: number, token: string): Promise<void> {
+  /**
+   * Runs a bounded, resumable slice of the one-time correction pass. Never throws. Returns the
+   * ids of books whose sessions were unlinked, so the caller can push them again even when the
+   * user has not read those books recently.
+   */
+  async correctUser(userId: number, token: string): Promise<number[]> {
     const done = await this.cache.get<boolean>(userId, 'readwise', READWISE_SESSIONS_CORRECTION_DONE_CACHE_KEY);
-    if (done) return;
+    if (done) return [];
+    const unlinkedBookIds = new Set<number>();
 
     const startedAtMs = Date.now();
     let scanned = 0;
@@ -82,7 +88,8 @@ export class ReadwiseSessionsCorrectionService {
         const pending: PendingCorrection[] = [];
         for (const row of rows) {
           const gapSeconds = computePausedSeconds(row);
-          if (gapSeconds >= READWISE_SESSIONS_CORRECTION_MIN_GAP_SECONDS) pending.push({ localId: row.id, externalId: row.externalId });
+          if (gapSeconds >= READWISE_SESSIONS_CORRECTION_MIN_GAP_SECONDS)
+            pending.push({ localId: row.id, bookId: row.bookId, externalId: row.externalId });
           else skipped += 1;
         }
 
@@ -90,8 +97,9 @@ export class ReadwiseSessionsCorrectionService {
           const batch = pending.slice(i, i + READWISE_SESSIONS_CORRECTION_BATCH);
           const outcome = await this.deleteAndUnlinkBatch(userId, token, batch);
           deleted += outcome.deleted;
-          unlinked += outcome.unlinked;
+          unlinked += outcome.unlinkedBookIds.length;
           failed += outcome.failed;
+          for (const bookId of outcome.unlinkedBookIds) unlinkedBookIds.add(bookId);
         }
 
         cursor = rows[rows.length - 1]!.id;
@@ -110,21 +118,23 @@ export class ReadwiseSessionsCorrectionService {
       this.logger.log(
         `[${EVENT}] [end] userId=${userId} durationMs=${Date.now() - startedAtMs} scanned=${scanned} deleted=${deleted} unlinked=${unlinked} skipped=${skipped} failed=${failed} - sessions correction completed`,
       );
+      return [...unlinkedBookIds];
     } catch (err) {
       if (err instanceof ReadwiseBooksForbiddenError) {
         await this.readwiseRepo.upsertSettings(userId, { disabledReason: 'no_readwise_books', enabled: false });
-        return;
+        return [];
       }
       const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
       if (err instanceof ReadwiseUnauthorizedError) {
         this.logger.warn(
           `[${EVENT}] [fail] userId=${userId} durationMs=${Date.now() - startedAtMs} errorClass=${errorClass} error="unauthorized" - sessions correction stopped, token invalid`,
         );
-        return;
+        return [...unlinkedBookIds];
       }
       this.logger.error(
         `[${EVENT}] [fail] userId=${userId} durationMs=${Date.now() - startedAtMs} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - sessions correction failed`,
       );
+      return [...unlinkedBookIds];
     }
   }
 
@@ -140,7 +150,7 @@ export class ReadwiseSessionsCorrectionService {
     userId: number,
     token: string,
     batch: PendingCorrection[],
-  ): Promise<{ deleted: number; unlinked: number; failed: number }> {
+  ): Promise<{ deleted: number; unlinkedBookIds: number[]; failed: number }> {
     let results: ReadwiseDeleteSessionResult[];
     try {
       results = await this.client.deleteSessions(
@@ -154,19 +164,19 @@ export class ReadwiseSessionsCorrectionService {
       this.logger.error(
         `[${EVENT}] [fail] userId=${userId} sessions=${batch.length} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - delete batch outcome unknown, links kept`,
       );
-      return { deleted: 0, unlinked: 0, failed: batch.length };
+      return { deleted: 0, unlinkedBookIds: [], failed: batch.length };
     }
 
     let deleted = 0;
     let failed = 0;
-    const toUnlink: number[] = [];
+    const toUnlink: PendingCorrection[] = [];
     for (let i = 0; i < batch.length; i++) {
       const entry = batch[i]!;
       const result = results[i];
       const gone = result?.status === 'deleted' || result?.error?.code === 'not_found';
       if (gone) {
         deleted += 1;
-        toUnlink.push(entry.localId);
+        toUnlink.push(entry);
       } else {
         failed += 1;
         this.logger.error(
@@ -175,8 +185,13 @@ export class ReadwiseSessionsCorrectionService {
       }
     }
 
-    if (toUnlink.length > 0) await this.sessionsRepo.unlinkSessions(userId, toUnlink);
-    return { deleted, unlinked: toUnlink.length, failed };
+    if (toUnlink.length > 0) {
+      await this.sessionsRepo.unlinkSessions(
+        userId,
+        toUnlink.map((entry) => entry.localId),
+      );
+    }
+    return { deleted, unlinkedBookIds: toUnlink.map((entry) => entry.bookId), failed };
   }
 }
 

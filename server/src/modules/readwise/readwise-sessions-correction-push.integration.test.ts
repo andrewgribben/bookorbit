@@ -21,6 +21,7 @@ describe('Readwise session correction -> push integration', () => {
   it('re-posts a corrected session through the real push path with paused_seconds included', async () => {
     const linkedRow: LinkedSessionForCorrection = {
       id: 100,
+      bookId: 20,
       externalId: 'ext-100',
       startedAt: new Date('2026-01-01T00:00:00Z'),
       endedAt: new Date('2026-01-01T01:00:00Z'),
@@ -84,6 +85,7 @@ describe('Readwise session correction -> push integration', () => {
 
     await pushService.flushUser(1, [10]);
 
+    expect(sessionsRepo.findPushableSessions).toHaveBeenCalledWith(1, 20, expect.any(Number), expect.any(Number));
     expect(client.deleteSessions).toHaveBeenCalledWith(1, 'tok', ['ext-100']);
     expect(sessionsRepo.unlinkSessions).toHaveBeenCalledWith(1, [100]);
     expect(client.createSessions).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ paused_seconds: 2400 })]);

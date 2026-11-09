@@ -37,7 +37,7 @@ function makeService() {
   } as unknown as ReadingServicesRepository;
   const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
   const reconcile = { ensureReconciled: vi.fn().mockResolvedValue(undefined) } as unknown as ReadwiseSessionsReconcileService;
-  const correction = { correctUser: vi.fn().mockResolvedValue(undefined) } as unknown as ReadwiseSessionsCorrectionService;
+  const correction = { correctUser: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsCorrectionService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -67,6 +67,14 @@ describe('ReadwiseSessionsPushService', () => {
     await service.flushUser(1, [10]);
     expect(correction.correctUser).toHaveBeenCalledWith(1, 'tok');
     expect(reconcile.ensureReconciled).toHaveBeenCalled();
+  });
+
+  it('pushes books whose sessions the correction unlinked, even when they had no new activity', async () => {
+    const { service, correction, readingServicesRepo } = makeService();
+    (correction.correctUser as any).mockResolvedValueOnce([20, 10]);
+    await service.flushUser(1, [10]);
+    const pushedBookIds = (readingServicesRepo.findBookLink as any).mock.calls.map((call: unknown[]) => call[2]);
+    expect(pushedBookIds).toEqual([10, 20]);
   });
 
   it('does nothing when there is no token', async () => {

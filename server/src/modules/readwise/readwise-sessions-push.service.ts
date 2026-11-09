@@ -96,7 +96,7 @@ export class ReadwiseSessionsPushService {
     // sessions pushed before paused_seconds existed, so the push below re-POSTs them with the
     // right numbers in the same flush where possible. Bounded per call, resumable via its own
     // cursor, and a no-op after the one-time pass finishes (see READWISE_SESSIONS_CORRECTION_*).
-    await this.correction.correctUser(userId, token);
+    const correctedBookIds = await this.correction.correctUser(userId, token);
 
     const timezone = await this.sessionsRepo.resolveUserTimeZone(userId);
     const publishToFeed = isFeatureEnabled(features, 'publish_sessions');
@@ -104,7 +104,7 @@ export class ReadwiseSessionsPushService {
     let pushed = 0;
     let failed = 0;
 
-    for (const bookId of [...new Set(bookIds)]) {
+    for (const bookId of [...new Set([...bookIds, ...correctedBookIds])]) {
       try {
         pushed += await this.pushBook(userId, token, bookId, timezone, publishToFeed);
       } catch (err) {
