@@ -64,7 +64,7 @@ function toCreateItem(session: PushableSession, externalBookId: string, timezone
 }
 
 export interface FlushResult {
-  /** Books with a koreader session that was skipped because it had not settled yet, with the earliest time it will. */
+  /** Books with a session that was skipped because it had not settled yet, with the earliest time it will. */
   settleRetries: { bookId: number; nextSettleAt: Date }[];
 }
 
@@ -73,10 +73,10 @@ export interface FlushResult {
  * A session is only eligible once its book has a Readwise link (it is migrated/pushed already)
  * and it has never been linked itself; `publish_to_feed` follows the `publish_sessions` toggle.
  *
- * A koreader session is only pushed once it has settled (docs/plans/readwise-session-timing.md):
- * a later page-stat upload within `KOREADER_SESSION_GAP_SECONDS` of its current `endedAt` would
+ * A session is only pushed once it has settled (docs/plans/readwise-session-timing.md): a later
+ * koreader page-stat upload, or a later web/Android/iOS write superseding a checkpoint, would
  * extend the same local row, so pushing it any earlier risks Readwise ending up with a
- * truncated copy. An unsettled session is left unlinked and its book is returned in
+ * truncated copy (see `settleAtFor`). An unsettled session is left unlinked and its book is returned in
  * `settleRetries` so the scheduler can retry once it has settled.
  *
  * shortcut: the ledger write happens right after each batch's POST succeeds, in one multi-row

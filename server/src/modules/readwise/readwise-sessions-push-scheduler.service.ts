@@ -34,7 +34,7 @@ const SCHEDULER_EVENT = 'readwise.sessions_push_scheduler';
  * retry on failure).
  *
  * Also carries a second, independent timer per user (`settleStates`) for books whose push was
- * skipped because a koreader session had not settled yet (docs/plans/readwise-session-timing.md):
+ * skipped because a session had not settled yet (docs/plans/readwise-session-timing.md):
  * a bounded, single retry timer per user rather than one per skipped session, so a burst of
  * uploads from the same device never grows the timer count.
  */
@@ -66,7 +66,7 @@ export class ReadwiseSessionsPushSchedulerService {
   }
 
   /**
-   * Retries a book once an unsettled koreader session on it is expected to have settled.
+   * Retries a book once an unsettled session on it is expected to have settled.
    * Keeps the earliest requested target time per user, so repeated calls before that time only
    * widen the book id set rather than pushing the retry further out.
    */
