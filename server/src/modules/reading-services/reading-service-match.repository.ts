@@ -6,7 +6,6 @@ import type { ReadingServiceProvider } from '@bookorbit/types';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import type { RequestUser } from '../../common/types/request-user';
 import type { RemoteIndexBook } from './book-matcher';
 import { ReadingServiceLibraryScopeService } from './reading-service-library-scope.service';
 
@@ -36,11 +35,10 @@ export class ReadingServiceMatchRepository {
   async findCandidates(userId: number, provider: ReadingServiceProvider, isbn13s: string[], titlesLower: string[]): Promise<RemoteIndexBook[]> {
     if (isbn13s.length === 0 && titlesLower.length === 0) return [];
 
-    const pseudoUser = { id: userId, isSuperuser: false } as RequestUser;
     // Enabled-only (no specific feature): this is shared local matching for several shelf kinds
     // (friends/trending/recommendations/owned-elsewhere and generic adapter fallback matching),
     // so it only honours the library on/off switch, not a per-feature override.
-    const libraryIds = await this.libraryScopeService.getEffectiveLibraryIds(pseudoUser, provider, null);
+    const libraryIds = await this.libraryScopeService.getEffectiveLibraryIdsForUserId(userId, provider, null);
     if (libraryIds.length === 0) return [];
 
     const matchConditions: SQL[] = [];

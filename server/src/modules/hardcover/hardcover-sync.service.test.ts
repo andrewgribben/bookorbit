@@ -47,7 +47,7 @@ const mockBookService = {
 };
 
 const mockLibraryScopeService = {
-  getEffectiveLibraryIds: vi.fn(),
+  getEffectiveLibraryIdsForUserId: vi.fn(),
 };
 
 function makeService() {
@@ -121,7 +121,7 @@ describe('HardcoverSyncService', () => {
     mockRepo.updateLastSyncedAt.mockResolvedValue(undefined);
     mockSettingsService.getSettings.mockResolvedValue(defaultSettings);
     mockBookService.setHardcoverEditionIdIfEmpty.mockResolvedValue(false);
-    mockLibraryScopeService.getEffectiveLibraryIds.mockResolvedValue([1]);
+    mockLibraryScopeService.getEffectiveLibraryIdsForUserId.mockResolvedValue([1]);
   });
 
   describe('syncBook', () => {
