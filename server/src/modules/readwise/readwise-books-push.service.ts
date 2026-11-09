@@ -10,6 +10,7 @@ import { ReadwiseBooksLocalBooksRepository } from './readwise-books-local-books.
 import type { ReadwiseBookCreateItem, ReadwiseBookUpdateItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
+import { normalizeReadwiseReview } from './readwise-review.utils';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
@@ -142,7 +143,7 @@ export class ReadwiseBooksPushService {
       started_reading_at: book.startedAt,
       finished_reading_at: book.finishedAt,
       rating: book.rating,
-      review: book.review,
+      review: normalizeReadwiseReview(book.review),
     };
   }
 
@@ -157,7 +158,7 @@ export class ReadwiseBooksPushService {
       started_reading_at: book.startedAt,
       finished_reading_at: book.finishedAt,
       rating: book.rating,
-      review: book.review,
+      review: normalizeReadwiseReview(book.review),
     };
   }
 }
