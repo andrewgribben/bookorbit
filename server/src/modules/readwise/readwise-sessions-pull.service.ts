@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -40,6 +41,7 @@ export class ReadwiseSessionsPullService {
     private readonly featuresService: ReadingServiceFeaturesService,
     private readonly cache: ReadingServiceCacheService,
     private readonly sessionsRepo: ReadwiseSessionsLocalRepository,
+    private readonly lock: ReadingServiceAdvisoryLockService,
   ) {}
 
   @Interval(READWISE_SESSIONS_PULL_INTERVAL_MS)
@@ -51,7 +53,18 @@ export class ReadwiseSessionsPullService {
     }
   }
 
+  /**
+   * Serialized per user via an advisory lock: a session pull writes new local rows and marks
+   * ledger links, so an overlapping run (two @Interval ticks racing, or two instances/replicas
+   * sharing one database) risks a duplicate insert or a lost update. A run that loses the race
+   * is skipped and retried on the next interval.
+   */
   async pullForUser(userId: number): Promise<void> {
+    const ran = await this.lock.runExclusive('readwise_sessions_pull', userId, () => this.pullForUserLocked(userId));
+    if (ran === null) this.logger.debug(`[${EVENT}] [end] userId=${userId} - skipped, another pull already running`);
+  }
+
+  private async pullForUserLocked(userId: number): Promise<void> {
     const token = await this.readwiseSettings.getToken(userId);
     if (!token) return;
 

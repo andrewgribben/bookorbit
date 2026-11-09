@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -26,9 +27,21 @@ function makeService() {
     removePulledSession: vi.fn(),
     findUnlinkedSessionMatch: vi.fn().mockResolvedValue(undefined),
   } as unknown as ReadwiseSessionsLocalRepository;
+  const lock = {
+    runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
+  } as unknown as ReadingServiceAdvisoryLockService;
 
-  const service = new ReadwiseSessionsPullService(client, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, cache, sessionsRepo);
-  return { service, client, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, cache, sessionsRepo };
+  const service = new ReadwiseSessionsPullService(
+    client,
+    readwiseRepo,
+    readwiseSettings,
+    readingServicesRepo,
+    featuresService,
+    cache,
+    sessionsRepo,
+    lock,
+  );
+  return { service, client, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, cache, sessionsRepo, lock };
 }
 
 const remoteSession = (partial: Record<string, unknown> = {}) => ({
@@ -46,6 +59,13 @@ describe('ReadwiseSessionsPullService', () => {
   it('does nothing when there is no token', async () => {
     const { service, readwiseSettings, client } = makeService();
     (readwiseSettings.getToken as any).mockResolvedValueOnce(null);
+    await service.pullForUser(1);
+    expect(client.listSessions).not.toHaveBeenCalled();
+  });
+
+  it('skips the pull when the advisory lock is already held', async () => {
+    const { service, client, lock } = makeService();
+    (lock.runExclusive as any).mockResolvedValueOnce(null);
     await service.pullForUser(1);
     expect(client.listSessions).not.toHaveBeenCalled();
   });

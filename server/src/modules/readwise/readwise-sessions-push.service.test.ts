@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
@@ -44,6 +45,9 @@ function makeService() {
   const correction = { correctUser: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsCorrectionService;
   const repair = { repairBook: vi.fn().mockResolvedValue(0) } as unknown as ReadwiseSessionsRepairService;
   const sweep = { ensureSwept: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsBackfillSweepService;
+  const lock = {
+    runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
+  } as unknown as ReadingServiceAdvisoryLockService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -56,6 +60,7 @@ function makeService() {
     correction,
     repair,
     sweep,
+    lock,
   );
   return {
     service,
@@ -69,11 +74,43 @@ function makeService() {
     correction,
     repair,
     sweep,
+    lock,
   };
 }
 
 describe('ReadwiseSessionsPushService', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('skips the flush when the advisory lock is already held, returning no settle retries', async () => {
+    const { service, lock, reconcile } = makeService();
+    (lock.runExclusive as any).mockResolvedValueOnce(null);
+    const result = await service.flushUser(1, [10]);
+    expect(result).toEqual({ settleRetries: [] });
+    expect(reconcile.ensureReconciled).not.toHaveBeenCalled();
+  });
+
+  it('a second concurrent flush for the same user is skipped while the first holds the lock', async () => {
+    const { service, lock } = makeService();
+    let releaseFirst: (() => void) | undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    (lock.runExclusive as any)
+      .mockImplementationOnce(async (_op: string, _userId: number, fn: () => Promise<unknown>) => {
+        const result = await fn();
+        releaseFirst?.();
+        return result;
+      })
+      .mockImplementationOnce(async () => {
+        await firstHeld;
+        return null;
+      });
+
+    const [first, second] = await Promise.all([service.flushUser(1, [10]), service.flushUser(1, [20])]);
+    expect(first).toEqual({ settleRetries: [] });
+    expect(second).toEqual({ settleRetries: [] });
+    expect(lock.runExclusive).toHaveBeenCalledTimes(2);
+  });
 
   it('runs the reconcile pass before pushing', async () => {
     const { service, reconcile, sessionsRepo } = makeService();
