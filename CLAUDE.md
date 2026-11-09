@@ -12,6 +12,13 @@
 4. `cd server && pnpm db:migrate` - apply migrations
 5. `pnpm dev` - start server + client concurrently
 
+## Related Repository: Android App
+
+- The native Android client is a separate repo: `andrewgribben/bookorbit-android` (integration branch `main`), checked out at `D:/Development/bookorbit-android` on the owner's PC. Its task worktrees go in `D:/Development/bookorbit-android-worktrees/<branch>`.
+- It calls this server's `/api/v1` API. When you change an endpoint, DTO, response shape or shared type the app uses, check the app's Retrofit models in `app/src/main/java/com/bookorbit/core/network/` and `core/model/`, and say whether the app needs a matching change.
+- A feature that spans both repos gets one worktree per repo with matching branch names. Land and deploy the server side first.
+- Plans and handover docs for both repos live here (`docs/plans/`, `docs/AGENT_HANDOFF.md`).
+
 ## Scale Expectations
 
 - BookOrbit is designed for large personal libraries: assume tens of thousands of books per user.
