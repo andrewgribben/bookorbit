@@ -23,22 +23,26 @@ function makeReadingServicesRepo(links: { externalBookId: string }[] = []) {
 
 describe('HardcoverSocialService', () => {
   it('maps followed_user_books into friends-reading shelf items, matched by isbn13', async () => {
-    const client = makeClient((query) => {
+    const client = makeClient((query, variables) => {
       expect(query).toContain('followed_user_books');
+      expect(query).toContain('user_book {');
+      expect(variables?.sinceDate).toBe('1970-01-01');
       return {
         followed_user_books: [
           {
-            id: 1,
-            status_id: 2,
-            last_read_date: '2026-11-01',
-            user: { id: 9, username: 'alice', name: 'Alice', image: { url: 'https://example/a.jpg' } },
-            book: {
-              id: 42,
-              slug: 'dune',
-              title: 'Dune',
-              cached_contributors: [{ author: { name: 'Frank Herbert' } }],
-              image: { url: 'https://example/dune.jpg' },
-              editions: [{ isbn_13: '9780441013593', isbn_10: null }],
+            user_book_id: 1,
+            user_book: {
+              status_id: 2,
+              last_read_date: '2026-11-01',
+              user: { id: 9, username: 'alice', name: 'Alice', image: { url: 'https://example/a.jpg' } },
+              book: {
+                id: 42,
+                slug: 'dune',
+                title: 'Dune',
+                contributions: [{ author: { name: 'Frank Herbert' } }],
+                image: { url: 'https://example/dune.jpg' },
+                editions: [{ isbn_13: '9780441013593', isbn_10: null }],
+              },
             },
           },
         ],
@@ -62,17 +66,20 @@ describe('HardcoverSocialService', () => {
     });
   });
 
-  it('labels friends-finished items with status finished', async () => {
+  it('labels friends-finished items with status finished and a bounded since date', async () => {
     const client = makeClient((query, variables) => {
       expect(variables?.statusId).toBe(3);
+      expect(variables?.sinceDate).not.toBe('1970-01-01');
       return {
         followed_user_books: [
           {
-            id: 2,
-            status_id: 3,
-            last_read_date: '2026-10-01',
-            user: { username: 'bob' },
-            book: { id: 5, title: 'Cards', cached_contributors: [], editions: [] },
+            user_book_id: 2,
+            user_book: {
+              status_id: 3,
+              last_read_date: '2026-10-01',
+              user: { username: 'bob' },
+              book: { id: 5, title: 'Cards', contributions: [], editions: [] },
+            },
           },
         ],
       };
@@ -85,6 +92,15 @@ describe('HardcoverSocialService', () => {
     expect(items[0]!.bookId).toBeNull();
   });
 
+  it('skips followed_user_books rows with no book attached', async () => {
+    const client = makeClient(() => ({
+      followed_user_books: [{ user_book_id: 3, user_book: { status_id: 2, book: null } }],
+    }));
+    const service = new HardcoverSocialService(client, makeMatchRepo(), makeReadingServicesRepo());
+
+    await expect(service.getShelf(1, 'tok', 'friends-reading')).resolves.toEqual([]);
+  });
+
   it('returns an empty list and does not throw when the friends call fails', async () => {
     const client = { query: vi.fn().mockRejectedValue(new Error('boom')) } as unknown as HardcoverClientService;
     const service = new HardcoverSocialService(client, makeMatchRepo(), makeReadingServicesRepo());
@@ -92,27 +108,43 @@ describe('HardcoverSocialService', () => {
     await expect(service.getShelf(1, 'tok', 'friends-reading')).resolves.toEqual([]);
   });
 
-  it('treats an unexpected books_trending shape as empty instead of throwing', async () => {
-    const client = makeClient(() => ({ books_trending: { unexpected: true } }));
+  it('returns an empty list when books_trending reports an error', async () => {
+    const client = makeClient(() => ({ books_trending: { ids: null, error: 'rate limited' } }));
     const service = new HardcoverSocialService(client, makeMatchRepo(), makeReadingServicesRepo());
 
     await expect(service.getShelf(1, 'tok', 'trending')).resolves.toEqual([]);
   });
 
-  it('maps a well-shaped books_trending array', async () => {
-    const client = makeClient((query) => {
-      expect(query).toContain('books_trending');
+  it('returns an empty list when books_trending has no ids', async () => {
+    const client = makeClient(() => ({ books_trending: { ids: [], error: null } }));
+    const service = new HardcoverSocialService(client, makeMatchRepo(), makeReadingServicesRepo());
+
+    await expect(service.getShelf(1, 'tok', 'trending')).resolves.toEqual([]);
+  });
+
+  it('looks up trending book ids and preserves ranked order', async () => {
+    let call = 0;
+    const client = makeClient((query, variables) => {
+      call += 1;
+      if (call === 1) {
+        expect(query).toContain('books_trending');
+        return { books_trending: { ids: [11, 22], error: null } };
+      }
+      expect(query).toContain('books(where: { id: { _in: $ids } })');
+      expect(variables?.ids).toEqual([11, 22]);
       return {
-        books_trending: [{ id: 11, slug: 'trend', title: 'Trend Book', cached_contributors: [{ author: { name: 'T Author' } }], editions: [] }],
+        books: [
+          { id: 22, slug: 'second', title: 'Second', contributions: [{ author: { name: 'B Author' } }], editions: [] },
+          { id: 11, slug: 'first', title: 'First', contributions: [{ author: { name: 'A Author' } }], editions: [] },
+        ],
       };
     });
     const service = new HardcoverSocialService(client, makeMatchRepo(), makeReadingServicesRepo());
 
     const items = await service.getShelf(1, 'tok', 'trending');
 
-    expect(items).toEqual([
-      expect.objectContaining({ provider: 'hardcover', externalId: '11', title: 'Trend Book', authors: ['T Author'], friend: null }),
-    ]);
+    expect(items.map((i) => i.externalId)).toEqual(['11', '22']);
+    expect(items[0]).toMatchObject({ title: 'First', authors: ['A Author'], friend: null });
   });
 
   it('excludes books already linked to the user from the recommendations shelf', async () => {
@@ -120,8 +152,8 @@ describe('HardcoverSocialService', () => {
       expect(query).toContain('books(order_by');
       return {
         books: [
-          { id: 1, title: 'Already Have', cached_contributors: [], editions: [] },
-          { id: 2, title: 'New To You', cached_contributors: [], editions: [] },
+          { id: 1, title: 'Already Have', contributions: [], editions: [] },
+          { id: 2, title: 'New To You', contributions: [], editions: [] },
         ],
       };
     });
