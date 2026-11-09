@@ -11,7 +11,10 @@ import type {
 import { Permission } from '@bookorbit/types';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { DEFAULT_LIBRARY_SETTING, isLibraryFeatureEnabled, type EffectiveLibrarySetting } from '../reading-services/library-scope.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
+import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServiceRegistry } from '../reading-services/reading-service-registry.service';
 import type { ReadingServiceProviderAdapter } from '../reading-services/reading-service-provider';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
@@ -41,6 +44,27 @@ const MIGRATION_INDEX_TTL_MS = 60 * 60 * 1000;
 const MIGRATION_READWISE_ONLY_CACHE_KEY = 'migration-readwise-only';
 
 type MigrationCursor = Record<string, never> | { phase: 'index'; next: string | null } | { phase: 'push'; afterBookId: number };
+
+/** Which of the four book fields are effectively on for one book, after merging the provider toggle with its library's override. */
+interface EffectiveBookFeatures {
+  status: boolean;
+  rating: boolean;
+  review: boolean;
+  dates: boolean;
+}
+
+function resolveBookFeatures(
+  providerFeatures: Partial<Record<'status' | 'rating' | 'review' | 'dates', boolean>>,
+  librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
+  libraryId: number,
+): EffectiveBookFeatures {
+  return {
+    status: isLibraryFeatureEnabled(librarySettings, libraryId, 'status', providerFeatures.status !== false),
+    rating: isLibraryFeatureEnabled(librarySettings, libraryId, 'rating', providerFeatures.rating !== false),
+    review: isLibraryFeatureEnabled(librarySettings, libraryId, 'review', providerFeatures.review !== false),
+    dates: isLibraryFeatureEnabled(librarySettings, libraryId, 'dates', providerFeatures.dates !== false),
+  };
+}
 
 interface CachedRemoteBook {
   externalId: string;
@@ -74,18 +98,21 @@ function toRemoteIndexBook(book: ReadwiseBook): CachedRemoteBook {
   };
 }
 
-function toCreateItem(book: LocalBookForMigration, status: NonNullable<ReturnType<typeof mapBookOrbitStatusToReadwise>>): ReadwiseBookCreateItem {
+function toCreateItem(
+  book: LocalBookForMigration,
+  status: NonNullable<ReturnType<typeof mapBookOrbitStatusToReadwise>>,
+  features: EffectiveBookFeatures,
+): ReadwiseBookCreateItem {
   return {
     product: {
       ...(book.isbn13 ? { isbn: book.isbn13 } : book.isbn10 ? { isbn: book.isbn10 } : {}),
       title: book.title,
       ...(book.author ? { author: book.author } : {}),
     },
-    status,
-    started_reading_at: book.startedAt,
-    finished_reading_at: book.finishedAt,
-    rating: book.rating,
-    review: normalizeReadwiseReview(book.review),
+    ...(features.status ? { status } : {}),
+    ...(features.dates ? { started_reading_at: book.startedAt, finished_reading_at: book.finishedAt } : {}),
+    ...(features.rating ? { rating: book.rating } : {}),
+    ...(features.review ? { review: normalizeReadwiseReview(book.review) } : {}),
   };
 }
 
@@ -93,14 +120,14 @@ function toUpdateItem(
   externalId: string,
   book: LocalBookForMigration,
   status: ReturnType<typeof mapBookOrbitStatusToReadwise>,
+  features: EffectiveBookFeatures,
 ): ReadwiseBookUpdateItem {
   return {
     id: externalId,
-    ...(status ? { status } : {}),
-    started_reading_at: book.startedAt,
-    finished_reading_at: book.finishedAt,
-    rating: book.rating,
-    review: normalizeReadwiseReview(book.review),
+    ...(features.status && status ? { status } : {}),
+    ...(features.dates ? { started_reading_at: book.startedAt, finished_reading_at: book.finishedAt } : {}),
+    ...(features.rating ? { rating: book.rating } : {}),
+    ...(features.review ? { review: normalizeReadwiseReview(book.review) } : {}),
   };
 }
 
@@ -141,6 +168,8 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     private readonly cache: ReadingServiceCacheService,
     private readonly pullService: ReadwiseBooksPullService,
     private readonly ownedElsewhere: ReadwiseOwnedElsewhereService,
+    private readonly featuresService: ReadingServiceFeaturesService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
   ) {}
 
   onModuleInit(): void {
@@ -249,6 +278,13 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
     const remoteByExternalId = new Map(remoteBooks.map((b) => [b.externalId, b]));
     const matchedSoFar = new Set((await this.cache.get<string[]>(userId, this.provider, MIGRATION_MATCHED_CACHE_KEY)) ?? []);
 
+    // Fetched once per page (not per book): providerFeatures is the global per-provider toggle,
+    // librarySettings is the per-library override map (enabled, feature overrides, series mode).
+    const [providerFeatures, librarySettings] = await Promise.all([
+      this.featuresService.getFeatures(userId, this.provider),
+      this.libraryScopeService.getEffectiveLibrarySettingsForUserId(userId, this.provider),
+    ]);
+
     const page = await this.localBooks.findPage(userId, cursor.afterBookId, READWISE_MIGRATION_PUSH_PAGE_SIZE);
     if (page.length === 0) {
       await this.finishMigration(userId, remoteBooks, matchedSoFar, counters);
@@ -276,8 +312,16 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
 
     for (const book of page) {
       counters.scanned += 1;
-      const pushStatus = mapBookOrbitStatusToReadwise(book.status);
+      const librarySetting = librarySettings.get(book.libraryId) ?? DEFAULT_LIBRARY_SETTING;
       const existingLink = existingLinksByBookId.get(book.bookId);
+
+      // A library the owner turned off entirely never gets a book created, updated or matched
+      // here, regardless of any per-field override (requirement: migration must not run for a
+      // disabled library).
+      if (!librarySetting.enabled) {
+        counters.skipped += 1;
+        continue;
+      }
 
       if (existingLink) {
         // A remote-deleted link never changes local state (same rule the pull-side status
@@ -287,10 +331,20 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
           counters.skipped += 1;
           continue;
         }
+        if (existingLink.matchMethod === 'series') {
+          // Already routed to a shared series book by ReadwiseComicSeriesService. That path
+          // owns page-aware status/session pushes for it; migration only needs to count it as
+          // matched so it is never reclassified as Readwise-only.
+          matchedSoFar.add(existingLink.externalBookId);
+          counters.matched += 1;
+          continue;
+        }
         matchedSoFar.add(existingLink.externalBookId);
         counters.matched += 1;
+        const bookFeatures = resolveBookFeatures(providerFeatures, librarySettings, book.libraryId);
+        const pushStatus = mapBookOrbitStatusToReadwise(book.status);
         const remote = remoteByExternalId.get(existingLink.externalBookId);
-        if (remote && this.remoteAlreadyMatches(remote, book, pushStatus)) {
+        if (remote && this.remoteAlreadyMatches(remote, book, pushStatus, bookFeatures)) {
           silentlyLinkedItems.push({ book, externalId: existingLink.externalBookId, matchMethod: existingLink.matchMethod });
         } else {
           if (remote) this.logOverwrite(userId, book.bookId, existingLink.externalBookId, remote, pushStatus);
@@ -298,19 +352,30 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
             book,
             externalId: existingLink.externalBookId,
             matchMethod: existingLink.matchMethod,
-            item: toUpdateItem(existingLink.externalBookId, book, pushStatus),
+            item: toUpdateItem(existingLink.externalBookId, book, pushStatus, bookFeatures),
           });
         }
         continue;
       }
 
+      // A comic issue in a series-mode library with no individual link is deliberately left
+      // untouched here: creating one Readwise book per issue is the exact bug this guards
+      // against. It is picked up later by ReadwiseComicSeriesService (via the status/session
+      // push paths) on its first reading activity, which groups it into the series' shared book.
+      if (librarySetting.seriesMode) {
+        counters.skipped += 1;
+        continue;
+      }
+
+      const bookFeatures = resolveBookFeatures(providerFeatures, librarySettings, book.libraryId);
+      const pushStatus = mapBookOrbitStatusToReadwise(book.status);
       const result = matchBook({ isbn13: book.isbn13, isbn10: book.isbn10, title: book.title, author: book.author }, index);
 
       if (result) {
         matchedSoFar.add(result.externalId);
         counters.matched += 1;
         const remote = remoteByExternalId.get(result.externalId);
-        if (remote && this.remoteAlreadyMatches(remote, book, pushStatus)) {
+        if (remote && this.remoteAlreadyMatches(remote, book, pushStatus, bookFeatures)) {
           silentlyLinkedItems.push({ book, externalId: result.externalId, matchMethod: result.method });
         } else {
           if (remote) this.logOverwrite(userId, book.bookId, result.externalId, remote, pushStatus);
@@ -318,11 +383,11 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
             book,
             externalId: result.externalId,
             matchMethod: result.method,
-            item: toUpdateItem(result.externalId, book, pushStatus),
+            item: toUpdateItem(result.externalId, book, pushStatus, bookFeatures),
           });
         }
       } else if (pushStatus !== null) {
-        createItems.push({ book, item: toCreateItem(book, pushStatus) });
+        createItems.push({ book, item: toCreateItem(book, pushStatus, bookFeatures) });
       } else {
         counters.skipped += 1;
       }
@@ -625,13 +690,17 @@ export class ReadwiseBooksMigrationService implements ReadingServiceProviderAdap
    * reconnect-safe first connect so a remote value that already agrees with BookOrbit's never
    * gets logged as if it had been clobbered.
    */
-  private remoteAlreadyMatches(remote: CachedRemoteBook, book: LocalBookForMigration, pushStatus: ReadwiseBookStatus | null): boolean {
+  private remoteAlreadyMatches(
+    remote: CachedRemoteBook,
+    book: LocalBookForMigration,
+    pushStatus: ReadwiseBookStatus | null,
+    features: EffectiveBookFeatures,
+  ): boolean {
     return (
-      remote.status === pushStatus &&
-      remote.rating === book.rating &&
-      remote.review === book.review &&
-      remote.startedAt === book.startedAt &&
-      remote.finishedAt === book.finishedAt
+      (!features.status || remote.status === pushStatus) &&
+      (!features.rating || remote.rating === book.rating) &&
+      (!features.review || remote.review === book.review) &&
+      (!features.dates || (remote.startedAt === book.startedAt && remote.finishedAt === book.finishedAt))
     );
   }
 

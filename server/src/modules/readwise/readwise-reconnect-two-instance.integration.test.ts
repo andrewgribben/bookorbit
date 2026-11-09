@@ -554,6 +554,12 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
   const ownedElsewhereStub = {
     getOwnedElsewhere: async () => [],
   } as unknown as import('./readwise-owned-elsewhere.service').ReadwiseOwnedElsewhereService;
+  const featuresServiceStub = {
+    getFeatures: async () => ({}),
+  } as unknown as import('../reading-services/reading-service-features.service').ReadingServiceFeaturesService;
+  const libraryScopeServiceStub = {
+    getEffectiveLibrarySettingsForUserId: async () => new Map(),
+  } as unknown as import('../reading-services/reading-service-library-scope.service').ReadingServiceLibraryScopeService;
 
   const migrationService = new ReadwiseBooksMigrationService(
     registry,
@@ -565,6 +571,8 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     cache,
     pullServiceStub,
     ownedElsewhereStub,
+    featuresServiceStub,
+    libraryScopeServiceStub,
   );
 
   const syncRunServiceStub = {
@@ -656,6 +664,7 @@ const USER_B = 2002;
 function book(userId: number, bookId: number, overrides: Partial<LocalBookForMigration> = {}): LocalBookForMigration {
   return {
     bookId,
+    libraryId: 1,
     isbn13: ISBN,
     isbn10: null,
     title: 'Dune',

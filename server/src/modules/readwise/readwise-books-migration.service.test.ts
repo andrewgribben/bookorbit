@@ -1,17 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
+import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServiceRegistry } from '../reading-services/reading-service-registry.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksMigrationService } from './readwise-books-migration.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { ReadwiseBooksPullService } from './readwise-books-pull.service';
+import { ReadwiseOwnedElsewhereService } from './readwise-owned-elsewhere.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
 function book(partial: Partial<LocalBookForMigration> & { bookId: number }): LocalBookForMigration {
   return {
+    libraryId: 1,
     isbn13: null,
     isbn10: null,
     title: 'Untitled',
@@ -75,6 +79,11 @@ function makeService() {
     }),
   } as unknown as ReadingServicesRepository;
   const pullService = { pullForUser: vi.fn() } as unknown as ReadwiseBooksPullService;
+  const ownedElsewhere = { getOwnedElsewhere: vi.fn() } as unknown as ReadwiseOwnedElsewhereService;
+  const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
+  const libraryScopeService = {
+    getEffectiveLibrarySettingsForUserId: vi.fn().mockResolvedValue(new Map()),
+  } as unknown as ReadingServiceLibraryScopeService;
 
   const service = new ReadwiseBooksMigrationService(
     registry,
@@ -85,8 +94,22 @@ function makeService() {
     readingServicesRepo,
     cache,
     pullService,
+    ownedElsewhere,
+    featuresService,
+    libraryScopeService,
   );
-  return { service, client, localBooks, readwiseRepo, readwiseSettings, readingServicesRepo, registry, pullService };
+  return {
+    service,
+    client,
+    localBooks,
+    readwiseRepo,
+    readwiseSettings,
+    readingServicesRepo,
+    registry,
+    pullService,
+    featuresService,
+    libraryScopeService,
+  };
 }
 
 function emptyCounters() {
@@ -231,6 +254,79 @@ describe('ReadwiseBooksMigrationService', () => {
         expect.objectContaining({ externalBookId: 'r9', matchMethod: 'created' }),
       );
       expect(counters).toMatchObject({ scanned: 1, created: 1 });
+    });
+
+    it('creates no per-issue books for a comic series library with no individual link', async () => {
+      const { service, client, localBooks, libraryScopeService } = makeService();
+      (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+        new Map([[5, { enabled: true, features: { status: false }, seriesMode: true }]]),
+      );
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      const localPage = Array.from({ length: 136 }, (_, i) => book({ bookId: i + 1, libraryId: 5, title: `Issue ${i}`, status: 'read' }));
+      (localBooks.findPage as any).mockResolvedValueOnce(localPage).mockResolvedValueOnce([]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).not.toHaveBeenCalled();
+      expect(client.updateBooks).not.toHaveBeenCalled();
+      expect(counters).toMatchObject({ scanned: 136, skipped: 136, created: 0, matched: 0 });
+    });
+
+    it('creates a book without a status field when the status feature is off', async () => {
+      const { service, client, localBooks, featuresService } = makeService();
+      (featuresService.getFeatures as any).mockResolvedValueOnce({ status: false });
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any).mockResolvedValueOnce([book({ bookId: 20, title: 'New Book', status: 'read' })]).mockResolvedValueOnce([]);
+      (client.createBooks as any).mockResolvedValueOnce([{ id: 'r9', status: 'created', book_id: 'r9' }]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).toHaveBeenCalledWith(1, 'tok', [expect.not.objectContaining({ status: expect.anything() })]);
+      expect(counters).toMatchObject({ scanned: 1, created: 1 });
+    });
+
+    it('applies a per-library feature override that narrows rating even though the provider toggle allows it', async () => {
+      const { service, client, localBooks, libraryScopeService } = makeService();
+      (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+        new Map([[5, { enabled: true, features: { rating: false }, seriesMode: false }]]),
+      );
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any)
+        .mockResolvedValueOnce([book({ bookId: 20, libraryId: 5, title: 'New Book', status: 'read', rating: 5 })])
+        .mockResolvedValueOnce([]);
+      (client.createBooks as any).mockResolvedValueOnce([{ id: 'r9', status: 'created', book_id: 'r9' }]);
+
+      await service.migratePage(1, indexCursor!, emptyCounters());
+
+      expect(client.createBooks).toHaveBeenCalledWith(1, 'tok', [expect.not.objectContaining({ rating: expect.anything() })]);
+    });
+
+    it('does not run migration (no create/update/match) for a library the owner disabled', async () => {
+      const { service, client, localBooks, libraryScopeService } = makeService();
+      (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+        new Map([[5, { enabled: false, features: {}, seriesMode: false }]]),
+      );
+      (client.listBooks as any).mockResolvedValueOnce({ results: [], next: null });
+      const indexCursor = await service.migratePage(1, {}, emptyCounters());
+
+      (localBooks.findPage as any)
+        .mockResolvedValueOnce([book({ bookId: 20, libraryId: 5, title: 'Disabled Lib Book', status: 'read' })])
+        .mockResolvedValueOnce([]);
+
+      const counters = emptyCounters();
+      await service.migratePage(1, indexCursor!, counters);
+
+      expect(client.createBooks).not.toHaveBeenCalled();
+      expect(client.updateBooks).not.toHaveBeenCalled();
+      expect(counters).toMatchObject({ scanned: 1, skipped: 1, created: 0, matched: 0 });
     });
 
     it('coerces a whitespace-only review to null when creating an unmatched book', async () => {

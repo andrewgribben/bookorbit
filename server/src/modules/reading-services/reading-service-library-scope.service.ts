@@ -36,6 +36,16 @@ export class ReadingServiceLibraryScopeService {
     return this.getEffectiveLibraryIds({ id: userId, isSuperuser } as RequestUser, provider, feature);
   }
 
+  /**
+   * Batched settings for every one of the user's libraries, for a caller that needs more than
+   * membership (e.g. per-feature gating in a bulk push/migration loop) without a query per item.
+   * For background work that only has a user id, mirroring `getEffectiveLibraryIdsForUserId`.
+   */
+  async getEffectiveLibrarySettingsForUserId(userId: number, provider: ReadingServiceProvider): Promise<Map<number, EffectiveLibrarySetting>> {
+    const isSuperuser = await this.repo.isSuperuser(userId);
+    return this.getSettingsMap({ id: userId, isSuperuser } as RequestUser, provider);
+  }
+
   /** Raw settings map keyed by library id, dropping ids the user has since lost access to. */
   private async getSettingsMap(user: RequestUser, provider: ReadingServiceProvider): Promise<Map<number, EffectiveLibrarySetting>> {
     const accessible = new Set(await this.libraryService.findAccessibleLibraryIds(user));

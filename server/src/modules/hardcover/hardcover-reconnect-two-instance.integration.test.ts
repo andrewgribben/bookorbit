@@ -275,7 +275,10 @@ function makeSettingsService(token = 'tok') {
 }
 
 function makeLibraryScopeService() {
-  return { getEffectiveLibraryIdsForUserId: async () => [LIBRARY_ID] } as any;
+  return {
+    getEffectiveLibraryIdsForUserId: async () => [LIBRARY_ID],
+    getEffectiveLibrarySettingsForUserId: async () => new Map(),
+  } as any;
 }
 
 function bookSyncData(bookId: number, overrides: Partial<BookSyncData> = {}): BookSyncData {

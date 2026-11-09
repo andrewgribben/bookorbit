@@ -12,6 +12,7 @@ type Db = NodePgDatabase<typeof schema>;
 
 export interface LocalBookForMigration {
   bookId: number;
+  libraryId: number;
   isbn13: string | null;
   isbn10: string | null;
   title: string;
@@ -64,6 +65,7 @@ export class ReadwiseBooksLocalBooksRepository {
     const rows = await this.db
       .select({
         bookId: schema.books.id,
+        libraryId: schema.books.libraryId,
         isbn13: schema.bookMetadata.isbn13,
         isbn10: schema.bookMetadata.isbn10,
         title: schema.bookMetadata.title,
@@ -82,6 +84,7 @@ export class ReadwiseBooksLocalBooksRepository {
       .where(and(inArray(schema.books.libraryId, libraryIds), eq(schema.books.id, bookId)))
       .groupBy(
         schema.books.id,
+        schema.books.libraryId,
         schema.bookMetadata.isbn13,
         schema.bookMetadata.isbn10,
         schema.bookMetadata.title,
@@ -102,6 +105,7 @@ export class ReadwiseBooksLocalBooksRepository {
 
     return {
       bookId: row.bookId,
+      libraryId: row.libraryId,
       isbn13: row.isbn13,
       isbn10: row.isbn10,
       title: row.title ?? '',
@@ -126,6 +130,7 @@ export class ReadwiseBooksLocalBooksRepository {
     const rows = await this.db
       .select({
         bookId: schema.books.id,
+        libraryId: schema.books.libraryId,
         isbn13: schema.bookMetadata.isbn13,
         isbn10: schema.bookMetadata.isbn10,
         title: schema.bookMetadata.title,
@@ -144,6 +149,7 @@ export class ReadwiseBooksLocalBooksRepository {
       .where(and(inArray(schema.books.libraryId, libraryIds), gt(schema.books.id, afterBookId)))
       .groupBy(
         schema.books.id,
+        schema.books.libraryId,
         schema.bookMetadata.isbn13,
         schema.bookMetadata.isbn10,
         schema.bookMetadata.title,
@@ -175,6 +181,7 @@ export class ReadwiseBooksLocalBooksRepository {
       const latest = latestByBook.get(r.bookId);
       return {
         bookId: r.bookId,
+        libraryId: r.libraryId,
         isbn13: r.isbn13,
         isbn10: r.isbn10,
         title: r.title ?? '',
