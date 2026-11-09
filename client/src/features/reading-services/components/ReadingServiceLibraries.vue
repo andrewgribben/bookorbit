@@ -131,7 +131,7 @@ async function handleSeriesModeToggle(libraryId: number, value: boolean): Promis
         <div v-if="showsSeriesMode" class="flex items-start justify-between gap-3 pt-1">
           <div>
             <p class="text-xs text-muted-foreground">{{ t('settings.readingServices.libraries.seriesMode.label') }}</p>
-            <p class="text-xs text-muted-foreground/70">{{ t('settings.readingServices.libraries.seriesMode.helper') }}</p>
+            <p class="text-xs text-muted-foreground">{{ t('settings.readingServices.libraries.seriesMode.helper') }}</p>
           </div>
           <ToggleSwitch
             :id="`reading-service-${provider}-library-${library.id}-series-mode`"
