@@ -115,4 +115,28 @@ describe('ReadwiseSessionsLocalRepository', () => {
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ deletedAt: expect.any(Date) }));
     expect(updateWhere).toHaveBeenCalledTimes(1);
   });
+
+  it('unlinkSessions soft-deletes the readwise session links for the given local ids', async () => {
+    const updateWhere = vi.fn().mockResolvedValue(undefined);
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+    const update = vi.fn().mockReturnValue({ set: updateSet });
+    const db = { update } as never;
+    const repo = new ReadwiseSessionsLocalRepository(db);
+
+    await repo.unlinkSessions(1, [100, 101]);
+
+    expect(update).toHaveBeenCalledWith(readingServiceItemLinks);
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ deletedAt: expect.any(Date) }));
+    expect(updateWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('unlinkSessions is a no-op for an empty id list', async () => {
+    const update = vi.fn();
+    const db = { update } as never;
+    const repo = new ReadwiseSessionsLocalRepository(db);
+
+    await repo.unlinkSessions(1, []);
+
+    expect(update).not.toHaveBeenCalled();
+  });
 });

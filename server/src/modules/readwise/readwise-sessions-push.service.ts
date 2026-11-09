@@ -92,9 +92,10 @@ export class ReadwiseSessionsPushService {
     // per-book push below would otherwise try to create it again. A no-op after the first call.
     await this.reconcile.ensureReconciled(userId, token);
 
-    // Stage 2 backfill (docs/plans/readwise-session-timing.md §2d): corrects paused_seconds on
-    // sessions pushed before that field existed. Bounded per call, resumable via its own cursor,
-    // and a no-op while READWISE_SESSIONS_CORRECTION_ENABLED is false (see that constant).
+    // One-time correction pass (docs/plans/readwise-session-timing.md §2d): deletes and unlinks
+    // sessions pushed before paused_seconds existed, so the push below re-POSTs them with the
+    // right numbers in the same flush where possible. Bounded per call, resumable via its own
+    // cursor, and a no-op after the one-time pass finishes (see READWISE_SESSIONS_CORRECTION_*).
     await this.correction.correctUser(userId, token);
 
     const timezone = await this.sessionsRepo.resolveUserTimeZone(userId);

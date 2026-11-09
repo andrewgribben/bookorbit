@@ -200,4 +200,45 @@ describe('ReadwiseBooksClientService', () => {
       expect(url).toBe(`${READWISE_SESSIONS_BY_DAY_URL}?from=2026-01-01&to=2026-02-01`);
     });
   });
+
+  describe('deleteSessions', () => {
+    it('returns early without fetching for an empty id list', async () => {
+      await service.deleteSessions(1, 'tok', []);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('sends the ids as a comma-separated query string, not a body', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [{ id: 1, status: 'deleted', error: null }] }));
+      await service.deleteSessions(1, 'tok', ['1']);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${READWISE_SESSIONS_URL}?ids=1`);
+      expect(init.method).toBe('DELETE');
+      expect(init.body).toBeUndefined();
+    });
+
+    it('joins multiple ids with commas', async () => {
+      fetchMock.mockResolvedValueOnce(
+        makeFetchResponse(200, {
+          results: [
+            { id: 1, status: 'deleted', error: null },
+            { id: 2, status: 'deleted', error: null },
+          ],
+        }),
+      );
+      await service.deleteSessions(1, 'tok', ['1', '2']);
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${READWISE_SESSIONS_URL}?ids=1%2C2`);
+    });
+
+    it('maps a per-id not_found result to status error with that code, not a thrown error', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [{ id: 1, status: 'error', error: { code: 'not_found' } }] }));
+      const result = await service.deleteSessions(1, 'tok', ['1']);
+      expect(result).toEqual([{ id: '1', status: 'error', error: { code: 'not_found' } }]);
+    });
+
+    it('throws ReadwiseUnexpectedResponseError when the result count does not match the request', async () => {
+      fetchMock.mockResolvedValueOnce(makeFetchResponse(200, { results: [] }));
+      await expect(service.deleteSessions(1, 'tok', ['1'])).rejects.toBeInstanceOf(ReadwiseUnexpectedResponseError);
+    });
+  });
 });

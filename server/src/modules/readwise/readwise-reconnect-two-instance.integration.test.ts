@@ -533,6 +533,10 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     insertPulledSession: async (userId: number, session: any) => db.insertPulledSession(userId, session),
     removePulledSession: async (userId: number, localId: number) => db.removePulledSession(userId, localId),
     resolveUserTimeZone: async () => 'UTC',
+    // No previously-pushed sessions exist in this harness's dataset, so the one-time correction
+    // pass always finds nothing to correct; this file exercises reconnect-safety, not correction.
+    findLinkedSessionsForCorrection: async () => [] as never[],
+    unlinkSessions: async () => undefined,
   } as unknown as import('./readwise-sessions-local.repository').ReadwiseSessionsLocalRepository;
 
   const registry = new ReadingServiceRegistry();

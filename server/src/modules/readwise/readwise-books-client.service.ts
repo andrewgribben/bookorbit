@@ -116,17 +116,15 @@ export interface ReadwiseCreateSessionItem {
 }
 
 /**
- * PATCH /sessions request item. The live Readwise docs (readwise.io/books_api, "Update
- * sessions") only document `caption` as patchable on `UpdateSessionItem`: "Times and
- * positions cannot change [via PATCH]." `paused_seconds` is not a documented PATCH field; it
- * is declared here for the stage 2 correction job (readwise-sessions-correction.service.ts),
- * which is kept behind `READWISE_SESSIONS_CORRECTION_ENABLED = false` until Readwise confirms
- * the field is actually applied rather than silently ignored as an unknown field.
+ * One result per id requested from `DELETE /sessions`, in order (readwise.io/books_api,
+ * "Delete sessions"). `error.code` is `not_found` for an id that is not this account's, or
+ * already deleted; the correction pass (readwise-sessions-correction.service.ts) treats that
+ * the same as `status: 'deleted'`, since the end state (gone from Readwise) is identical.
  */
-export interface ReadwiseUpdateSessionItem {
+export interface ReadwiseDeleteSessionResult {
   id: string;
-  paused_seconds?: number;
-  caption?: string | null;
+  status: 'deleted' | 'error';
+  error: { code?: string; message?: string } | null;
 }
 
 export interface ReadwiseStatsSummary {
@@ -214,6 +212,7 @@ interface ReadwiseWriteResponse<T> {
 
 type RawBookWriteResult = Omit<ReadwiseBookCreateResult, 'book_id' | 'id'> & { book_id?: string | number | null; id?: string | number | null };
 type RawSessionWriteResult = { status?: string; session_id?: string | number | null; id?: string | number | null; error?: string | null };
+type RawDeleteSessionResult = { id?: string | number | null; status?: string; error?: { code?: string; message?: string } | null };
 
 /** Thrown when a write call succeeded at HTTP level but the body is not the documented shape; the write may have landed, so callers must not blindly retry. */
 export class ReadwiseUnexpectedResponseError extends Error {
@@ -299,23 +298,23 @@ export class ReadwiseBooksClientService {
   }
 
   /**
-   * PATCHes 1-100 sessions by Readwise session id (`items[].id`), reusing the create path's
-   * throttle/retry/response-shape handling. Never used to create a session; Readwise has no
-   * dedupe for `POST /sessions`, so a correction must always go through this, never a resend.
-   * See `ReadwiseUpdateSessionItem` for the caveat on which fields Readwise actually applies.
+   * DELETEs 1-100 sessions by Readwise session id, via the query string as the live docs
+   * (readwise.io/books_api, "Delete sessions") require: "Times and positions cannot change.
+   * To correct them, delete the session and record it again." An id that is not this
+   * account's, or already deleted, comes back as a per-id `error.code: 'not_found'` result,
+   * not an HTTP error - the whole request still answers 200.
    */
-  async updateSessions(userId: number, token: string, items: ReadwiseUpdateSessionItem[]): Promise<{ id: string }[]> {
-    if (items.length === 0) return [];
-    const result = await this.request<ReadwiseWriteResponse<RawSessionWriteResult>>(userId, token, 'PATCH', READWISE_SESSIONS_URL, { items });
-    return readWriteResults(result, items.length, 'PATCH /sessions').map((r) => ({
-      ...r,
-      id: r.session_id != null ? String(r.session_id) : r.id != null ? String(r.id) : '',
+  async deleteSessions(userId: number, token: string, ids: string[]): Promise<ReadwiseDeleteSessionResult[]> {
+    if (ids.length === 0) return [];
+    const query = toQueryString({ ids: ids.join(',') });
+    const result = await this.request<{ results?: RawDeleteSessionResult[] }>(userId, token, 'DELETE', `${READWISE_SESSIONS_URL}${query}`);
+    const results = result?.results;
+    if (!Array.isArray(results) || results.length !== ids.length) throw new ReadwiseUnexpectedResponseError('DELETE /sessions');
+    return results.map((r) => ({
+      id: r.id != null ? String(r.id) : '',
+      status: r.status === 'deleted' ? 'deleted' : 'error',
+      error: r.error ?? null,
     }));
-  }
-
-  async deleteSessions(userId: number, token: string, ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    await this.request<void>(userId, token, 'DELETE', READWISE_SESSIONS_URL, { ids });
   }
 
   async statsSummary(userId: number, token: string, year: number): Promise<ReadwiseStatsSummary> {

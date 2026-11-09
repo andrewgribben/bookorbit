@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
+import type { ReadwiseDeleteSessionResult } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { computePausedSeconds } from './readwise-session-timing.utils';
 import type { LinkedSessionForCorrection } from './readwise-sessions-local.repository';
@@ -11,8 +12,10 @@ import {
   READWISE_SESSIONS_CORRECTION_BATCH,
   READWISE_SESSIONS_CORRECTION_CURSOR_CACHE_KEY,
   READWISE_SESSIONS_CORRECTION_CURSOR_TTL_MS,
-  READWISE_SESSIONS_CORRECTION_ENABLED,
+  READWISE_SESSIONS_CORRECTION_DONE_CACHE_KEY,
+  READWISE_SESSIONS_CORRECTION_DONE_TTL_MS,
   READWISE_SESSIONS_CORRECTION_MAX_PAGES_PER_RUN,
+  READWISE_SESSIONS_CORRECTION_MIN_GAP_SECONDS,
   READWISE_SESSIONS_CORRECTION_PAGE_SIZE,
 } from './readwise.constants';
 import { ReadwiseRepository } from './readwise.repository';
@@ -22,27 +25,25 @@ const EVENT = 'readwise.sessions_correction';
 interface PendingCorrection {
   localId: number;
   externalId: string;
-  pausedSeconds: number;
 }
 
 /**
- * Stage 2 of docs/plans/readwise-session-timing.md §2d: corrects `paused_seconds` on sessions
- * BookOrbit already pushed to Readwise before stage 1 started populating that field, by PATCHing
- * them in place (by Readwise session id). Never re-POSTs: Readwise does not dedupe sessions, so
- * resending one would create a duplicate.
+ * One-time fix (docs/plans/readwise-session-timing.md §2d) for sessions BookOrbit pushed to
+ * Readwise before it started sending `paused_seconds`, so their recorded reading time is
+ * inflated by however long the device sat idle mid-session. Per the live Readwise docs
+ * (readwise.io/books_api): `PATCH /sessions` cannot change times or positions ("delete the
+ * session and record it again"), and `POST /sessions` is never deduped. The only correct fix is
+ * therefore: DELETE the inflated session on Readwise first, then unlink it locally so the
+ * existing push path (which already sends `paused_seconds` for every new session) re-POSTs it
+ * with the right numbers on the same or next flush. Deleting first means a crash between the
+ * delete and the unlink can only leave the link stale for the next run to retry - DELETE on an
+ * id already gone answers `not_found`, which is treated as success - never a duplicate.
  *
- * IMPORTANT: kept off by default via `READWISE_SESSIONS_CORRECTION_ENABLED`. The live Readwise
- * docs (readwise.io/books_api, "Update sessions") only document `caption` as a field `PATCH
- * /sessions` actually changes, and state outright that times/positions "cannot change [via
- * PATCH]". `paused_seconds` is not confirmed to be applied by that endpoint; it may be silently
- * ignored as an unknown field. This service is fully built, wired and tested so it can be
- * enabled the moment that is confirmed, but must not run for real until then.
- *
- * Progress is a per-user cursor (last local session id considered) in `reading_service_cache`,
- * the same mechanism the books/sessions/highlights pull cursors already use - no schema change.
- * A run is bounded to a few pages so it never stalls the sessions sync flow it rides alongside,
- * and resumable/idempotent: a re-run picks up after the stored cursor, and once every linked
- * session has been considered the query returns nothing, so a re-run patches zero sessions.
+ * Runs once per user: progress is a keyset cursor (last local session id considered) plus a
+ * "done" flag, both in `reading_service_cache` (the same mechanism as
+ * `ReadwiseSessionsReconcileService`). A run is bounded to a few pages so it never stalls the
+ * sessions sync flow it rides alongside; once a pass finds no more eligible rows, the done flag
+ * is set and every later call for this user is a no-op.
  */
 @Injectable()
 export class ReadwiseSessionsCorrectionService {
@@ -55,45 +56,59 @@ export class ReadwiseSessionsCorrectionService {
     private readonly cache: ReadingServiceCacheService,
   ) {}
 
-  /** Runs a bounded, resumable slice of the correction pass. Never throws. */
+  /** Runs a bounded, resumable slice of the one-time correction pass. Never throws. */
   async correctUser(userId: number, token: string): Promise<void> {
-    if (!READWISE_SESSIONS_CORRECTION_ENABLED) return;
+    const done = await this.cache.get<boolean>(userId, 'readwise', READWISE_SESSIONS_CORRECTION_DONE_CACHE_KEY);
+    if (done) return;
 
     const startedAtMs = Date.now();
     let scanned = 0;
-    let patched = 0;
+    let deleted = 0;
+    let unlinked = 0;
     let skipped = 0;
     let failed = 0;
     let cursor = (await this.cache.get<number>(userId, 'readwise', READWISE_SESSIONS_CORRECTION_CURSOR_CACHE_KEY)) ?? 0;
+    let finishedPass = false;
 
     try {
       for (let page = 0; page < READWISE_SESSIONS_CORRECTION_MAX_PAGES_PER_RUN; page++) {
         const rows = await this.sessionsRepo.findLinkedSessionsForCorrection(userId, cursor, READWISE_SESSIONS_CORRECTION_PAGE_SIZE);
-        if (rows.length === 0) break;
+        if (rows.length === 0) {
+          finishedPass = true;
+          break;
+        }
         scanned += rows.length;
 
         const pending: PendingCorrection[] = [];
         for (const row of rows) {
-          const pausedSeconds = computePausedSeconds(row);
-          if (pausedSeconds > 0) pending.push({ localId: row.id, externalId: row.externalId, pausedSeconds });
+          const gapSeconds = computePausedSeconds(row);
+          if (gapSeconds >= READWISE_SESSIONS_CORRECTION_MIN_GAP_SECONDS) pending.push({ localId: row.id, externalId: row.externalId });
           else skipped += 1;
         }
 
         for (let i = 0; i < pending.length; i += READWISE_SESSIONS_CORRECTION_BATCH) {
           const batch = pending.slice(i, i + READWISE_SESSIONS_CORRECTION_BATCH);
-          const outcome = await this.patchBatch(userId, token, batch);
-          patched += outcome.patched;
+          const outcome = await this.deleteAndUnlinkBatch(userId, token, batch);
+          deleted += outcome.deleted;
+          unlinked += outcome.unlinked;
           failed += outcome.failed;
         }
 
         cursor = rows[rows.length - 1]!.id;
         await this.cache.set(userId, 'readwise', READWISE_SESSIONS_CORRECTION_CURSOR_CACHE_KEY, cursor, READWISE_SESSIONS_CORRECTION_CURSOR_TTL_MS);
 
-        if (rows.length < READWISE_SESSIONS_CORRECTION_PAGE_SIZE) break;
+        if (rows.length < READWISE_SESSIONS_CORRECTION_PAGE_SIZE) {
+          finishedPass = true;
+          break;
+        }
+      }
+
+      if (finishedPass) {
+        await this.cache.set(userId, 'readwise', READWISE_SESSIONS_CORRECTION_DONE_CACHE_KEY, true, READWISE_SESSIONS_CORRECTION_DONE_TTL_MS);
       }
 
       this.logger.log(
-        `[${EVENT}] [end] userId=${userId} durationMs=${Date.now() - startedAtMs} scanned=${scanned} patched=${patched} skipped=${skipped} failed=${failed} - sessions correction completed`,
+        `[${EVENT}] [end] userId=${userId} durationMs=${Date.now() - startedAtMs} scanned=${scanned} deleted=${deleted} unlinked=${unlinked} skipped=${skipped} failed=${failed} - sessions correction completed`,
       );
     } catch (err) {
       if (err instanceof ReadwiseBooksForbiddenError) {
@@ -114,42 +129,54 @@ export class ReadwiseSessionsCorrectionService {
   }
 
   /**
-   * PATCHes one batch. On a 4xx, retries item by item (a single bad record should not block the
-   * rest of the batch); on any other failure the outcome is unknown, so the batch is left
-   * unpatched rather than resent, exactly like the push path's batch handling.
+   * DELETEs one batch on Readwise, then unlinks every local session whose delete outcome is
+   * known to be gone (`status: 'deleted'`, or `error.code: 'not_found'` - already gone, same
+   * end state). An id that errors for any other reason (e.g. `invalid_value`, a session that
+   * never ended) keeps its link and is retried on the next run; if the whole request's outcome
+   * is unknown (network error, 5xx, or an unexpected response shape) every link in the batch is
+   * left alone too, exactly like the push path's batch handling - never unlink on a guess.
    */
-  private async patchBatch(userId: number, token: string, batch: PendingCorrection[]): Promise<{ patched: number; failed: number }> {
-    const items = batch.map((entry) => ({ id: entry.externalId, paused_seconds: entry.pausedSeconds }));
+  private async deleteAndUnlinkBatch(
+    userId: number,
+    token: string,
+    batch: PendingCorrection[],
+  ): Promise<{ deleted: number; unlinked: number; failed: number }> {
+    let results: ReadwiseDeleteSessionResult[];
     try {
-      const results = await this.client.updateSessions(userId, token, items);
-      return { patched: results.length, failed: 0 };
+      results = await this.client.deleteSessions(
+        userId,
+        token,
+        batch.map((entry) => entry.externalId),
+      );
     } catch (err) {
       if (err instanceof ReadwiseUnauthorizedError || err instanceof ReadwiseBooksForbiddenError) throw err;
-      if (!(err instanceof ReadwiseBooksHttpError && err.status >= 400 && err.status < 500)) {
-        const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
-        this.logger.error(
-          `[${EVENT}] [fail] userId=${userId} sessions=${batch.length} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - correction batch outcome unknown, not retried`,
-        );
-        return { patched: 0, failed: batch.length };
-      }
-
-      let patched = 0;
-      let failed = 0;
-      for (const entry of batch) {
-        try {
-          await this.client.updateSessions(userId, token, [{ id: entry.externalId, paused_seconds: entry.pausedSeconds }]);
-          patched += 1;
-        } catch (itemErr) {
-          if (itemErr instanceof ReadwiseUnauthorizedError || itemErr instanceof ReadwiseBooksForbiddenError) throw itemErr;
-          failed += 1;
-          const errorClass = itemErr instanceof Error ? itemErr.constructor.name : 'UnknownError';
-          this.logger.error(
-            `[${EVENT}] [fail] userId=${userId} localId=${entry.localId} errorClass=${errorClass} error="${sanitizeLogValue(itemErr instanceof Error ? itemErr.message : String(itemErr))}" - session correction failed, run continues`,
-          );
-        }
-      }
-      return { patched, failed };
+      const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
+      this.logger.error(
+        `[${EVENT}] [fail] userId=${userId} sessions=${batch.length} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - delete batch outcome unknown, links kept`,
+      );
+      return { deleted: 0, unlinked: 0, failed: batch.length };
     }
+
+    let deleted = 0;
+    let failed = 0;
+    const toUnlink: number[] = [];
+    for (let i = 0; i < batch.length; i++) {
+      const entry = batch[i]!;
+      const result = results[i];
+      const gone = result?.status === 'deleted' || result?.error?.code === 'not_found';
+      if (gone) {
+        deleted += 1;
+        toUnlink.push(entry.localId);
+      } else {
+        failed += 1;
+        this.logger.error(
+          `[${EVENT}] [fail] userId=${userId} localId=${entry.localId} errorClass=ReadwiseDeleteSessionError error="${sanitizeLogValue(result?.error?.code ?? result?.status ?? 'unknown')}" - session delete failed, link kept`,
+        );
+      }
+    }
+
+    if (toUnlink.length > 0) await this.sessionsRepo.unlinkSessions(userId, toUnlink);
+    return { deleted, unlinked: toUnlink.length, failed };
   }
 }
 
