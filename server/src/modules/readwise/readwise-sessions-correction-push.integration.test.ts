@@ -3,10 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService } from './readwise-books-client.service';
+import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
+import { ReadwiseSessionsDeleteUnlinkService } from './readwise-sessions-delete-unlink.service';
 import { ReadwiseSessionsLocalRepository, type LinkedSessionForCorrection } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
+import { ReadwiseSessionsRepairService } from './readwise-sessions-repair.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
@@ -36,6 +39,8 @@ describe('Readwise session correction -> push integration', () => {
 
     const sessionsRepo = {
       findLinkedSessionsForCorrection: vi.fn().mockResolvedValueOnce([linkedRow]).mockResolvedValue([]),
+      findLinkedSessionsForBook: vi.fn().mockResolvedValue([]),
+      findAllPushableSessions: vi.fn().mockResolvedValue([]),
       unlinkSessions: vi.fn().mockResolvedValue(undefined),
       findPushableSessions: vi.fn().mockResolvedValue([
         {
@@ -47,6 +52,7 @@ describe('Readwise session correction -> push integration', () => {
           endProgress: null,
           progressDelta: null,
           sessionType: 'read',
+          source: 'web',
         },
       ]),
       resolveUserTimeZone: vi.fn().mockResolvedValue('UTC'),
@@ -62,15 +68,19 @@ describe('Readwise session correction -> push integration', () => {
       }),
     } as unknown as import('../reading-services/reading-service-cache.service').ReadingServiceCacheService;
 
-    const correction = new ReadwiseSessionsCorrectionService(client, sessionsRepo, readwiseRepo, cache);
+    const deleteUnlinkService = new ReadwiseSessionsDeleteUnlinkService(client, sessionsRepo);
+    const correction = new ReadwiseSessionsCorrectionService(sessionsRepo, readwiseRepo, cache, deleteUnlinkService);
 
     const readingServicesRepo = {
       findBookLink: vi.fn().mockResolvedValue({ externalBookId: 'rwbook-1', remoteDeleted: false }),
       recordItemLinks: vi.fn(),
+      updateItemLinkContentHash: vi.fn(),
     } as unknown as ReadingServicesRepository;
     const readwiseSettings = { getToken: vi.fn().mockResolvedValue('tok') } as unknown as ReadwiseSettingsService;
     const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
     const reconcile = { ensureReconciled: vi.fn().mockResolvedValue(undefined) } as unknown as ReadwiseSessionsReconcileService;
+    const repair = new ReadwiseSessionsRepairService(sessionsRepo, readingServicesRepo, deleteUnlinkService);
+    const sweep = new ReadwiseSessionsBackfillSweepService(sessionsRepo, cache);
 
     const pushService = new ReadwiseSessionsPushService(
       client,
@@ -81,6 +91,8 @@ describe('Readwise session correction -> push integration', () => {
       featuresService,
       reconcile,
       correction,
+      repair,
+      sweep,
     );
 
     await pushService.flushUser(1, [10]);
@@ -90,7 +102,7 @@ describe('Readwise session correction -> push integration', () => {
     expect(sessionsRepo.unlinkSessions).toHaveBeenCalledWith(1, [100]);
     expect(client.createSessions).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ paused_seconds: 2400 })]);
     expect(readingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
-      { userId: 1, provider: 'readwise', kind: 'session', localId: 100, externalId: 'ext-100-new' },
+      expect.objectContaining({ userId: 1, provider: 'readwise', kind: 'session', localId: 100, externalId: 'ext-100-new' }),
     ]);
   });
 });

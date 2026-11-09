@@ -3,10 +3,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
+import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import { ReadwiseSessionsCorrectionService } from './readwise-sessions-correction.service';
 import { ReadwiseSessionsLocalRepository, type PushableSession } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsPushService } from './readwise-sessions-push.service';
 import { ReadwiseSessionsReconcileService } from './readwise-sessions-reconcile.service';
+import { ReadwiseSessionsRepairService } from './readwise-sessions-repair.service';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
 
@@ -19,6 +21,7 @@ function session(partial: Partial<PushableSession> & { id: number }): PushableSe
     endProgress: 50,
     progressDelta: 5,
     sessionType: 'read',
+    source: 'web',
     ...partial,
   };
 }
@@ -38,6 +41,8 @@ function makeService() {
   const featuresService = { getFeatures: vi.fn().mockResolvedValue({}) } as unknown as ReadingServiceFeaturesService;
   const reconcile = { ensureReconciled: vi.fn().mockResolvedValue(undefined) } as unknown as ReadwiseSessionsReconcileService;
   const correction = { correctUser: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsCorrectionService;
+  const repair = { repairBook: vi.fn().mockResolvedValue(0) } as unknown as ReadwiseSessionsRepairService;
+  const sweep = { ensureSwept: vi.fn().mockResolvedValue([]) } as unknown as ReadwiseSessionsBackfillSweepService;
 
   const service = new ReadwiseSessionsPushService(
     client,
@@ -48,8 +53,22 @@ function makeService() {
     featuresService,
     reconcile,
     correction,
+    repair,
+    sweep,
   );
-  return { service, client, sessionsRepo, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, reconcile, correction };
+  return {
+    service,
+    client,
+    sessionsRepo,
+    readwiseRepo,
+    readwiseSettings,
+    readingServicesRepo,
+    featuresService,
+    reconcile,
+    correction,
+    repair,
+    sweep,
+  };
 }
 
 describe('ReadwiseSessionsPushService', () => {
@@ -130,8 +149,8 @@ describe('ReadwiseSessionsPushService', () => {
       expect.arrayContaining([expect.objectContaining({ book_id: 'r1', publish_to_feed: false })]),
     );
     expect(readingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
-      { userId: 1, provider: 'readwise', kind: 'session', localId: 100, externalId: 'ext-100' },
-      { userId: 1, provider: 'readwise', kind: 'session', localId: 101, externalId: 'ext-101' },
+      expect.objectContaining({ userId: 1, provider: 'readwise', kind: 'session', localId: 100, externalId: 'ext-100' }),
+      expect.objectContaining({ userId: 1, provider: 'readwise', kind: 'session', localId: 101, externalId: 'ext-101' }),
     ]);
   });
 
@@ -199,7 +218,7 @@ describe('ReadwiseSessionsPushService', () => {
 
     expect(client.createSessions).toHaveBeenCalledTimes(3);
     expect(readingServicesRepo.recordItemLinks).toHaveBeenCalledWith([
-      { userId: 1, provider: 'readwise', kind: 'session', localId: 400, externalId: 'ext-400' },
+      expect.objectContaining({ userId: 1, provider: 'readwise', kind: 'session', localId: 400, externalId: 'ext-400' }),
     ]);
   });
 
@@ -212,5 +231,49 @@ describe('ReadwiseSessionsPushService', () => {
     await service.flushUser(1, [10]);
 
     expect(client.createSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not push an unsettled koreader session and reports a settle retry for its book', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    const endedAt = new Date(Date.now() - 60_000); // ended one minute ago, well inside the 30-minute settle gap
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 500, source: 'koreader', endedAt })]);
+
+    const result = await service.flushUser(1, [10]);
+
+    expect(client.createSessions).not.toHaveBeenCalled();
+    expect(result.settleRetries).toEqual([{ bookId: 10, nextSettleAt: new Date(endedAt.getTime() + 1800 * 1000) }]);
+  });
+
+  it('pushes a settled koreader session normally', async () => {
+    const { service, readingServicesRepo, sessionsRepo, client } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+    const endedAt = new Date(Date.now() - 2000 * 1000); // ended well past the 30-minute settle gap
+    (sessionsRepo.findPushableSessions as any).mockResolvedValueOnce([session({ id: 501, source: 'koreader', endedAt })]);
+    (client.createSessions as any).mockResolvedValueOnce([{ id: 'ext-501' }]);
+
+    const result = await service.flushUser(1, [10]);
+
+    expect(client.createSessions).toHaveBeenCalledTimes(1);
+    expect(result.settleRetries).toEqual([]);
+  });
+
+  it('runs the repair pass for a linked book before pushing new sessions', async () => {
+    const { service, readingServicesRepo, repair } = makeService();
+    (readingServicesRepo.findBookLink as any).mockResolvedValueOnce({ externalBookId: 'r1', remoteDeleted: false });
+
+    await service.flushUser(1, [10]);
+
+    expect(repair.repairBook).toHaveBeenCalledWith(1, 'tok', 10);
+  });
+
+  it('also pushes books returned by the one-time backfill sweep', async () => {
+    const { service, sweep, readingServicesRepo } = makeService();
+    (sweep.ensureSwept as any).mockResolvedValueOnce([30]);
+
+    await service.flushUser(1, [10]);
+
+    const pushedBookIds = (readingServicesRepo.findBookLink as any).mock.calls.map((call: unknown[]) => call[2]);
+    expect(pushedBookIds).toEqual([10, 30]);
   });
 });

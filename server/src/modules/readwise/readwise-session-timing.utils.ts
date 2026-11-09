@@ -22,3 +22,23 @@ export function computePausedSeconds(session: TimedSession): number {
   const wallClockSeconds = Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 1000);
   return Math.max(0, wallClockSeconds - session.durationSeconds);
 }
+
+/** Minimal shape needed to decide whether a koreader session could still grow on a later upload. */
+export interface SettleCheckSession {
+  source: string | null;
+  endedAt: Date;
+}
+
+/**
+ * A koreader session is clustered from page-stat uploads with a gap rule
+ * (`KOREADER_SESSION_GAP_SECONDS` in `koreader-stats.util.ts`, mirrored here as
+ * `settleGapSeconds` since modules don't import each other's internals): a later upload within
+ * that gap of the session's current `endedAt` extends the same row instead of starting a new
+ * one. So a koreader session has only truly finished growing once that gap has elapsed since it
+ * last ended. Every other source is pushed as soon as it is eligible, matching existing
+ * behaviour (see docs/plans/readwise-session-timing.md for what was checked on web/Android).
+ */
+export function isSessionSettled(session: SettleCheckSession, settleGapSeconds: number, now: Date = new Date()): boolean {
+  if (session.source !== 'koreader') return true;
+  return now.getTime() - session.endedAt.getTime() >= settleGapSeconds * 1000;
+}

@@ -2,10 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
-import type { ReadwiseDeleteSessionResult } from './readwise-books-client.service';
-import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
+import { ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { computePausedSeconds } from './readwise-session-timing.utils';
+import type { DeleteUnlinkTarget } from './readwise-sessions-delete-unlink.service';
+import { ReadwiseSessionsDeleteUnlinkService } from './readwise-sessions-delete-unlink.service';
 import type { LinkedSessionForCorrection } from './readwise-sessions-local.repository';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
 import {
@@ -51,10 +52,10 @@ export class ReadwiseSessionsCorrectionService {
   private readonly logger = new Logger(ReadwiseSessionsCorrectionService.name);
 
   constructor(
-    private readonly client: ReadwiseBooksClientService,
     private readonly sessionsRepo: ReadwiseSessionsLocalRepository,
     private readonly readwiseRepo: ReadwiseRepository,
     private readonly cache: ReadingServiceCacheService,
+    private readonly deleteUnlink: ReadwiseSessionsDeleteUnlinkService,
   ) {}
 
   /**
@@ -151,47 +152,8 @@ export class ReadwiseSessionsCorrectionService {
     token: string,
     batch: PendingCorrection[],
   ): Promise<{ deleted: number; unlinkedBookIds: number[]; failed: number }> {
-    let results: ReadwiseDeleteSessionResult[];
-    try {
-      results = await this.client.deleteSessions(
-        userId,
-        token,
-        batch.map((entry) => entry.externalId),
-      );
-    } catch (err) {
-      if (err instanceof ReadwiseUnauthorizedError || err instanceof ReadwiseBooksForbiddenError) throw err;
-      const errorClass = err instanceof Error ? err.constructor.name : 'UnknownError';
-      this.logger.error(
-        `[${EVENT}] [fail] userId=${userId} sessions=${batch.length} errorClass=${errorClass} error="${sanitizeLogValue(err instanceof Error ? err.message : String(err))}" - delete batch outcome unknown, links kept`,
-      );
-      return { deleted: 0, unlinkedBookIds: [], failed: batch.length };
-    }
-
-    let deleted = 0;
-    let failed = 0;
-    const toUnlink: PendingCorrection[] = [];
-    for (let i = 0; i < batch.length; i++) {
-      const entry = batch[i]!;
-      const result = results[i];
-      const gone = result?.status === 'deleted' || result?.error?.code === 'not_found';
-      if (gone) {
-        deleted += 1;
-        toUnlink.push(entry);
-      } else {
-        failed += 1;
-        this.logger.error(
-          `[${EVENT}] [fail] userId=${userId} localId=${entry.localId} errorClass=ReadwiseDeleteSessionError error="${sanitizeLogValue(result?.error?.code ?? result?.status ?? 'unknown')}" - session delete failed, link kept`,
-        );
-      }
-    }
-
-    if (toUnlink.length > 0) {
-      await this.sessionsRepo.unlinkSessions(
-        userId,
-        toUnlink.map((entry) => entry.localId),
-      );
-    }
-    return { deleted, unlinkedBookIds: toUnlink.map((entry) => entry.bookId), failed };
+    const targets: DeleteUnlinkTarget[] = batch.map((entry) => ({ localId: entry.localId, bookId: entry.bookId, externalId: entry.externalId }));
+    return this.deleteUnlink.deleteAndUnlink(userId, token, EVENT, targets);
   }
 }
 

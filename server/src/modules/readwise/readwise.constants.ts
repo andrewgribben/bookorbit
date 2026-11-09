@@ -142,6 +142,39 @@ export const READWISE_SESSIONS_CORRECTION_MIN_GAP_SECONDS = 60;
 export const READWISE_SESSIONS_CORRECTION_DONE_CACHE_KEY = 'sessions-correction-done';
 export const READWISE_SESSIONS_CORRECTION_DONE_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
 
+// Settle-before-push (docs/plans/readwise-session-timing.md "settle" gap): a koreader session
+// can still grow after a push, because a later page-stat upload within
+// `KOREADER_SESSION_GAP_SECONDS` of its current `endedAt` extends the same local row instead of
+// starting a new one (see koreader-stats.util.ts). Mirrored here, not imported, because modules
+// communicate through exported services only (AGENTS.md). Other sources are pushed as soon as
+// eligible; see the plan doc for what was checked on web/Android.
+export const READWISE_KOREADER_SETTLE_GAP_SECONDS = 1800;
+// Bounds for the scheduler's "retry once settled" timer: never fire sooner than this (avoids a
+// tight retry loop) and never wait longer than this even if a session's settle time is far off
+// (a later READING_SESSION_SAVED event will requestPush again anyway).
+export const READWISE_SESSIONS_SETTLE_RETRY_MIN_DELAY_MS = 5_000;
+export const READWISE_SESSIONS_SETTLE_RETRY_MAX_DELAY_MS = 40 * 60_000;
+
+// Grown-session repair: detects an already-linked session whose startedAt/endedAt/durationSeconds
+// no longer match what was pushed (`reading_service_item_links.contentHash`), and re-pushes it via
+// the shared delete-then-unlink helper (readwise-sessions-delete-unlink.service.ts). Runs as part
+// of the per-book flush, not a one-time pass, since growth can happen at any time.
+export const READWISE_SESSIONS_REPAIR_PAGE_SIZE = 200;
+export const READWISE_SESSIONS_REPAIR_MAX_PAGES_PER_CALL = 3;
+export const READWISE_SESSIONS_REPAIR_BATCH = READWISE_SESSIONS_CREATE_BATCH;
+
+// One-time per-user sweep (docs/plans/readwise-session-timing.md, large-upload gap): backfills a
+// push request for every Readwise-linked book that already has unlinked, settled sessions, so
+// sessions saved while the KOReader backfill path only emitted an achievements event (never a
+// push request) still reach Readwise. Same bounded, resumable, done-flag shape as
+// `ReadwiseSessionsReconcileService`/`ReadwiseSessionsCorrectionService`.
+export const READWISE_SESSIONS_SWEEP_PAGE_SIZE = 200;
+export const READWISE_SESSIONS_SWEEP_MAX_PAGES_PER_RUN = 3;
+export const READWISE_SESSIONS_SWEEP_CURSOR_CACHE_KEY = 'sessions-sweep-cursor';
+export const READWISE_SESSIONS_SWEEP_CURSOR_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+export const READWISE_SESSIONS_SWEEP_DONE_CACHE_KEY = 'sessions-sweep-done';
+export const READWISE_SESSIONS_SWEEP_DONE_TTL_MS = READWISE_BOOKS_PULL_CURSOR_TTL_MS;
+
 // S7 "Owned elsewhere" shelf: Readwise-only books classified as owned (readwise-book-ownership.ts),
 // excluding anything already linked to a BookOrbit book. Cached longer than the recap widget
 // since it needs a full remote-library page plus a full local-library page to build.
