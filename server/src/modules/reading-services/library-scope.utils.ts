@@ -50,3 +50,21 @@ export function isBookInScope(effectiveLibraryIds: readonly number[], bookLibrar
 export function isLibraryInEffectiveScope(effectiveLibraryIds: readonly number[], libraryId: number | null | undefined): boolean {
   return isBookInScope(effectiveLibraryIds, [libraryId]);
 }
+
+/**
+ * Whether `feature` is effectively usable for one book's library: the provider-level toggle AND
+ * the library override must both allow it (a library override can only narrow, never widen, same
+ * rule as `effectiveLibraryIdsForFeature`). A library with no override row inherits "on". A null
+ * `libraryId` (book not resolvable to a library) is never in scope.
+ */
+export function isLibraryFeatureEnabled(
+  librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
+  libraryId: number | null | undefined,
+  feature: ReadingServiceFeature,
+  providerFeatureEnabled = true,
+): boolean {
+  if (libraryId == null || !providerFeatureEnabled) return false;
+  const setting = librarySettings.get(libraryId) ?? DEFAULT_LIBRARY_SETTING;
+  if (!setting.enabled) return false;
+  return setting.features[feature] !== false;
+}

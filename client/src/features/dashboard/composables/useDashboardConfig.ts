@@ -12,6 +12,7 @@ import { useAuth } from '@/features/auth/composables/useAuth'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { api } from '@/lib/api'
 import { normalizeShelfRows } from '../lib/shelf-rows'
+import { mergeShelfRows, splitShelfRows, type ShelfOrderVersion } from '../lib/shelf-order'
 
 const STORAGE_KEY = 'bookorbit:dashboard:config'
 const MAX_SCROLLERS = 8
@@ -28,6 +29,7 @@ interface StoredDashboardConfig {
   scrollers: ScrollerConfig[]
   shelfLayout: DashboardShelfLayout
   externalShelves: ExternalShelfConfig[]
+  shelfOrderVersion?: ShelfOrderVersion
 }
 
 export const DEFAULT_SCROLLERS: ScrollerConfig[] = [
@@ -83,6 +85,10 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
   return fallback
 }
 
+function normalizeShelfOrderVersion(value: unknown): ShelfOrderVersion {
+  return value === 2 ? 2 : undefined
+}
+
 function normalizePositiveNumber(value: unknown, fallback: number): number {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
   if (typeof value === 'string') {
@@ -127,7 +133,7 @@ function normalizeScroller(value: unknown, index: number): ScrollerConfig | null
     type,
     label,
     enabled: normalizeBoolean(raw.enabled, true),
-    order: index + 1,
+    order: normalizePositiveNumber(raw.order, index + 1),
     limit: normalizePositiveNumber(raw.limit, 20),
     rows: normalizeShelfRows(raw.rows),
     ...(smartScopeId === undefined ? {} : { smartScopeId }),
@@ -135,7 +141,12 @@ function normalizeScroller(value: unknown, index: number): ScrollerConfig | null
   }
 }
 
-function normalizeScrollers(value: unknown): ScrollerConfig[] {
+/**
+ * `version === 2` means `order` already sits in the one sequence shared with external shelves,
+ * so it is kept as parsed. Any other version reindexes to a gap-free 1..N within this array
+ * alone, which is what every scroller-only caller (and the pre-unification format) expects.
+ */
+function normalizeScrollers(value: unknown, version: ShelfOrderVersion = undefined): ScrollerConfig[] {
   const storedScrollers = parseStoredScrollers(value)
   if (!storedScrollers) return cloneDefaultScrollers()
 
@@ -143,9 +154,10 @@ function normalizeScrollers(value: unknown): ScrollerConfig[] {
     .map((scroller, index) => normalizeScroller(scroller, index))
     .filter((scroller): scroller is ScrollerConfig => scroller !== null)
     .slice(0, MAX_SCROLLERS)
-    .map((scroller, index) => ({ ...scroller, order: index + 1 }))
 
-  return normalized.length > 0 ? normalized : cloneDefaultScrollers()
+  if (normalized.length === 0) return cloneDefaultScrollers()
+  if (version === 2) return normalized
+  return normalized.map((scroller, index) => ({ ...scroller, order: index + 1 }))
 }
 
 /**
@@ -166,15 +178,16 @@ function normalizeExternalShelf(value: unknown, index: number): ExternalShelfCon
     provider: raw.provider as ExternalShelfConfig['provider'],
     shelf: raw.shelf as ExternalShelfConfig['shelf'],
     enabled: normalizeBoolean(raw.enabled, false),
-    order: index + 1,
+    order: normalizePositiveNumber(raw.order, index + 1),
   }
 }
 
-function normalizeExternalShelves(value: unknown): ExternalShelfConfig[] {
+/** Same version-aware order handling as `normalizeScrollers`, see its comment. */
+function normalizeExternalShelves(value: unknown, version: ShelfOrderVersion = undefined): ExternalShelfConfig[] {
   if (!Array.isArray(value)) return []
 
   const seen = new Set<string>()
-  return value
+  const normalized = value
     .map((shelf, index) => normalizeExternalShelf(shelf, index))
     .filter((shelf): shelf is ExternalShelfConfig => shelf !== null)
     .filter((shelf) => {
@@ -184,27 +197,25 @@ function normalizeExternalShelves(value: unknown): ExternalShelfConfig[] {
       return true
     })
     .slice(0, MAX_EXTERNAL_SHELVES)
-    .map((shelf, index) => ({ ...shelf, order: index + 1 }))
+
+  if (version === 2) return normalized
+  return normalized.map((shelf, index) => ({ ...shelf, order: index + 1 }))
 }
 
 function loadConfig(): StoredDashboardConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE, externalShelves: [] }
+    if (!raw) return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE, externalShelves: [], shelfOrderVersion: undefined }
 
     const parsed: unknown = JSON.parse(raw)
-    const shelfLayout =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? normalizeShelfLayout((parsed as { shelfLayout?: unknown }).shelfLayout)
-        : SHELF_LAYOUT.WIDE
-    const externalShelves =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? normalizeExternalShelves((parsed as { externalShelves?: unknown }).externalShelves)
-        : []
+    const isObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    const shelfOrderVersion = isObject ? normalizeShelfOrderVersion((parsed as { shelfOrderVersion?: unknown }).shelfOrderVersion) : undefined
+    const shelfLayout = isObject ? normalizeShelfLayout((parsed as { shelfLayout?: unknown }).shelfLayout) : SHELF_LAYOUT.WIDE
+    const externalShelves = isObject ? normalizeExternalShelves((parsed as { externalShelves?: unknown }).externalShelves, shelfOrderVersion) : []
 
-    return { scrollers: normalizeScrollers(parsed), shelfLayout, externalShelves }
+    return { scrollers: normalizeScrollers(parsed, shelfOrderVersion), shelfLayout, externalShelves, shelfOrderVersion }
   } catch {
-    return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE, externalShelves: [] }
+    return { scrollers: cloneDefaultScrollers(), shelfLayout: SHELF_LAYOUT.WIDE, externalShelves: [], shelfOrderVersion: undefined }
   }
 }
 
@@ -231,6 +242,7 @@ const initialConfig = loadConfig()
 const scrollers = ref<ScrollerConfig[]>(initialConfig.scrollers)
 const shelfLayout = ref<DashboardShelfLayout>(initialConfig.shelfLayout)
 const externalShelves = ref<ExternalShelfConfig[]>(initialConfig.externalShelves)
+const shelfOrderVersion = ref<ShelfOrderVersion>(initialConfig.shelfOrderVersion)
 let hydratedUserId: number | undefined
 let hydratedFromServer = false
 
@@ -243,14 +255,17 @@ export function useDashboardConfig() {
     () => [user.value?.id, user.value?.settings?.dashboardShelfConfig, isDemoRestrictedAccount.value] as const,
     ([userId, config, demoRestricted]) => {
       if (!demoRestricted && config?.syncAcrossSessions === true) {
-        scrollers.value = normalizeScrollers(config.scrollers)
+        const version = normalizeShelfOrderVersion(config.shelfOrderVersion)
+        scrollers.value = normalizeScrollers(config.scrollers, version)
         shelfLayout.value = normalizeShelfLayout(config.shelfLayout)
-        externalShelves.value = normalizeExternalShelves(config.externalShelves)
+        externalShelves.value = normalizeExternalShelves(config.externalShelves, version)
+        shelfOrderVersion.value = version
       } else if (hydratedUserId !== userId || hydratedFromServer) {
         const local = loadConfig()
         scrollers.value = local.scrollers
         shelfLayout.value = local.shelfLayout
         externalShelves.value = local.externalShelves
+        shelfOrderVersion.value = local.shelfOrderVersion
       }
       hydratedUserId = userId
       hydratedFromServer = !demoRestricted && config?.syncAcrossSessions === true
@@ -259,9 +274,9 @@ export function useDashboardConfig() {
   )
 
   function save() {
-    scrollers.value = normalizeScrollers(scrollers.value)
+    scrollers.value = normalizeScrollers(scrollers.value, shelfOrderVersion.value)
     shelfLayout.value = normalizeShelfLayout(shelfLayout.value)
-    externalShelves.value = normalizeExternalShelves(externalShelves.value)
+    externalShelves.value = normalizeExternalShelves(externalShelves.value, shelfOrderVersion.value)
     if (syncAcrossSessions.value) return
     localStorage.setItem(
       STORAGE_KEY,
@@ -269,12 +284,13 @@ export function useDashboardConfig() {
         scrollers: scrollers.value,
         shelfLayout: shelfLayout.value,
         externalShelves: externalShelves.value,
+        shelfOrderVersion: shelfOrderVersion.value,
       } satisfies StoredDashboardConfig),
     )
   }
 
   function saveScrollers(newScrollers: ScrollerConfig[]) {
-    scrollers.value = normalizeScrollers(newScrollers)
+    scrollers.value = normalizeScrollers(newScrollers, shelfOrderVersion.value)
     save()
   }
 
@@ -283,11 +299,12 @@ export function useDashboardConfig() {
     newShelfLayout: DashboardShelfLayout,
     sync = syncAcrossSessions.value,
     newExternalShelves: ExternalShelfConfig[] = externalShelves.value,
+    newShelfOrderVersion: ShelfOrderVersion = 2,
   ) {
     sync = sync && !isDemoRestrictedAccount.value
-    const nextScrollers = normalizeScrollers(newScrollers)
+    const nextScrollers = normalizeScrollers(newScrollers, newShelfOrderVersion)
     const nextLayout = normalizeShelfLayout(newShelfLayout)
-    const nextExternalShelves = normalizeExternalShelves(newExternalShelves)
+    const nextExternalShelves = normalizeExternalShelves(newExternalShelves, newShelfOrderVersion)
     if (sync || syncAcrossSessions.value) {
       const currentUser = user.value
       if (!currentUser) throw new Error('Sign in to sync dashboard shelves')
@@ -296,6 +313,7 @@ export function useDashboardConfig() {
         scrollers: nextScrollers,
         shelfLayout: nextLayout,
         externalShelves: nextExternalShelves,
+        shelfOrderVersion: newShelfOrderVersion,
       }
       const response = await api('/api/v1/users/me/settings', {
         method: 'PATCH',
@@ -309,37 +327,54 @@ export function useDashboardConfig() {
     scrollers.value = nextScrollers
     shelfLayout.value = nextLayout
     externalShelves.value = nextExternalShelves
+    shelfOrderVersion.value = newShelfOrderVersion
     save()
   }
 
   function addScroller(type: ScrollerType) {
-    scrollers.value = normalizeScrollers(scrollers.value)
+    scrollers.value = normalizeScrollers(scrollers.value, shelfOrderVersion.value)
     if (scrollers.value.length >= MAX_SCROLLERS) return
     const maxId = Math.max(0, ...scrollers.value.map((s) => Number(s.id)))
+    const maxOrder = Math.max(0, ...scrollers.value.map((s) => s.order), ...externalShelves.value.map((s) => s.order))
     scrollers.value.push({
       id: String(maxId + 1),
       type,
       label: SCROLLER_LABELS[type],
       enabled: true,
-      order: scrollers.value.length + 1,
+      order: maxOrder + 1,
       limit: 20,
       rows: 1,
     })
     save()
   }
 
+  /**
+   * Removing a smart-scope scroller can leave the shared order sequence (version 2) with a
+   * gap. Re-merging and re-splitting both arrays closes it without disturbing either array's
+   * relative order; in a legacy config, where the arrays never shared one sequence, the
+   * scrollers are simply reindexed on their own as before.
+   */
   function pruneDeletedSmartScopeScrollers(validSmartScopeIds: readonly number[]) {
     const validIds = new Set(validSmartScopeIds.filter((id) => Number.isFinite(id) && id > 0))
-    const next = scrollers.value
-      .filter((scroller) => {
-        if (scroller.type !== 'smart-scope') return true
-        if (!scroller.smartScopeId) return false
-        return validIds.has(scroller.smartScopeId)
-      })
-      .map((scroller, index) => ({ ...scroller, order: index + 1 }))
+    const filtered = scrollers.value.filter((scroller) => {
+      if (scroller.type !== 'smart-scope') return true
+      if (!scroller.smartScopeId) return false
+      return validIds.has(scroller.smartScopeId)
+    })
 
-    if (areScrollersEqual(scrollers.value, next)) return
+    let next = filtered
+    let nextExternal = externalShelves.value
+    if (shelfOrderVersion.value === 2) {
+      const split = splitShelfRows(mergeShelfRows(filtered, externalShelves.value, 2))
+      next = split.scrollers
+      nextExternal = split.externalShelves
+    } else {
+      next = filtered.map((scroller, index) => ({ ...scroller, order: index + 1 }))
+    }
+
+    if (areScrollersEqual(scrollers.value, next) && nextExternal === externalShelves.value) return
     scrollers.value = next
+    externalShelves.value = nextExternal
     save()
   }
 
@@ -348,12 +383,15 @@ export function useDashboardConfig() {
    * have yet, defaulted per owner decision 1: `owned-elsewhere` starts enabled only when
    * `defaultEnabled` says the provider is connected and its `owned` feature is on; every other
    * shelf starts off until the user turns it on from the picker. A no-op when the pair is
-   * already present, so re-running this on every available-shelves fetch is safe.
+   * already present, so re-running this on every available-shelves fetch is safe. The new row's
+   * order is the highest order across both arrays plus one, so it lands at the end of the
+   * effective merged order whatever the config's shelfOrderVersion.
    */
   function ensureExternalShelf(provider: ExternalShelfConfig['provider'], shelf: ExternalShelfConfig['shelf'], defaultEnabled: boolean) {
     const exists = externalShelves.value.some((entry) => entry.provider === provider && entry.shelf === shelf)
     if (exists) return
-    externalShelves.value = [...externalShelves.value, { provider, shelf, enabled: defaultEnabled, order: externalShelves.value.length + 1 }]
+    const maxOrder = Math.max(0, ...scrollers.value.map((s) => s.order), ...externalShelves.value.map((s) => s.order))
+    externalShelves.value = [...externalShelves.value, { provider, shelf, enabled: defaultEnabled, order: maxOrder + 1 }]
     save()
   }
 
@@ -367,6 +405,7 @@ export function useDashboardConfig() {
     scrollers,
     shelfLayout,
     externalShelves,
+    shelfOrderVersion,
     syncAcrossSessions,
     saveScrollers,
     saveShelfSettings,

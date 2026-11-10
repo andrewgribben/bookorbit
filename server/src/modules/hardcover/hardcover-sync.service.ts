@@ -37,7 +37,7 @@ import {
   resolveHardcoverBookSyncDecision,
   resolveHardcoverBookSyncOverrideForToggle,
 } from './hardcover-sync-policy';
-import { isLibraryInEffectiveScope } from '../reading-services/library-scope.utils';
+import { isLibraryInEffectiveScope, isLibraryFeatureEnabled, type EffectiveLibrarySetting } from '../reading-services/library-scope.utils';
 import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 
 const LINKED_BOOKS_LIMIT = 200;
@@ -183,6 +183,29 @@ export class HardcoverSyncService {
   /** Enabled-only (no per-field push yet): a library is in scope for the overall decision when it's enabled. */
   private getLibraryScope(userId: number): Promise<number[]> {
     return this.libraryScopeService.getEffectiveLibraryIdsForUserId(userId, 'hardcover', null);
+  }
+
+  /**
+   * Per-library override map (rating/dates feature toggles), batched once per sync
+   * run/call rather than once per book. `status` has no per-library override applied here:
+   * Hardcover's `insert_user_book`/`update_user_book` mutations require a `status_id` on every
+   * synced book, so there is no safe "send no status" shape the way Readwise's create-without-
+   * status has; turning the library's status feature off instead leaves the book unsynced
+   * entirely via `isBookInSyncScope`'s enabled check (owner decision, narrower than Readwise's
+   * per-field granularity).
+   */
+  private getLibraryFeatureSettings(userId: number): Promise<Map<number, EffectiveLibrarySetting>> {
+    return this.libraryScopeService.getEffectiveLibrarySettingsForUserId(userId, 'hardcover');
+  }
+
+  private resolveFieldFeatures(
+    librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
+    libraryId: number | null,
+  ): { rating: boolean; dates: boolean } {
+    return {
+      rating: isLibraryFeatureEnabled(librarySettings, libraryId, 'rating', true),
+      dates: isLibraryFeatureEnabled(librarySettings, libraryId, 'dates', true),
+    };
   }
 
   async syncBook(userId: number, bookId: number): Promise<HardcoverSyncBookResult> {
@@ -543,7 +566,9 @@ export class HardcoverSyncService {
       return 'skipped';
     }
 
-    const hardcoverRating = book.rating ?? null;
+    const librarySettings = await this.getLibraryFeatureSettings(userId);
+    const fieldFeatures = this.resolveFieldFeatures(librarySettings, book.libraryId);
+    const hardcoverRating = fieldFeatures.rating ? (book.rating ?? null) : null;
 
     try {
       const userBookId = await this.insertOrFindUserBook(userId, token, {
@@ -562,8 +587,8 @@ export class HardcoverSyncService {
 
       const state = await this.repo.findBookState(userId, book.bookId);
       const syncState = activeInitialState ?? state;
-      const startDate = toDateString(book.startedAt);
-      const endDate = toDateString(book.finishedAt);
+      const startDate = fieldFeatures.dates ? toDateString(book.startedAt) : null;
+      const endDate = fieldFeatures.dates ? toDateString(book.finishedAt) : null;
       let hardcoverReadId: number | null = match.replacedHardcoverBookId != null ? null : (syncState?.hardcoverReadId ?? null);
       let progressSynced = true;
 

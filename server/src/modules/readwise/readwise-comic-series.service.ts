@@ -19,6 +19,7 @@ export interface ComicSeriesPageRange {
 export interface ComicSeriesRoutingContext {
   seriesId: number;
   seriesName: string;
+  libraryId: number;
   totalPages: number;
   status: ReadwiseBookStatus | null;
   pageRanges: ReadonlyMap<number, ComicSeriesPageRange>;
@@ -45,8 +46,17 @@ export class ReadwiseComicSeriesService {
    * Null means "route this book the normal, one-book-per-issue way": no series, the library's
    * series mode is off, or the book already has its own individual Readwise link (owner
    * decision: individually-linked issues are never merged into a series book).
+   *
+   * `seriesCache`, when given, is reused across every issue of one push/migration run so the
+   * expensive `findEligibleIssues` series scan runs at most once per series rather than once
+   * per issue (callers that push many issues of the same series in one flush must pass the same
+   * map to every call).
    */
-  async resolveRouting(userId: number, bookId: number): Promise<ComicSeriesRoutingContext | null> {
+  async resolveRouting(
+    userId: number,
+    bookId: number,
+    seriesCache?: Map<number, ComicSeriesRoutingContext | null>,
+  ): Promise<ComicSeriesRoutingContext | null> {
     const series = await this.repo.findSeriesForBook(bookId);
     if (!series) return null;
 
@@ -56,8 +66,16 @@ export class ReadwiseComicSeriesService {
     const existingLink = await this.readingServicesRepo.findBookLink(userId, 'readwise', bookId);
     if (existingLink && existingLink.matchMethod !== 'series') return null;
 
+    if (seriesCache?.has(series.seriesId)) {
+      const cached = seriesCache.get(series.seriesId) ?? null;
+      return cached && cached.pageRanges.has(bookId) ? cached : null;
+    }
+
     const issues = await this.repo.findEligibleIssues(userId, series.seriesId, series.libraryId);
-    if (issues.length === 0 || !issues.some((issue) => issue.bookId === bookId)) return null;
+    if (issues.length === 0 || !issues.some((issue) => issue.bookId === bookId)) {
+      seriesCache?.set(series.seriesId, null);
+      return null;
+    }
 
     const mapping = computeComicSeriesPageMapping(issues.map((issue) => ({ bookId: issue.bookId, pageCount: issue.pageCount })));
     const pageRanges = new Map(mapping.issues.map((issue) => [issue.bookId, { pageOffset: issue.pageOffset, issuePages: issue.issuePages }]));
@@ -70,7 +88,16 @@ export class ReadwiseComicSeriesService {
       })),
     );
 
-    return { seriesId: series.seriesId, seriesName: series.seriesName, totalPages: mapping.totalPages, status, pageRanges };
+    const context = {
+      seriesId: series.seriesId,
+      seriesName: series.seriesName,
+      libraryId: series.libraryId,
+      totalPages: mapping.totalPages,
+      status,
+      pageRanges,
+    };
+    seriesCache?.set(series.seriesId, context);
+    return context;
   }
 
   /**
@@ -78,20 +105,26 @@ export class ReadwiseComicSeriesService {
    * they changed, always before the caller posts any session against it (Readwise rejects a
    * session page past the book's current total). Returns null while the series has had no
    * reading activity yet (owner decision: don't create the book until something has started).
+   *
+   * `statusFeatureEnabled` is the library's `status` feature, resolved by the caller: series
+   * routing itself never depends on that feature (a status-off library still groups issues into
+   * one series book), but the status field is only ever sent to Readwise when it is on.
    */
   async ensureSeriesExternalBook(
     userId: number,
     token: string,
     context: ComicSeriesRoutingContext,
     authorHint: string | null,
+    statusFeatureEnabled = true,
   ): Promise<string | null> {
     const existing = await this.repo.findSeriesBookLink(userId, context.seriesId);
+    const sentStatus = statusFeatureEnabled ? context.status : null;
 
     if (!existing) {
       if (context.status === null) return null;
       const item: ReadwiseBookCreateItem = {
         product: { title: context.seriesName, ...(authorHint ? { author: authorHint } : {}) },
-        status: context.status,
+        ...(sentStatus ? { status: sentStatus } : {}),
         manual_total_pages: context.totalPages,
       };
       const [result] = await this.client.createBooks(userId, token, [item]);
@@ -101,27 +134,27 @@ export class ReadwiseComicSeriesService {
       await this.repo.upsertSeriesBookLink(userId, context.seriesId, {
         externalBookId: result.book_id,
         totalPages: context.totalPages,
-        status: context.status,
+        status: sentStatus,
       });
       this.logger.log(
-        `[${EVENT}] [end] userId=${userId} seriesId=${context.seriesId} totalPages=${context.totalPages} status=${context.status} - comic series book created`,
+        `[${EVENT}] [end] userId=${userId} seriesId=${context.seriesId} totalPages=${context.totalPages} status=${sentStatus} - comic series book created`,
       );
       return result.book_id;
     }
 
     // Never lower the total: earlier sessions may already reach past a smaller one.
     const totalPages = Math.max(existing.totalPages, context.totalPages);
-    if (existing.totalPages !== totalPages || existing.status !== context.status) {
+    if (existing.totalPages !== totalPages || existing.status !== sentStatus) {
       const update: ReadwiseBookUpdateItem = {
         id: existing.externalBookId,
         manual_total_pages: totalPages,
-        ...(context.status ? { status: context.status } : {}),
+        ...(sentStatus ? { status: sentStatus } : {}),
       };
       await this.client.updateBooks(userId, token, [update]);
       await this.repo.upsertSeriesBookLink(userId, context.seriesId, {
         externalBookId: existing.externalBookId,
         totalPages,
-        status: context.status,
+        status: sentStatus,
       });
     }
     return existing.externalBookId;

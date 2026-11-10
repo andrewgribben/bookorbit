@@ -10653,19 +10653,18 @@
       "noSmartScopes": "No Smart Scopes yet. Create one from the sidebar.",
       "addShelf": "Add shelf",
       "resetToDefaults": "Reset to defaults",
+      "moveShelfUp": "Move {name} up",
+      "moveShelfDown": "Move {name} down",
+      "removeShelf": "Remove {name}",
       "upNextCutoff": {
         "label": "Hide series not read in",
         "off": "Never hide",
         "months": "{count, plural, one {# month} other {# months}}"
       },
       "externalShelvesPicker": {
-        "title": "External shelves",
-        "description": "Shelves from your connected reading services. Turn one on to show it on the dashboard.",
         "empty": "Connect Readwise or Hardcover to see shelves here.",
         "notConnected": "Not connected",
-        "signInToShow": "Sign in to {provider} to show this",
-        "moveUp": "Move shelf up",
-        "moveDown": "Move shelf down"
+        "signInToShow": "Sign in to {provider} to show this"
       }
     },
     "welcome": {

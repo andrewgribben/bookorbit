@@ -5,13 +5,15 @@ import type { ReadingServiceFeature } from '@bookorbit/types';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { isLibraryFeatureEnabled, type EffectiveLibrarySetting } from '../reading-services/library-scope.utils';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import type { ReadwiseCreateSessionItem } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseUnauthorizedError } from './readwise-client.service';
 import { readwiseSessionContentHash } from './readwise-session-hash.utils';
 import { computePausedSeconds, isSessionSettled, settleAtFor } from './readwise-session-timing.utils';
-import type { ComicSeriesPageRange } from './readwise-comic-series.service';
+import type { ComicSeriesPageRange, ComicSeriesRoutingContext } from './readwise-comic-series.service';
 import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 import { ReadwiseSessionsBackfillSweepService } from './readwise-sessions-backfill-sweep.service';
 import type { PushableSession } from './readwise-sessions-local.repository';
@@ -127,6 +129,7 @@ export class ReadwiseSessionsPushService {
     private readonly sweep: ReadwiseSessionsBackfillSweepService,
     private readonly lock: ReadingServiceAdvisoryLockService,
     private readonly comicSeries: ReadwiseComicSeriesService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
   ) {}
 
   /**
@@ -167,6 +170,11 @@ export class ReadwiseSessionsPushService {
 
     const timezone = await this.sessionsRepo.resolveUserTimeZone(userId);
     const publishToFeed = isFeatureEnabled(features, 'publish_sessions');
+    const providerStatusEnabled = isFeatureEnabled(features, 'status');
+    const librarySettings = await this.libraryScopeService.getEffectiveLibrarySettingsForUserId(userId, 'readwise');
+    // Reused across the whole batch so two issues of the same series only pay for
+    // `findEligibleIssues`'s series scan once, not once per issue.
+    const seriesCache = new Map<number, ComicSeriesRoutingContext | null>();
     const startedAt = Date.now();
     let pushed = 0;
     let failed = 0;
@@ -174,7 +182,7 @@ export class ReadwiseSessionsPushService {
 
     for (const bookId of [...new Set([...bookIds, ...correctedBookIds, ...sweptBookIds])]) {
       try {
-        const result = await this.pushBook(userId, token, bookId, timezone, publishToFeed);
+        const result = await this.pushBook(userId, token, bookId, timezone, publishToFeed, providerStatusEnabled, librarySettings, seriesCache);
         pushed += result.pushedCount;
         if (result.nextSettleAt) settleRetries.push({ bookId, nextSettleAt: result.nextSettleAt });
       } catch (err) {
@@ -204,6 +212,9 @@ export class ReadwiseSessionsPushService {
     bookId: number,
     timezone: string,
     publishToFeed: boolean,
+    providerStatusEnabled: boolean,
+    librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
+    seriesCache: Map<number, ComicSeriesRoutingContext | null>,
   ): Promise<{ pushedCount: number; nextSettleAt: Date | null }> {
     const link = await this.readingServicesRepo.findBookLink(userId, 'readwise', bookId);
     if (!link || link.remoteDeleted) return { pushedCount: 0, nextSettleAt: null }; // only push sessions for books already on Readwise
@@ -214,9 +225,15 @@ export class ReadwiseSessionsPushService {
     // re-enabled or the issue gets its own individual link.
     let seriesPageRange: ComicSeriesPageRange | null = null;
     if (link.matchMethod === 'series') {
-      const context = await this.comicSeries.resolveRouting(userId, bookId);
+      const context = await this.comicSeries.resolveRouting(userId, bookId, seriesCache);
       if (!context) return { pushedCount: 0, nextSettleAt: null };
-      const externalBookId = await this.comicSeries.ensureSeriesExternalBook(userId, token, context, null);
+      const externalBookId = await this.comicSeries.ensureSeriesExternalBook(
+        userId,
+        token,
+        context,
+        null,
+        isLibraryFeatureEnabled(librarySettings, context.libraryId, 'status', providerStatusEnabled),
+      );
       if (!externalBookId) return { pushedCount: 0, nextSettleAt: null };
       seriesPageRange = context.pageRanges.get(bookId) ?? null;
       if (!seriesPageRange) return { pushedCount: 0, nextSettleAt: null };

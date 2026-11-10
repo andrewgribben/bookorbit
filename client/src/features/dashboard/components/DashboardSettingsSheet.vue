@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronUp, Columns2, GripVertical, Plus, RotateCcw, Rows3, Trash2 } from '@lucide/vue'
 
-import type { ExternalShelfConfig, ScrollerConfig, ScrollerType, WidgetConfig } from '@bookorbit/types'
+import type { ScrollerConfig, ScrollerType, WidgetConfig } from '@bookorbit/types'
 import type { RouteLocationRaw } from 'vue-router'
 import { formatList } from '@/i18n/formatters'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -19,6 +19,7 @@ import {
   type DashboardShelfLayout,
 } from '../composables/useDashboardConfig'
 import { SHELF_ROW_OPTIONS } from '../lib/shelf-rows'
+import { externalRow, isExternalRow, isScrollerRow, mergeShelfRows, scrollerRow, splitShelfRows, type MixedShelfRow } from '../lib/shelf-order'
 import { useDashboardLabels } from '../composables/useDashboardLabels'
 import { useDashboardWidgets } from '../composables/useDashboardWidgets'
 import { useDraggableList } from '../composables/useDraggableList'
@@ -30,11 +31,11 @@ const emit = defineEmits<{ 'update:open': [value: boolean]; saved: [] }>()
 const { t } = useI18n()
 const { isDemoRestrictedAccount } = usePermissions()
 
-const { scrollers, shelfLayout, syncAcrossSessions, saveShelfSettings, MAX_SCROLLERS } = useDashboardConfig()
+const { scrollers, shelfLayout, shelfOrderVersion, syncAcrossSessions, saveShelfSettings, MAX_SCROLLERS } = useDashboardConfig()
 const { widgets, libraryIds, saveWidgets, saveLibraryScope, DEFAULT_WIDGETS } = useDashboardWidgets()
 const { smartScopes, fetchSmartScopes } = useSmartScopes()
 const { libraries, fetchLibraries } = useLibraries()
-const { widgetName, shelfTypeName, externalShelfTitle, externalShelfProviderName } = useDashboardLabels()
+const { widgetName, shelfTitle, shelfTypeName, externalShelfTitle, externalShelfProviderName } = useDashboardLabels()
 const { pickerShelves: externalShelfPickerShelves, loaded: externalShelvesLoaded } = useExternalShelvesConfig()
 
 // Which providers are already connected, so the picker description can link unconnected ones
@@ -48,11 +49,13 @@ function providerSettingsRoute(provider: string): RouteLocationRaw {
 }
 
 const activeTab = ref<'widgets' | 'shelves'>('shelves')
-const draft = ref<ScrollerConfig[]>([])
+// One shared list for regular and external shelves - they drag, move and save together (owner
+// decision: any order across all shelves). `shelfOrderVersion` decides how the two persisted
+// arrays are read into this list; `splitShelfRows` always writes them back in one sequence.
+const shelfRowsDraft = ref<MixedShelfRow[]>([])
 const shelfLayoutDraft = ref<DashboardShelfLayout>(SHELF_LAYOUT.WIDE)
 const syncShelvesDraft = ref(false)
 const widgetDraft = ref<WidgetConfig[]>([])
-const externalShelvesDraft = ref<ExternalShelfConfig[]>([])
 const libraryIdsDraft = ref<number[] | null>(null)
 const libraryScopeOpen = ref(false)
 const saving = ref(false)
@@ -63,6 +66,7 @@ const selectedAccessibleLibraryIds = computed<number[] | null>(() =>
   libraryIdsDraft.value === null ? null : libraryIdsDraft.value.filter((libraryId) => accessibleLibraryIds.value.has(libraryId)),
 )
 const hasValidLibrarySelection = computed(() => selectedAccessibleLibraryIds.value === null || selectedAccessibleLibraryIds.value.length > 0)
+const scrollerRowCount = computed(() => shelfRowsDraft.value.filter(isScrollerRow).length)
 
 const MAX_SUMMARY_NAMES = 3
 const librarySelectionSummary = computed(() => {
@@ -74,21 +78,20 @@ const librarySelectionSummary = computed(() => {
   return formatList(bookLibraries.value.filter((library) => selectedIds.has(library.id)).map((library) => library.name))
 })
 
+function buildExternalDraftRows() {
+  return externalShelfPickerShelves.value.map((s) => ({ provider: s.provider, shelf: s.shelf, enabled: s.enabled, order: s.order }))
+}
+
 watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      draft.value = (Array.isArray(scrollers.value) ? scrollers.value : DEFAULT_SCROLLERS).map((s) => ({ ...s }))
+      const draftScrollers = (Array.isArray(scrollers.value) ? scrollers.value : DEFAULT_SCROLLERS).map((s) => ({ ...s }))
+      shelfRowsDraft.value = mergeShelfRows(draftScrollers, buildExternalDraftRows(), shelfOrderVersion.value)
       shelfLayoutDraft.value = shelfLayout.value
       syncShelvesDraft.value = syncAcrossSessions.value
       saveError.value = false
       widgetDraft.value = widgets.value.map((w) => ({ ...w }))
-      externalShelvesDraft.value = externalShelfPickerShelves.value.map((s) => ({
-        provider: s.provider,
-        shelf: s.shelf,
-        enabled: s.enabled,
-        order: s.order,
-      }))
       libraryIdsDraft.value = libraryIds.value ? [...libraryIds.value] : null
       libraryScopeOpen.value = false
       fetchSmartScopes()
@@ -98,18 +101,22 @@ watch(
 )
 
 // The picker's available-shelves fetch can finish after the sheet is opened, so add rows that
-// arrive late. Rows already in the draft keep the user's edits: saving the library scope re-reads
-// the user, which re-derives the picker from the stored config before the shelves are saved.
+// arrive late without disturbing anything the user already dragged. Rows already in the draft
+// keep the user's edits; a newly discovered shelf is appended at the end, and a shelf that is no
+// longer available is dropped.
 watch(externalShelfPickerShelves, (rows) => {
   if (!props.open) return
-  const drafted = new Map(externalShelvesDraft.value.map((entry) => [`${entry.provider}:${entry.shelf}`, entry]))
-  externalShelvesDraft.value = rows.map(
-    (s) => drafted.get(`${s.provider}:${s.shelf}`) ?? { provider: s.provider, shelf: s.shelf, enabled: s.enabled, order: s.order },
-  )
+  const availableKeys = new Set(rows.map((s) => `${s.provider}:${s.shelf}`))
+  const existingKeys = new Set(shelfRowsDraft.value.filter(isExternalRow).map((row) => `${row.external.provider}:${row.external.shelf}`))
+  const kept = shelfRowsDraft.value.filter((row) => !isExternalRow(row) || availableKeys.has(`${row.external.provider}:${row.external.shelf}`))
+  const added = rows
+    .filter((s) => !existingKeys.has(`${s.provider}:${s.shelf}`))
+    .map((s) => externalRow({ provider: s.provider, shelf: s.shelf, enabled: s.enabled, order: s.order }))
+  shelfRowsDraft.value = [...kept, ...added]
 })
 
-// ── Drag to reorder ──────────────────────────────────────────
-const { draggedIndex, dragOverIndex, onDragStart, onDragOver, onDrop, onDragEnd, moveUp, moveDown } = useDraggableList(draft)
+// ── Drag to reorder (one list for regular and external shelves) ──
+const { draggedIndex, dragOverIndex, onDragStart, onDragOver, onDrop, onDragEnd, moveUp, moveDown } = useDraggableList(shelfRowsDraft)
 
 const {
   draggedIndex: widgetDraggedIndex,
@@ -121,16 +128,7 @@ const {
   moveUp: widgetMoveUp,
   moveDown: widgetMoveDown,
 } = useDraggableList(widgetDraft)
-const {
-  draggedIndex: externalDraggedIndex,
-  dragOverIndex: externalDragOverIndex,
-  onDragStart: onExternalDragStart,
-  onDragOver: onExternalDragOver,
-  onDrop: onExternalDrop,
-  onDragEnd: onExternalDragEnd,
-  moveUp: externalMoveUp,
-  moveDown: externalMoveDown,
-} = useDraggableList(externalShelvesDraft)
+
 // ── Add / Remove ─────────────────────────────────────────────
 const ALL_TYPES: ScrollerType[] = [
   'continue-reading',
@@ -143,17 +141,21 @@ const ALL_TYPES: ScrollerType[] = [
 ]
 
 function addScroller() {
-  if (draft.value.length >= MAX_SCROLLERS) return
-  const maxId = Math.max(0, ...draft.value.map((s) => Number(s.id)))
-  draft.value.push({
-    id: String(maxId + 1),
-    type: 'recently-added',
-    label: SCROLLER_LABELS['recently-added'],
-    enabled: true,
-    order: draft.value.length + 1,
-    limit: 20,
-    rows: 1,
-  })
+  if (scrollerRowCount.value >= MAX_SCROLLERS) return
+  const existingScrollerIds = shelfRowsDraft.value.filter(isScrollerRow).map((row) => Number(row.scroller.id))
+  const maxId = Math.max(0, ...existingScrollerIds)
+  shelfRowsDraft.value = [
+    ...shelfRowsDraft.value,
+    scrollerRow({
+      id: String(maxId + 1),
+      type: 'recently-added',
+      label: SCROLLER_LABELS['recently-added'],
+      enabled: true,
+      order: shelfRowsDraft.value.length + 1,
+      limit: 20,
+      rows: 1,
+    }),
+  ]
 }
 
 function setShelfRows(scroller: ScrollerConfig, rows: number) {
@@ -168,9 +170,9 @@ function toggleWidget(widget: WidgetConfig) {
   widget.enabled = !widget.enabled
 }
 
-function removeScroller(index: number) {
-  if (draft.value.length <= 1) return
-  draft.value.splice(index, 1)
+function removeScroller(row: MixedShelfRow) {
+  if (scrollerRowCount.value <= 1) return
+  shelfRowsDraft.value = shelfRowsDraft.value.filter((candidate) => candidate.id !== row.id)
 }
 
 function onTypeChange(scroller: ScrollerConfig) {
@@ -207,14 +209,20 @@ function handleLibraryChange(libraryId: number, event: Event) {
   libraryIdsDraft.value = [...selected]
 }
 
-function toggleExternalShelf(entry: ExternalShelfConfig) {
-  entry.enabled = !entry.enabled
+function toggleExternalShelf(row: MixedShelfRow & { kind: 'external' }) {
+  row.external.enabled = !row.external.enabled
+}
+
+/** The accessible name for a row's move/toggle controls, e.g. "Continue Reading" or "Readwise: Trending". */
+function rowName(row: MixedShelfRow): string {
+  return row.kind === 'scroller' ? shelfTitle(row.scroller) : externalShelfTitle(row.external.provider, row.external.shelf)
 }
 
 // ── Save / Reset / Close ─────────────────────────────────────
 async function saveShelves() {
   await saveLibraryScope(selectedAccessibleLibraryIds.value)
-  await saveShelfSettings(draft.value, shelfLayoutDraft.value, syncShelvesDraft.value, externalShelvesDraft.value)
+  const { scrollers: nextScrollers, externalShelves: nextExternalShelves, shelfOrderVersion: nextVersion } = splitShelfRows(shelfRowsDraft.value)
+  await saveShelfSettings(nextScrollers, shelfLayoutDraft.value, syncShelvesDraft.value, nextExternalShelves, nextVersion)
 }
 
 function selectWideShelfLayout() {
@@ -228,7 +236,7 @@ function selectTwoColumnShelfLayout() {
 async function saveWidgetSettings() {
   await saveWidgets(widgetDraft.value, selectedAccessibleLibraryIds.value)
   if (syncShelvesDraft.value !== syncAcrossSessions.value) {
-    await saveShelfSettings(scrollers.value, shelfLayout.value, syncShelvesDraft.value)
+    await saveShelfSettings(scrollers.value, shelfLayout.value, syncShelvesDraft.value, undefined, shelfOrderVersion.value)
   }
 }
 
@@ -255,7 +263,12 @@ function resetToDefault() {
   if (activeTab.value === 'widgets') {
     widgetDraft.value = DEFAULT_WIDGETS.map((w) => ({ ...w }))
   } else {
-    draft.value = DEFAULT_SCROLLERS.map((s) => ({ ...s }))
+    const currentExternal = shelfRowsDraft.value.filter(isExternalRow).map((row) => row.external)
+    shelfRowsDraft.value = mergeShelfRows(
+      DEFAULT_SCROLLERS.map((s) => ({ ...s })),
+      currentExternal,
+      undefined,
+    )
     shelfLayoutDraft.value = SHELF_LAYOUT.WIDE
   }
 }
@@ -426,10 +439,12 @@ function handleCancel() {
           <p class="text-xs text-muted-foreground">{{ t('dashboard.settings.reorderHintShelf') }}</p>
           <p class="mb-4 mt-1 text-xs text-muted-foreground">{{ t('dashboard.settings.shelfRows.hint') }}</p>
 
+          <!-- One list: regular shelves and external shelves share a row grammar, drag, and the
+               up/down buttons, so they can be ordered freely among each other. -->
           <div class="space-y-2">
             <div
-              v-for="(scroller, index) in draft"
-              :key="scroller.id"
+              v-for="(row, index) in shelfRowsDraft"
+              :key="row.id"
               draggable="true"
               class="rounded-lg border border-border bg-card transition-[opacity,background-color,border-color] duration-150"
               :class="{
@@ -447,6 +462,7 @@ function handleCancel() {
                 <div class="flex shrink-0 flex-col items-center">
                   <button
                     class="touch-reorder-btn flex h-5 w-5 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-20"
+                    :aria-label="t('dashboard.settings.moveShelfUp', { name: rowName(row) })"
                     :disabled="index === 0"
                     @click="moveUp(index)"
                   >
@@ -457,7 +473,8 @@ function handleCancel() {
                   </div>
                   <button
                     class="touch-reorder-btn flex h-5 w-5 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-20"
-                    :disabled="index === draft.length - 1"
+                    :aria-label="t('dashboard.settings.moveShelfDown', { name: rowName(row) })"
+                    :disabled="index === shelfRowsDraft.length - 1"
                     @click="moveDown(index)"
                   >
                     <ChevronDown :size="13" />
@@ -466,83 +483,106 @@ function handleCancel() {
 
                 <!-- Toggle -->
                 <button
-                  class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none"
-                  :class="scroller.enabled ? 'bg-primary' : 'bg-muted'"
-                  @click="toggleShelf(scroller)"
+                  class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  :class="(row.kind === 'scroller' ? row.scroller.enabled : row.external.enabled) ? 'bg-primary' : 'bg-muted'"
+                  role="switch"
+                  :data-testid="row.kind === 'external' ? 'external-shelf-toggle' : undefined"
+                  :aria-checked="row.kind === 'scroller' ? row.scroller.enabled : row.external.enabled"
+                  :aria-label="rowName(row)"
+                  @click="row.kind === 'scroller' ? toggleShelf(row.scroller) : toggleExternalShelf(row)"
                 >
                   <span
                     class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-xs ring-0 transition-transform duration-200"
-                    :class="scroller.enabled ? 'translate-x-4' : 'translate-x-0'"
+                    :class="(row.kind === 'scroller' ? row.scroller.enabled : row.external.enabled) ? 'translate-x-4' : 'translate-x-0'"
                   />
                 </button>
 
-                <!-- Type selector -->
-                <select
-                  v-model="scroller.type"
-                  class="h-8 min-w-0 flex-1 appearance-none rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  @change="onTypeChange(scroller)"
-                >
-                  <option v-for="scrollerType in ALL_TYPES" :key="scrollerType" :value="scrollerType">
-                    {{ shelfTypeName(scrollerType) }}
-                  </option>
-                </select>
-
-                <!-- Rows -->
-                <div
-                  data-testid="shelf-rows"
-                  role="group"
-                  :aria-label="t('dashboard.settings.shelfRows.label')"
-                  class="flex shrink-0 overflow-hidden rounded-md border border-input"
-                >
-                  <button
-                    v-for="rowOption in SHELF_ROW_OPTIONS"
-                    :key="rowOption"
-                    type="button"
-                    class="h-8 w-7 border-e border-input text-xs font-medium tabular-nums transition-colors last:border-e-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    :class="
-                      scroller.rows === rowOption
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    "
-                    :aria-pressed="scroller.rows === rowOption"
-                    :aria-label="t('dashboard.settings.shelfRows.option', { count: rowOption })"
-                    @click="setShelfRows(scroller, rowOption)"
+                <!-- Regular shelf controls -->
+                <template v-if="row.kind === 'scroller'">
+                  <!-- Type selector -->
+                  <select
+                    v-model="row.scroller.type"
+                    class="h-8 min-w-0 flex-1 appearance-none rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    @change="onTypeChange(row.scroller)"
                   >
-                    {{ rowOption }}
-                  </button>
-                </div>
+                    <option v-for="scrollerType in ALL_TYPES" :key="scrollerType" :value="scrollerType">
+                      {{ shelfTypeName(scrollerType) }}
+                    </option>
+                  </select>
 
-                <!-- Remove -->
-                <button
-                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-30"
-                  :disabled="draft.length <= 1"
-                  @click="removeScroller(index)"
-                >
-                  <Trash2 :size="14" />
-                </button>
+                  <!-- Rows -->
+                  <div
+                    data-testid="shelf-rows"
+                    role="group"
+                    :aria-label="t('dashboard.settings.shelfRows.label')"
+                    class="flex shrink-0 overflow-hidden rounded-md border border-input"
+                  >
+                    <button
+                      v-for="rowOption in SHELF_ROW_OPTIONS"
+                      :key="rowOption"
+                      type="button"
+                      class="h-8 w-7 border-e border-input text-xs font-medium tabular-nums transition-colors last:border-e-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      :class="
+                        row.scroller.rows === rowOption
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      "
+                      :aria-pressed="row.scroller.rows === rowOption"
+                      :aria-label="t('dashboard.settings.shelfRows.option', { count: rowOption })"
+                      @click="setShelfRows(row.scroller, rowOption)"
+                    >
+                      {{ rowOption }}
+                    </button>
+                  </div>
+
+                  <!-- Remove -->
+                  <button
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-30"
+                    :aria-label="t('dashboard.settings.removeShelf', { name: rowName(row) })"
+                    :disabled="scrollerRowCount <= 1"
+                    @click="removeScroller(row)"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
+                </template>
+
+                <!-- External (provider) shelf controls -->
+                <div v-else class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium leading-snug text-foreground">
+                    {{ externalShelfTitle(row.external.provider, row.external.shelf) }}
+                  </p>
+                  <p class="truncate text-xs text-muted-foreground">{{ externalShelfProviderName(row.external.provider) }}</p>
+                  <RouterLink
+                    v-if="!connectedProviders.has(row.external.provider)"
+                    :to="providerSettingsRoute(row.external.provider)"
+                    class="mt-0.5 inline-block text-xs text-primary underline-offset-2 hover:underline"
+                  >
+                    {{ t('dashboard.settings.externalShelvesPicker.signInToShow', { provider: externalShelfProviderName(row.external.provider) }) }}
+                  </RouterLink>
+                </div>
               </div>
 
               <!-- SmartScope picker (shown only when type = smartScope) -->
-              <div v-if="scroller.type === 'smart-scope'" class="border-t border-border/50 px-3 pb-2.5 pt-2">
+              <div v-if="row.kind === 'scroller' && row.scroller.type === 'smart-scope'" class="border-t border-border/50 px-3 pb-2.5 pt-2">
                 <label class="mb-1.5 block text-[11px] font-medium text-muted-foreground">{{ t('dashboard.settings.smartScope') }}</label>
                 <select
                   v-if="smartScopes.length > 0"
-                  v-model="scroller.smartScopeId"
+                  v-model="row.scroller.smartScopeId"
                   class="h-8 w-full appearance-none rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  @change="onSmartScopeChange(scroller)"
+                  @change="onSmartScopeChange(row.scroller)"
                 >
                   <option v-for="smartScope in smartScopes" :key="smartScope.id" :value="smartScope.id">{{ smartScope.name }}</option>
                 </select>
                 <p v-else class="text-xs text-muted-foreground">{{ t('dashboard.settings.noSmartScopes') }}</p>
               </div>
 
-              <div v-if="scroller.type === 'up-next-in-series'" class="border-t border-border/50 px-3 pb-2.5 pt-2">
-                <label :for="`up-next-cutoff-${scroller.id}`" class="mb-1.5 block text-[11px] font-medium text-muted-foreground">
+              <div v-if="row.kind === 'scroller' && row.scroller.type === 'up-next-in-series'" class="border-t border-border/50 px-3 pb-2.5 pt-2">
+                <label :for="`up-next-cutoff-${row.scroller.id}`" class="mb-1.5 block text-[11px] font-medium text-muted-foreground">
                   {{ t('dashboard.settings.upNextCutoff.label') }}
                 </label>
                 <select
-                  :id="`up-next-cutoff-${scroller.id}`"
-                  v-model="scroller.maxAgeMonths"
+                  :id="`up-next-cutoff-${row.scroller.id}`"
+                  v-model="row.scroller.maxAgeMonths"
                   data-testid="up-next-cutoff"
                   class="h-8 w-full appearance-none rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 >
@@ -555,95 +595,20 @@ function handleCancel() {
             </div>
           </div>
 
-          <!-- Add shelf -->
+          <!-- Add shelf: the MAX_SCROLLERS limit counts regular shelves only -->
           <button
             class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
-            :disabled="draft.length >= MAX_SCROLLERS"
+            :disabled="scrollerRowCount >= MAX_SCROLLERS"
             @click="addScroller"
           >
             <Plus :size="15" />
             {{ t('dashboard.settings.addShelf') }}
-            <span class="text-xs opacity-60">({{ draft.length }}/{{ MAX_SCROLLERS }})</span>
+            <span class="text-xs opacity-60">({{ scrollerRowCount }}/{{ MAX_SCROLLERS }})</span>
           </button>
 
-          <!-- External (provider) shelves -->
-          <!-- min-w-0: browsers give <fieldset> a default min-width: min-content, which lets its
-               content (the shelf rows below) force this fieldset wider than the drawer at narrow
-               viewports, overflowing the sheet horizontally. Override it so the fieldset shrinks
-               to the drawer's width like a normal block element. -->
-          <fieldset class="mt-6 min-w-0">
-            <legend class="text-sm font-medium text-foreground">{{ t('dashboard.settings.externalShelvesPicker.title') }}</legend>
-            <p class="mt-1 text-xs text-muted-foreground">{{ t('dashboard.settings.externalShelvesPicker.description') }}</p>
-
-            <p v-if="externalShelvesLoaded && externalShelfPickerShelves.length === 0" class="mt-3 text-xs text-muted-foreground">
-              {{ t('dashboard.settings.externalShelvesPicker.empty') }}
-            </p>
-
-            <div v-else class="mt-3 space-y-2">
-              <div
-                v-for="(entry, index) in externalShelvesDraft"
-                :key="`${entry.provider}-${entry.shelf}`"
-                draggable="true"
-                class="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-[opacity,background-color,border-color] duration-150"
-                :class="{
-                  'border-primary/50 bg-primary/5': externalDragOverIndex === index && externalDraggedIndex !== index,
-                  'opacity-40': externalDraggedIndex === index,
-                }"
-                @dragstart="onExternalDragStart(index)"
-                @dragover="onExternalDragOver($event, index)"
-                @drop="onExternalDrop(index)"
-                @dragend="onExternalDragEnd"
-              >
-                <div class="flex shrink-0 flex-col items-center">
-                  <button
-                    type="button"
-                    class="touch-reorder-btn flex h-5 w-5 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-20"
-                    :aria-label="t('dashboard.settings.externalShelvesPicker.moveUp')"
-                    :disabled="index === 0"
-                    @click="externalMoveUp(index)"
-                  >
-                    <ChevronUp :size="13" />
-                  </button>
-                  <div class="drag-handle cursor-grab text-muted-foreground active:cursor-grabbing">
-                    <GripVertical :size="16" />
-                  </div>
-                  <button
-                    type="button"
-                    class="touch-reorder-btn flex h-5 w-5 items-center justify-center rounded-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-20"
-                    :aria-label="t('dashboard.settings.externalShelvesPicker.moveDown')"
-                    :disabled="index === externalShelvesDraft.length - 1"
-                    @click="externalMoveDown(index)"
-                  >
-                    <ChevronDown :size="13" />
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  class="relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                  :class="entry.enabled ? 'bg-primary' : 'bg-muted'"
-                  role="switch"
-                  :aria-checked="entry.enabled"
-                  :aria-label="externalShelfTitle(entry.provider, entry.shelf)"
-                  @click="toggleExternalShelf(entry)"
-                >
-                  <span
-                    class="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-xs ring-0 transition-transform duration-200"
-                    :class="entry.enabled ? 'translate-x-4' : 'translate-x-0'"
-                  />
-                </button>
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm font-medium leading-snug text-foreground">{{ externalShelfTitle(entry.provider, entry.shelf) }}</p>
-                  <RouterLink
-                    v-if="!connectedProviders.has(entry.provider)"
-                    :to="providerSettingsRoute(entry.provider)"
-                    class="mt-0.5 inline-block text-xs text-primary underline-offset-2 hover:underline"
-                  >
-                    {{ t('dashboard.settings.externalShelvesPicker.signInToShow', { provider: externalShelfProviderName(entry.provider) }) }}
-                  </RouterLink>
-                </div>
-              </div>
-            </div>
-          </fieldset>
+          <p v-if="externalShelvesLoaded && externalShelfPickerShelves.length === 0" class="mt-3 text-xs text-muted-foreground">
+            {{ t('dashboard.settings.externalShelvesPicker.empty') }}
+          </p>
         </div>
 
         <!-- WIDGETS TAB -->
