@@ -2,11 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
-import type { ReadwiseBookCreateItem, ReadwiseBookStatus, ReadwiseBookUpdateItem } from './readwise-books-client.service';
-import { ReadwiseBooksClientService } from './readwise-books-client.service';
+import type { ReadwiseBookCreateItem, ReadwiseBookCreateResult, ReadwiseBookStatus, ReadwiseBookUpdateItem } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { mapBookOrbitStatusToReadwise } from './readwise-books-status-mapping';
 import { ReadwiseComicSeriesRepository } from './readwise-comic-series.repository';
 import { computeComicSeriesPageMapping, computeComicSeriesStatus } from './readwise-comic-series.utils';
+
+/** Readwise's write-result `error` text for a book id that no longer exists remotely. */
+function isGoneWriteResult(error: string | undefined): boolean {
+  return !!error && /not[ _-]?found/i.test(error);
+}
 
 const EVENT = 'readwise.comic_series';
 
@@ -150,7 +155,29 @@ export class ReadwiseComicSeriesService {
         manual_total_pages: totalPages,
         ...(sentStatus ? { status: sentStatus } : {}),
       };
-      await this.client.updateBooks(userId, token, [update]);
+
+      let updateResults: ReadwiseBookCreateResult[] | undefined;
+      try {
+        updateResults = await this.client.updateBooks(userId, token, [update]);
+      } catch (err) {
+        if (err instanceof ReadwiseBooksHttpError && err.status === 404) {
+          return this.recreateAfterStaleSeriesBook(userId, token, context, authorHint, statusFeatureEnabled, existing.externalBookId, 'http_404');
+        }
+        throw err;
+      }
+      const updateResult = updateResults?.[0];
+      if (updateResult?.status === 'error' && isGoneWriteResult(updateResult.error)) {
+        return this.recreateAfterStaleSeriesBook(
+          userId,
+          token,
+          context,
+          authorHint,
+          statusFeatureEnabled,
+          existing.externalBookId,
+          'not_found_result',
+        );
+      }
+
       await this.repo.upsertSeriesBookLink(userId, context.seriesId, {
         externalBookId: existing.externalBookId,
         totalPages,
@@ -158,6 +185,27 @@ export class ReadwiseComicSeriesService {
       });
     }
     return existing.externalBookId;
+  }
+
+  /**
+   * The series' shared Readwise book was confirmed gone (404, or a `not_found`-style write
+   * result). Drops the stale series link and every issue link routed to it, then re-runs
+   * routing from scratch: with no `findSeriesBookLink` row left, that recreates the book fresh.
+   */
+  private async recreateAfterStaleSeriesBook(
+    userId: number,
+    token: string,
+    context: ComicSeriesRoutingContext,
+    authorHint: string | null,
+    statusFeatureEnabled: boolean,
+    staleExternalBookId: string,
+    reason: string,
+  ): Promise<string | null> {
+    await this.repo.dropStaleSeriesBook(userId, staleExternalBookId);
+    this.logger.log(
+      `[${EVENT}] [end] userId=${userId} seriesId=${context.seriesId} externalBookId=${sanitizeLogValue(staleExternalBookId)} reason=${reason} - stale series book link dropped, recreating`,
+    );
+    return this.ensureSeriesExternalBook(userId, token, context, authorHint, statusFeatureEnabled);
   }
 
   /** Records that this issue's activity now routes to the series' shared book. */

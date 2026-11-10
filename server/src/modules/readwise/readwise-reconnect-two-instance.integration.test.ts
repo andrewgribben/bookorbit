@@ -542,6 +542,8 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     insertPulledSession: async (userId: number, session: any) => db.insertPulledSession(userId, session),
     removePulledSession: async (userId: number, localId: number) => db.removePulledSession(userId, localId),
     resolveUserTimeZone: async () => 'UTC',
+    // This harness only ever puts books in library 1 (see the `book()` helper below).
+    resolveLibraryIdForBook: async () => 1,
     // No previously-pushed sessions exist in this harness's dataset, so the one-time correction
     // pass always finds nothing to correct; this file exercises reconnect-safety, not correction.
     findLinkedSessionsForCorrection: async () => [] as never[],
@@ -621,6 +623,7 @@ function buildHarness(remote: FakeReadwiseRemote, db: FakeLocalDb) {
     cache,
     sessionsRepo,
     advisoryLock,
+    libraryScopeServiceStub,
   );
 
   const ledgerBackfillStub = {

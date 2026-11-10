@@ -113,4 +113,36 @@ export class ReadwiseComicSeriesRepository {
         set: { externalBookId: data.externalBookId, totalPages: data.totalPages, status: data.status, updatedAt: new Date() },
       });
   }
+
+  /**
+   * Drops a stale series book: the shared `reading_service_series_book_links` row for
+   * `externalBookId`, plus every issue's `reading_service_book_links` row that was routed to
+   * it (`matchMethod='series'`). Called once the series' shared Readwise book is confirmed gone
+   * remotely (404 on update, a not-found write result, or `status: 'deleted'` on pull), so the
+   * next activity on any issue of the series creates a fresh book instead of failing forever
+   * against a dead external id. A hard delete, not a `remoteDeleted` flag: the issue links must
+   * disappear entirely so `resolveRouting`/`ensureSeriesExternalBook` treat the series as never
+   * having had a book, not as one still in need of reconciliation.
+   */
+  async dropStaleSeriesBook(userId: number, externalBookId: string): Promise<void> {
+    await this.db
+      .delete(schema.readingServiceSeriesBookLinks)
+      .where(
+        and(
+          eq(schema.readingServiceSeriesBookLinks.userId, userId),
+          eq(schema.readingServiceSeriesBookLinks.provider, 'readwise'),
+          eq(schema.readingServiceSeriesBookLinks.externalBookId, externalBookId),
+        ),
+      );
+    await this.db
+      .delete(schema.readingServiceBookLinks)
+      .where(
+        and(
+          eq(schema.readingServiceBookLinks.userId, userId),
+          eq(schema.readingServiceBookLinks.provider, 'readwise'),
+          eq(schema.readingServiceBookLinks.externalBookId, externalBookId),
+          eq(schema.readingServiceBookLinks.matchMethod, 'series'),
+        ),
+      );
+  }
 }

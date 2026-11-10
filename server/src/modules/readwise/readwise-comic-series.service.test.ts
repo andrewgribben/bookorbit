@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
-import { ReadwiseBooksClientService } from './readwise-books-client.service';
+import { ReadwiseBooksClientService, ReadwiseBooksHttpError } from './readwise-books-client.service';
 import { ReadwiseComicSeriesRepository } from './readwise-comic-series.repository';
 import { ReadwiseComicSeriesService } from './readwise-comic-series.service';
 
@@ -11,6 +11,7 @@ function makeService() {
     findEligibleIssues: vi.fn(),
     findSeriesBookLink: vi.fn(),
     upsertSeriesBookLink: vi.fn(),
+    dropStaleSeriesBook: vi.fn(),
   } as unknown as ReadwiseComicSeriesRepository;
   const readingServicesRepo = {
     getLibrarySeriesModeEnabled: vi.fn(),
@@ -173,5 +174,61 @@ describe('ReadwiseComicSeriesService.ensureSeriesExternalBook', () => {
 
     expect(client.updateBooks).toHaveBeenCalledWith(1, 'tok', [{ id: 'series-ext-1', manual_total_pages: 60, status: 'finished' }]);
     expect(repo.upsertSeriesBookLink).toHaveBeenCalledWith(1, 5, { externalBookId: 'series-ext-1', totalPages: 60, status: 'finished' });
+  });
+
+  it('drops the stale series link and recreates the book on a 404 from the update', async () => {
+    const { service, repo, client } = makeService();
+    (repo.findSeriesBookLink as any)
+      .mockResolvedValueOnce({ externalBookId: 'series-ext-1', totalPages: 20, status: 'currently_reading' })
+      .mockResolvedValueOnce(undefined);
+    (client.updateBooks as any).mockRejectedValueOnce(new ReadwiseBooksHttpError('PATCH', '/books', 404, ''));
+    (client.createBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'created', book_id: 'series-ext-2' }]);
+
+    const result = await service.ensureSeriesExternalBook(
+      1,
+      'tok',
+      { seriesId: 5, seriesName: 'Comic Series', libraryId: 2, totalPages: 40, status: 'currently_reading', pageRanges: new Map() },
+      null,
+    );
+
+    expect(repo.dropStaleSeriesBook).toHaveBeenCalledWith(1, 'series-ext-1');
+    expect(client.createBooks).toHaveBeenCalledWith(1, 'tok', [expect.objectContaining({ manual_total_pages: 40 })]);
+    expect(result).toBe('series-ext-2');
+  });
+
+  it('drops the stale series link and recreates the book on a not_found write result from the update', async () => {
+    const { service, repo, client } = makeService();
+    (repo.findSeriesBookLink as any)
+      .mockResolvedValueOnce({ externalBookId: 'series-ext-1', totalPages: 20, status: 'currently_reading' })
+      .mockResolvedValueOnce(undefined);
+    (client.updateBooks as any).mockResolvedValueOnce([{ id: 'series-ext-1', status: 'error', error: 'Book not found' }]);
+    (client.createBooks as any).mockResolvedValueOnce([{ id: 'r1', status: 'created', book_id: 'series-ext-2' }]);
+
+    const result = await service.ensureSeriesExternalBook(
+      1,
+      'tok',
+      { seriesId: 5, seriesName: 'Comic Series', libraryId: 2, totalPages: 40, status: 'currently_reading', pageRanges: new Map() },
+      null,
+    );
+
+    expect(repo.dropStaleSeriesBook).toHaveBeenCalledWith(1, 'series-ext-1');
+    expect(result).toBe('series-ext-2');
+  });
+
+  it('propagates a non-404 update error without dropping the series link', async () => {
+    const { service, repo, client } = makeService();
+    (repo.findSeriesBookLink as any).mockResolvedValueOnce({ externalBookId: 'series-ext-1', totalPages: 20, status: 'currently_reading' });
+    (client.updateBooks as any).mockRejectedValueOnce(new ReadwiseBooksHttpError('PATCH', '/books', 500, ''));
+
+    await expect(
+      service.ensureSeriesExternalBook(
+        1,
+        'tok',
+        { seriesId: 5, seriesName: 'Comic Series', libraryId: 2, totalPages: 40, status: 'currently_reading', pageRanges: new Map() },
+        null,
+      ),
+    ).rejects.toThrow(ReadwiseBooksHttpError);
+
+    expect(repo.dropStaleSeriesBook).not.toHaveBeenCalled();
   });
 });

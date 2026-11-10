@@ -8,14 +8,17 @@ import { BookService } from '../book/book.service';
 import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { UserBookReviewService } from '../user-book-review/user-book-review.service';
 import { UserBookStatusService } from '../user-book-status/user-book-status.service';
+import { isLibraryFeatureEnabled, type EffectiveLibrarySetting } from '../reading-services/library-scope.utils';
 import { mergeField } from '../reading-services/three-way-merge';
 import type { ReadwiseBook } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository } from './readwise-books-local-books.repository';
 import { mapReadwiseStatusToBookOrbit } from './readwise-books-status-mapping';
+import { ReadwiseComicSeriesRepository } from './readwise-comic-series.repository';
 import { normalizeReadwiseReview } from './readwise-review.utils';
 import {
   READWISE_BOOKS_FULL_PASS_INTERVAL_MS,
@@ -65,6 +68,8 @@ export class ReadwiseBooksPullService {
     private readonly userBookReviewService: UserBookReviewService,
     private readonly bookService: BookService,
     private readonly lock: ReadingServiceAdvisoryLockService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
+    private readonly comicSeriesRepo: ReadwiseComicSeriesRepository,
   ) {}
 
   @Interval(READWISE_BOOKS_PULL_INTERVAL_MS)
@@ -98,9 +103,12 @@ export class ReadwiseBooksPullService {
     const dueForFullPass = !cursor.lastFullPassAt || Date.now() - new Date(cursor.lastFullPassAt).getTime() >= READWISE_BOOKS_FULL_PASS_INTERVAL_MS;
     const startedAt = Date.now();
     const nowIso = new Date().toISOString();
+    const librarySettings = await this.libraryScopeService.getEffectiveLibrarySettingsForUserId(userId, 'readwise');
 
     try {
-      const applied = dueForFullPass ? await this.runFullPass(userId, token) : await this.runIncrementalPass(userId, token, cursor.updatedAfter);
+      const applied = dueForFullPass
+        ? await this.runFullPass(userId, token, librarySettings)
+        : await this.runIncrementalPass(userId, token, cursor.updatedAfter, librarySettings);
 
       const next: PullCursor = { updatedAfter: nowIso, lastFullPassAt: dueForFullPass ? nowIso : cursor.lastFullPassAt };
       await this.cache.set(userId, 'readwise', READWISE_BOOKS_PULL_CURSOR_CACHE_KEY, next, READWISE_BOOKS_PULL_CURSOR_TTL_MS);
@@ -118,7 +126,12 @@ export class ReadwiseBooksPullService {
   }
 
   /** Incremental: only books Readwise reports as updated since the cursor. */
-  private async runIncrementalPass(userId: number, token: string, updatedAfter: string | null): Promise<number> {
+  private async runIncrementalPass(
+    userId: number,
+    token: string,
+    updatedAfter: string | null,
+    librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
+  ): Promise<number> {
     let applied = 0;
     let cursor: string | undefined;
     for (;;) {
@@ -129,7 +142,7 @@ export class ReadwiseBooksPullService {
         cursor,
       });
       for (const book of page.results) {
-        if (await this.applyRemoteBook(userId, book)) applied += 1;
+        if (await this.applyRemoteBook(userId, book, librarySettings)) applied += 1;
       }
       if (!page.next) break;
       cursor = page.next;
@@ -142,7 +155,7 @@ export class ReadwiseBooksPullService {
    * full remote id set against linked books to catch hard deletes (Kindle/Goodreads purges),
    * which disappear from every list rather than reporting `status: "deleted"`.
    */
-  private async runFullPass(userId: number, token: string): Promise<number> {
+  private async runFullPass(userId: number, token: string, librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>): Promise<number> {
     let applied = 0;
     let cursor: string | undefined;
     const seenExternalIds = new Set<string>();
@@ -150,36 +163,49 @@ export class ReadwiseBooksPullService {
       const page = await this.client.listBooks(userId, token, { limit: READWISE_BOOKS_LIST_LIMIT, cursor });
       for (const book of page.results) {
         seenExternalIds.add(book.id);
-        if (await this.applyRemoteBook(userId, book)) applied += 1;
+        if (await this.applyRemoteBook(userId, book, librarySettings)) applied += 1;
       }
       if (!page.next) break;
       cursor = page.next;
     }
 
     const links = await this.readingServicesRepo.findBookLinksForProvider(userId, 'readwise');
+    const staleSeriesExternalIds = new Set<string>();
     for (const link of links) {
-      if (!link.remoteDeleted && !seenExternalIds.has(link.externalBookId)) {
+      if (link.remoteDeleted || seenExternalIds.has(link.externalBookId)) continue;
+      if (link.matchMethod === 'series') {
+        staleSeriesExternalIds.add(link.externalBookId);
+      } else {
         await this.readingServicesRepo.markRemoteDeleted(userId, 'readwise', link.bookId);
       }
+    }
+    for (const externalBookId of staleSeriesExternalIds) {
+      await this.dropStaleSeriesBook(userId, externalBookId);
     }
     return applied;
   }
 
   /** Applies one remote book to its linked local book, if any. Returns whether anything changed. */
-  private async applyRemoteBook(userId: number, book: ReadwiseBook): Promise<boolean> {
+  private async applyRemoteBook(userId: number, book: ReadwiseBook, librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>): Promise<boolean> {
     const link = await this.readingServicesRepo.findBookLinkByExternalId(userId, 'readwise', book.id);
     if (!link) return false; // not yet linked; S3 only syncs already-migrated books
+
+    if (book.status === 'deleted') {
+      if (link.matchMethod === 'series') {
+        // The series' shared book is gone remotely: drop it so the next issue activity
+        // recreates a fresh one, rather than leaving every issue pointed at a dead id.
+        await this.dropStaleSeriesBook(userId, link.externalBookId);
+      } else if (!link.remoteDeleted) {
+        await this.readingServicesRepo.markRemoteDeleted(userId, 'readwise', link.bookId);
+      }
+      return false;
+    }
 
     // A comic series' shared Readwise book has many local issues pointing at one externalBookId
     // (matchMethod 'series'), so findBookLinkByExternalId above only ever returns one of them.
     // Pulling the series book's aggregate status/rating back onto that single arbitrary issue
     // would be wrong, so series mode is push-only in v1: nothing is pulled back for it.
     if (link.matchMethod === 'series') return false;
-
-    if (book.status === 'deleted') {
-      if (!link.remoteDeleted) await this.readingServicesRepo.markRemoteDeleted(userId, 'readwise', link.bookId);
-      return false;
-    }
 
     const local = await this.localBooks.findOne(userId, link.bookId);
     if (!local) return false;
@@ -194,7 +220,7 @@ export class ReadwiseBooksPullService {
     let newStartedAt: string | null | undefined;
     let newFinishedAt: string | null | undefined;
 
-    if (features.status !== false) {
+    if (isLibraryFeatureEnabled(librarySettings, local.libraryId, 'status', features.status !== false)) {
       const action = mergeField(local.status, mapReadwiseStatusToBookOrbit(book.status, local.status) ?? local.status, snapshot.status as ReadStatus);
       if (action.action === 'pull') {
         const mapped = mapReadwiseStatusToBookOrbit(book.status, local.status);
@@ -205,7 +231,7 @@ export class ReadwiseBooksPullService {
       }
     }
 
-    if (features.rating !== false) {
+    if (isLibraryFeatureEnabled(librarySettings, local.libraryId, 'rating', features.rating !== false)) {
       const remoteRating = roundReadwiseRating(book.rating);
       const action = mergeField(local.rating, remoteRating, snapshot.rating === undefined ? undefined : (snapshot.rating ?? null));
       if (action.action === 'pull' && remoteRating !== local.rating) {
@@ -214,7 +240,7 @@ export class ReadwiseBooksPullService {
       }
     }
 
-    if (features.review !== false) {
+    if (isLibraryFeatureEnabled(librarySettings, local.libraryId, 'review', features.review !== false)) {
       const remoteReview = normalizeReadwiseReview(book.review);
       const action = mergeField(local.review, remoteReview, snapshot.review === undefined ? undefined : (snapshot.review ?? null));
       if (action.action === 'pull' && remoteReview !== local.review) {
@@ -223,7 +249,7 @@ export class ReadwiseBooksPullService {
       }
     }
 
-    if (features.dates !== false) {
+    if (isLibraryFeatureEnabled(librarySettings, local.libraryId, 'dates', features.dates !== false)) {
       const startedAction = this.mergeDateField(local.startedAt, book.started_reading_at ?? null, snapshot.startedAt);
       if (startedAction.action === 'pull' && startedAction.value !== local.startedAt) {
         newStartedAt = startedAction.value;
@@ -273,6 +299,14 @@ export class ReadwiseBooksPullService {
   private mergeDateField(local: string | null, remote: string | null, snapshot: string | null | undefined) {
     if (local === null && remote !== null) return { action: 'pull' as const, value: remote };
     return mergeField(local, remote, snapshot === undefined ? undefined : snapshot);
+  }
+
+  /** The series' shared Readwise book is gone remotely; drop it so the next activity recreates it. */
+  private async dropStaleSeriesBook(userId: number, externalBookId: string): Promise<void> {
+    await this.comicSeriesRepo.dropStaleSeriesBook(userId, externalBookId);
+    this.logger.log(
+      `[${EVENT}.series_stale] [end] userId=${userId} externalBookId=${sanitizeLogValue(externalBookId)} - stale series book dropped on pull, will recreate on next activity`,
+    );
   }
 
   private logFailure(userId: number, err: unknown): void {
