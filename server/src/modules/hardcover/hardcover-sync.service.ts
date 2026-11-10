@@ -186,13 +186,12 @@ export class HardcoverSyncService {
   }
 
   /**
-   * Per-library override map (rating/dates feature toggles), batched once per sync
-   * run/call rather than once per book. `status` has no per-library override applied here:
-   * Hardcover's `insert_user_book`/`update_user_book` mutations require a `status_id` on every
-   * synced book, so there is no safe "send no status" shape the way Readwise's create-without-
-   * status has; turning the library's status feature off instead leaves the book unsynced
-   * entirely via `isBookInSyncScope`'s enabled check (owner decision, narrower than Readwise's
-   * per-field granularity).
+   * Per-library override map (status/rating/dates feature toggles), batched once per sync
+   * run/call rather than once per book. When a library's `status` feature is off: a book already
+   * linked on Hardcover is updated with `status_id` omitted from `update_user_book` (the mutation
+   * accepts a partial object, so the user's existing Hardcover status is left untouched), and a
+   * book not yet linked is left uncreated rather than inserted with a status the owner opted out
+   * of pushing (`insert_user_book` has no safe "send no status" shape).
    */
   private getLibraryFeatureSettings(userId: number): Promise<Map<number, EffectiveLibrarySetting>> {
     return this.libraryScopeService.getEffectiveLibrarySettingsForUserId(userId, 'hardcover');
@@ -201,8 +200,9 @@ export class HardcoverSyncService {
   private resolveFieldFeatures(
     librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
     libraryId: number | null,
-  ): { rating: boolean; dates: boolean } {
+  ): { status: boolean; rating: boolean; dates: boolean } {
     return {
+      status: isLibraryFeatureEnabled(librarySettings, libraryId, 'status', true),
       rating: isLibraryFeatureEnabled(librarySettings, libraryId, 'rating', true),
       dates: isLibraryFeatureEnabled(librarySettings, libraryId, 'dates', true),
     };
@@ -341,13 +341,15 @@ export class HardcoverSyncService {
     );
     const stateByBookId = new Map(states.map((state) => [state.bookId, state]));
 
+    const librarySettings = await this.getLibraryFeatureSettings(userId);
     let pendingBooks = 0;
     let totalBooks = 0;
     for (const book of books) {
       const state = stateByBookId.get(book.bookId);
       if (!this.isBookInSyncScope(settings, book, state, libraryIds)) continue;
       totalBooks++;
-      const decision = this.resolveSyncDecision(settings, book, state, libraryIds);
+      const statusEnabled = this.resolveFieldFeatures(librarySettings, book.libraryId).status;
+      const decision = this.resolveSyncDecision(settings, book, state, libraryIds, statusEnabled);
       if (decision.canSyncNow) {
         pendingBooks++;
       }
@@ -366,7 +368,9 @@ export class HardcoverSyncService {
     if (!book) return this.bookNotFoundState(bookId);
 
     const state = await this.repo.findBookState(userId, bookId);
-    return this.toBookSyncState(bookId, book, settings, state, libraryIds);
+    const librarySettings = await this.getLibraryFeatureSettings(userId);
+    const statusEnabled = this.resolveFieldFeatures(librarySettings, book.libraryId).status;
+    return this.toBookSyncState(bookId, book, settings, state, libraryIds, statusEnabled);
   }
 
   async updateBookSyncState(userId: number, bookId: number, payload: UpdateHardcoverBookSyncPayload): Promise<HardcoverBookSyncState> {
@@ -386,7 +390,9 @@ export class HardcoverSyncService {
       });
     }
 
-    return this.toBookSyncState(bookId, book, settings, state, libraryIds);
+    const librarySettings = await this.getLibraryFeatureSettings(userId);
+    const statusEnabled = this.resolveFieldFeatures(librarySettings, book.libraryId).status;
+    return this.toBookSyncState(bookId, book, settings, state, libraryIds, statusEnabled);
   }
 
   async listLinkedBooks(userId: number): Promise<HardcoverLinkedBooksResult> {
@@ -547,7 +553,10 @@ export class HardcoverSyncService {
       return 'skipped';
     }
 
-    const decision = this.resolveSyncDecision(settings, book, latestState ?? activeInitialState, libraryIds);
+    const librarySettings = await this.getLibraryFeatureSettings(userId);
+    const fieldFeatures = this.resolveFieldFeatures(librarySettings, book.libraryId);
+
+    const decision = this.resolveSyncDecision(settings, book, latestState ?? activeInitialState, libraryIds, fieldFeatures.status);
     if (!decision.canSyncNow) return 'skipped';
 
     const match = await this.matchService.matchBook(userId, token, book);
@@ -566,20 +575,25 @@ export class HardcoverSyncService {
       return 'skipped';
     }
 
-    const librarySettings = await this.getLibraryFeatureSettings(userId);
-    const fieldFeatures = this.resolveFieldFeatures(librarySettings, book.libraryId);
     const hardcoverRating = fieldFeatures.rating ? (book.rating ?? null) : null;
 
     try {
-      const userBookId = await this.insertOrFindUserBook(userId, token, {
-        bookId: match.hardcoverBookId,
-        statusId: hardcoverStatusId,
-        privacySettingId: settings.privacySettingId,
-        editionId: match.hardcoverEditionId ?? undefined,
-      });
+      let userBookId: number;
+      if (fieldFeatures.status) {
+        userBookId = await this.insertOrFindUserBook(userId, token, {
+          bookId: match.hardcoverBookId,
+          statusId: hardcoverStatusId,
+          privacySettingId: settings.privacySettingId,
+          editionId: match.hardcoverEditionId ?? undefined,
+        });
+      } else {
+        const existingUserBookId = await this.findExistingUserBookId(userId, token, match.hardcoverBookId);
+        if (existingUserBookId == null) return 'skipped';
+        userBookId = existingUserBookId;
+      }
 
       await this.updateUserBookFields(userId, token, userBookId, {
-        statusId: hardcoverStatusId,
+        statusId: fieldFeatures.status ? hardcoverStatusId : null,
         privacySettingId: settings.privacySettingId,
         rating: hardcoverRating,
         editionId: match.hardcoverEditionId ?? undefined,
@@ -723,27 +737,31 @@ export class HardcoverSyncService {
     const userBookId = insertResult.insert_user_book?.user_book?.id;
     if (userBookId) return userBookId;
 
-    const findResult = await this.client.query<FindUserBookResult>(userId, token, FIND_USER_BOOK_QUERY, {
-      bookId: input.bookId,
-    });
-
-    const existingId = findResult.me?.user_books?.[0]?.id;
+    const existingId = await this.findExistingUserBookId(userId, token, input.bookId);
     if (!existingId) throw new Error(`Book ${input.bookId} not found in Hardcover library after insert`);
 
     return existingId;
+  }
+
+  private async findExistingUserBookId(userId: number, token: string, hardcoverBookId: number): Promise<number | null> {
+    const findResult = await this.client.query<FindUserBookResult>(userId, token, FIND_USER_BOOK_QUERY, {
+      bookId: hardcoverBookId,
+    });
+
+    return findResult.me?.user_books?.[0]?.id ?? null;
   }
 
   private async updateUserBookFields(
     userId: number,
     token: string,
     userBookId: number,
-    fields: { statusId: number; privacySettingId: number; rating: number | null; editionId?: number },
+    fields: { statusId: number | null; privacySettingId: number; rating: number | null; editionId?: number },
   ): Promise<void> {
     try {
       const result = await this.client.query<UpdateUserBookResult>(userId, token, UPDATE_USER_BOOK_MUTATION, {
         id: userBookId,
         object: {
-          status_id: fields.statusId,
+          ...(fields.statusId != null && { status_id: fields.statusId }),
           privacy_setting_id: fields.privacySettingId,
           ...(fields.rating != null && { rating: fields.rating }),
           ...(fields.editionId != null && { edition_id: fields.editionId }),
@@ -949,7 +967,7 @@ export class HardcoverSyncService {
     );
   }
 
-  private hasChanges(book: BookSyncData, state: Awaited<ReturnType<HardcoverRepository['findBookState']>>): boolean {
+  private hasChanges(book: BookSyncData, state: Awaited<ReturnType<HardcoverRepository['findBookState']>>, statusEnabled: boolean): boolean {
     if (!state?.lastSyncedAt) return true;
     if (book.attemptsUpdatedAt && book.attemptsUpdatedAt > state.lastSyncedAt) return true;
     if (book.hardcoverMetadataId && state.syncError === 'no_match') return true;
@@ -960,7 +978,7 @@ export class HardcoverSyncService {
       const metadataHardcoverId = parseHardcoverBookId(book.hardcoverMetadataId);
       if (metadataHardcoverId !== null && metadataHardcoverId !== state.hardcoverBookId) return true;
     }
-    if (book.status !== state.lastSyncedStatus) return true;
+    if (statusEnabled && book.status !== state.lastSyncedStatus) return true;
     if (book.progress !== state.lastSyncedProgress) return true;
     if (book.rating !== state.lastSyncedRating) return true;
     const startDate = toDateString(book.startedAt);
@@ -986,6 +1004,7 @@ export class HardcoverSyncService {
     book: BookSyncData,
     state: HardcoverBookStateSnapshot | undefined,
     libraryIds: number[],
+    statusEnabled: boolean,
   ) {
     const syncOverride = normalizeHardcoverBookSyncOverride(state);
     const decision = resolveHardcoverBookSyncDecision({
@@ -997,7 +1016,7 @@ export class HardcoverSyncService {
 
     return {
       ...decision,
-      canSyncNow: decision.syncEnabled && this.hasChanges(book, state),
+      canSyncNow: decision.syncEnabled && this.hasChanges(book, state, statusEnabled),
     };
   }
 
@@ -1023,6 +1042,7 @@ export class HardcoverSyncService {
     settings: Awaited<ReturnType<HardcoverSettingsService['getSettings']>>,
     state: HardcoverBookStateSnapshot | undefined,
     libraryIds: number[],
+    statusEnabled: boolean,
   ): HardcoverBookSyncState {
     const syncOverride = normalizeHardcoverBookSyncOverride(state);
     const decision = resolveHardcoverBookSyncDecision({
@@ -1036,7 +1056,7 @@ export class HardcoverSyncService {
       bookId,
       syncOverride,
       syncEnabled: decision.syncEnabled,
-      canSyncNow: decision.syncEnabled && this.hasChanges(book, state),
+      canSyncNow: decision.syncEnabled && this.hasChanges(book, state, statusEnabled),
       effectiveReason: decision.effectiveReason,
       lastSyncedAt: state?.lastSyncedAt?.toISOString() ?? null,
       syncError: state?.syncError ?? null,

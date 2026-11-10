@@ -5,7 +5,9 @@ import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
+import { isLibraryFeatureEnabled, type EffectiveLibrarySetting } from '../reading-services/library-scope.utils';
 import type { ReadwiseSession } from './readwise-books-client.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
@@ -42,6 +44,7 @@ export class ReadwiseSessionsPullService {
     private readonly cache: ReadingServiceCacheService,
     private readonly sessionsRepo: ReadwiseSessionsLocalRepository,
     private readonly lock: ReadingServiceAdvisoryLockService,
+    private readonly libraryScopeService: ReadingServiceLibraryScopeService,
   ) {}
 
   @Interval(READWISE_SESSIONS_PULL_INTERVAL_MS)
@@ -71,6 +74,8 @@ export class ReadwiseSessionsPullService {
     const features = await this.featuresService.getFeatures(userId, 'readwise');
     if (features.sessions === false) return;
 
+    const librarySettings = await this.libraryScopeService.getEffectiveLibrarySettingsForUserId(userId, 'readwise');
+
     const updatedAfter = await this.cache.get<string>(userId, 'readwise', READWISE_SESSIONS_PULL_CURSOR_CACHE_KEY);
     const startedAt = Date.now();
     const nowIso = new Date().toISOString();
@@ -87,7 +92,7 @@ export class ReadwiseSessionsPullService {
           cursor,
         });
         for (const session of page.results) {
-          if (await this.applyRemoteSession(userId, session, timezone)) applied += 1;
+          if (await this.applyRemoteSession(userId, session, timezone, librarySettings)) applied += 1;
         }
         if (!page.next) break;
         cursor = page.next;
@@ -104,7 +109,12 @@ export class ReadwiseSessionsPullService {
     }
   }
 
-  private async applyRemoteSession(userId: number, session: ReadwiseSession, timezone: string): Promise<boolean> {
+  private async applyRemoteSession(
+    userId: number,
+    session: ReadwiseSession,
+    timezone: string,
+    librarySettings: ReadonlyMap<number, EffectiveLibrarySetting>,
+  ): Promise<boolean> {
     if (session.is_deleted) {
       const link = await this.readingServicesRepo.findItemLinkByExternalId(userId, 'readwise', 'session', session.id);
       if (!link || link.deletedAt) return false;
@@ -117,6 +127,15 @@ export class ReadwiseSessionsPullService {
 
     const bookLink = await this.readingServicesRepo.findBookLinkByExternalId(userId, 'readwise', session.book_id);
     if (!bookLink) return false; // the book isn't migrated/linked yet; S4 only syncs sessions on linked books
+
+    // A comic series' shared Readwise book has many local issues pointing at one externalBookId
+    // (matchMethod 'series'); findBookLinkByExternalId above only ever returns one of them
+    // arbitrarily, so a remote session on the series book cannot be attributed to a single
+    // issue. Series sessions are push-only in v1, same as the books pull.
+    if (bookLink.matchMethod === 'series') return false;
+
+    const libraryId = await this.sessionsRepo.resolveLibraryIdForBook(bookLink.bookId);
+    if (!isLibraryFeatureEnabled(librarySettings, libraryId, 'sessions', true)) return false;
 
     // Reconnect-safe: a session that originated in BookOrbit - pushed to Readwise by this
     // instance or by a different one connected to the same account - must link to its own local
