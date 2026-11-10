@@ -4,12 +4,14 @@ import { BookService } from '../book/book.service';
 import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { UserBookReviewService } from '../user-book-review/user-book-review.service';
 import { UserBookStatusService } from '../user-book-status/user-book-status.service';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError, type ReadwiseBook } from './readwise-books-client.service';
 import { ReadwiseBooksLocalBooksRepository, type LocalBookForMigration } from './readwise-books-local-books.repository';
 import { ReadwiseBooksPullService } from './readwise-books-pull.service';
+import { ReadwiseComicSeriesRepository } from './readwise-comic-series.repository';
 import { READWISE_BOOKS_PULL_CURSOR_CACHE_KEY } from './readwise.constants';
 import { ReadwiseRepository } from './readwise.repository';
 import { ReadwiseSettingsService } from './readwise-settings.service';
@@ -28,6 +30,7 @@ function remoteBook(partial: Partial<ReadwiseBook> & { id: string }): ReadwiseBo
 
 function localBook(partial: Partial<LocalBookForMigration> & { bookId: number }): LocalBookForMigration {
   return {
+    libraryId: 1,
     isbn13: null,
     isbn10: null,
     title: 'Untitled',
@@ -75,6 +78,10 @@ function makeService() {
   const lock = {
     runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
   } as unknown as ReadingServiceAdvisoryLockService;
+  const libraryScopeService = {
+    getEffectiveLibrarySettingsForUserId: vi.fn().mockResolvedValue(new Map()),
+  } as unknown as ReadingServiceLibraryScopeService;
+  const comicSeriesRepo = { dropStaleSeriesBook: vi.fn() } as unknown as ReadwiseComicSeriesRepository;
 
   const service = new ReadwiseBooksPullService(
     client,
@@ -88,6 +95,8 @@ function makeService() {
     userBookReviewService,
     bookService,
     lock,
+    libraryScopeService,
+    comicSeriesRepo,
   );
   return {
     service,
@@ -102,6 +111,8 @@ function makeService() {
     userBookReviewService,
     bookService,
     lock,
+    libraryScopeService,
+    comicSeriesRepo,
   };
 }
 
@@ -356,6 +367,98 @@ describe('ReadwiseBooksPullService', () => {
     await service.pullForUser(1);
 
     expect(readwiseRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'no_readwise_books', enabled: false });
+  });
+
+  describe('per-library feature scope', () => {
+    it('does not pull status when the book library has turned the status feature off', async () => {
+      const { service, client, readingServicesRepo, localBooks, userBookStatusService, libraryScopeService } = makeService();
+      client.listBooks = vi.fn().mockResolvedValueOnce({ results: [remoteBook({ id: 'r1', status: 'finished' })], next: null }) as any;
+      (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(link({ bookId: 10, externalBookId: 'r1' }));
+      (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, libraryId: 7, status: 'unread' }));
+      (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+        new Map([[7, { enabled: true, features: { status: false }, seriesMode: false }]]),
+      );
+
+      await service.pullForUser(1);
+
+      expect(userBookStatusService.updateManual).not.toHaveBeenCalled();
+    });
+
+    it('does not pull rating when the book library is entirely disabled', async () => {
+      const { service, client, readingServicesRepo, localBooks, bookService, libraryScopeService } = makeService();
+      client.listBooks = vi
+        .fn()
+        .mockResolvedValueOnce({ results: [remoteBook({ id: 'r1', status: 'reading' as any, rating: 4 })], next: null }) as any;
+      (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(link({ bookId: 10, externalBookId: 'r1' }));
+      (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, libraryId: 7, rating: null }));
+      (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+        new Map([[7, { enabled: false, features: {}, seriesMode: false }]]),
+      );
+
+      await service.pullForUser(1);
+
+      expect(bookService.bulkSetRating).not.toHaveBeenCalled();
+    });
+
+    it('still pulls status for a library with no override row (inherits the provider toggle)', async () => {
+      const { service, client, readingServicesRepo, localBooks, userBookStatusService } = makeService();
+      client.listBooks = vi.fn().mockResolvedValueOnce({ results: [remoteBook({ id: 'r1', status: 'finished' })], next: null }) as any;
+      (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(
+        link({ bookId: 10, externalBookId: 'r1', snapshot: { status: 'unread' } }),
+      );
+      (localBooks.findOne as any).mockResolvedValueOnce(localBook({ bookId: 10, libraryId: 7, status: 'unread' }));
+
+      await service.pullForUser(1);
+
+      expect(userBookStatusService.updateManual).toHaveBeenCalledWith(1, 10, expect.objectContaining({ status: 'read' }));
+    });
+  });
+
+  describe('comic series edge cases', () => {
+    it('never pulls fields from a series-linked issue, even for a non-deleted remote book', async () => {
+      const { service, client, readingServicesRepo, localBooks, userBookStatusService, bookService } = makeService();
+      client.listBooks = vi
+        .fn()
+        .mockResolvedValueOnce({ results: [remoteBook({ id: 'series-ext-1', status: 'finished', rating: 5 })], next: null }) as any;
+      (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(
+        link({ bookId: 10, externalBookId: 'series-ext-1', matchMethod: 'series' }),
+      );
+
+      await service.pullForUser(1);
+
+      expect(localBooks.findOne).not.toHaveBeenCalled();
+      expect(userBookStatusService.updateManual).not.toHaveBeenCalled();
+      expect(bookService.bulkSetRating).not.toHaveBeenCalled();
+    });
+
+    it('drops the stale series book when Readwise reports it deleted, instead of pulling a status onto one issue', async () => {
+      const { service, client, readingServicesRepo, localBooks, comicSeriesRepo } = makeService();
+      client.listBooks = vi.fn().mockResolvedValueOnce({ results: [remoteBook({ id: 'series-ext-1', status: 'deleted' })], next: null }) as any;
+      (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce(
+        link({ bookId: 10, externalBookId: 'series-ext-1', matchMethod: 'series' }),
+      );
+
+      await service.pullForUser(1);
+
+      expect(comicSeriesRepo.dropStaleSeriesBook).toHaveBeenCalledWith(1, 'series-ext-1');
+      expect(readingServicesRepo.markRemoteDeleted).not.toHaveBeenCalled();
+      expect(localBooks.findOne).not.toHaveBeenCalled();
+    });
+
+    it('drops a series book that vanished from the full list entirely (hard delete), not just a 1:1 remote_deleted mark', async () => {
+      const { service, client, readingServicesRepo, comicSeriesRepo } = makeService();
+      client.listBooks = vi.fn().mockResolvedValueOnce({ results: [], next: null }) as any;
+      (readingServicesRepo.findBookLinksForProvider as any).mockResolvedValueOnce([
+        link({ bookId: 10, externalBookId: 'series-ext-1', matchMethod: 'series' }),
+        link({ bookId: 11, externalBookId: 'series-ext-1', matchMethod: 'series' }),
+      ]);
+
+      await service.pullForUser(1);
+
+      expect(comicSeriesRepo.dropStaleSeriesBook).toHaveBeenCalledTimes(1);
+      expect(comicSeriesRepo.dropStaleSeriesBook).toHaveBeenCalledWith(1, 'series-ext-1');
+      expect(readingServicesRepo.markRemoteDeleted).not.toHaveBeenCalled();
+    });
   });
 
   describe('pullAllConnectedUsers', () => {

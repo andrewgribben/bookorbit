@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ReadingServiceAdvisoryLockService } from '../reading-services/reading-service-advisory-lock.service';
 import { ReadingServiceCacheService } from '../reading-services/reading-service-cache.service';
 import { ReadingServiceFeaturesService } from '../reading-services/reading-service-features.service';
+import { ReadingServiceLibraryScopeService } from '../reading-services/reading-service-library-scope.service';
 import { ReadingServicesRepository } from '../reading-services/reading-services.repository';
 import { ReadwiseBooksClientService, ReadwiseBooksForbiddenError } from './readwise-books-client.service';
 import { ReadwiseSessionsLocalRepository } from './readwise-sessions-local.repository';
@@ -26,10 +27,14 @@ function makeService() {
     insertPulledSession: vi.fn().mockResolvedValue({ id: 1, inserted: true }),
     removePulledSession: vi.fn(),
     findUnlinkedSessionMatch: vi.fn().mockResolvedValue(undefined),
+    resolveLibraryIdForBook: vi.fn().mockResolvedValue(1),
   } as unknown as ReadwiseSessionsLocalRepository;
   const lock = {
     runExclusive: vi.fn((_op: string, _userId: number, fn: () => Promise<unknown>) => fn()),
   } as unknown as ReadingServiceAdvisoryLockService;
+  const libraryScopeService = {
+    getEffectiveLibrarySettingsForUserId: vi.fn().mockResolvedValue(new Map()),
+  } as unknown as ReadingServiceLibraryScopeService;
 
   const service = new ReadwiseSessionsPullService(
     client,
@@ -40,8 +45,9 @@ function makeService() {
     cache,
     sessionsRepo,
     lock,
+    libraryScopeService,
   );
-  return { service, client, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, cache, sessionsRepo, lock };
+  return { service, client, readwiseRepo, readwiseSettings, readingServicesRepo, featuresService, cache, sessionsRepo, lock, libraryScopeService };
 }
 
 const remoteSession = (partial: Record<string, unknown> = {}) => ({
@@ -156,5 +162,47 @@ describe('ReadwiseSessionsPullService', () => {
     await service.pullForUser(1);
 
     expect(readwiseRepo.upsertSettings).toHaveBeenCalledWith(1, { disabledReason: 'no_readwise_books', enabled: false });
+  });
+
+  it('never attributes a session on a comic series shared book to one arbitrary issue', async () => {
+    const { service, client, readingServicesRepo, sessionsRepo } = makeService();
+    (client.listSessions as any).mockResolvedValueOnce({ results: [remoteSession()], next: null });
+    (readingServicesRepo.findItemLinkByExternalId as any).mockResolvedValueOnce(undefined);
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce({ bookId: 42, matchMethod: 'series' });
+
+    await service.pullForUser(1);
+
+    expect(sessionsRepo.insertPulledSession).not.toHaveBeenCalled();
+    expect(sessionsRepo.resolveLibraryIdForBook).not.toHaveBeenCalled();
+  });
+
+  it('does not insert a pulled session when the book library has turned the sessions feature off', async () => {
+    const { service, client, readingServicesRepo, sessionsRepo, libraryScopeService } = makeService();
+    (client.listSessions as any).mockResolvedValueOnce({ results: [remoteSession()], next: null });
+    (readingServicesRepo.findItemLinkByExternalId as any).mockResolvedValueOnce(undefined);
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce({ bookId: 42, matchMethod: 'isbn13' });
+    (sessionsRepo.resolveLibraryIdForBook as any).mockResolvedValueOnce(7);
+    (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+      new Map([[7, { enabled: true, features: { sessions: false }, seriesMode: false }]]),
+    );
+
+    await service.pullForUser(1);
+
+    expect(sessionsRepo.insertPulledSession).not.toHaveBeenCalled();
+  });
+
+  it('does not insert a pulled session when the book library is entirely disabled', async () => {
+    const { service, client, readingServicesRepo, sessionsRepo, libraryScopeService } = makeService();
+    (client.listSessions as any).mockResolvedValueOnce({ results: [remoteSession()], next: null });
+    (readingServicesRepo.findItemLinkByExternalId as any).mockResolvedValueOnce(undefined);
+    (readingServicesRepo.findBookLinkByExternalId as any).mockResolvedValueOnce({ bookId: 42, matchMethod: 'isbn13' });
+    (sessionsRepo.resolveLibraryIdForBook as any).mockResolvedValueOnce(7);
+    (libraryScopeService.getEffectiveLibrarySettingsForUserId as any).mockResolvedValueOnce(
+      new Map([[7, { enabled: false, features: {}, seriesMode: false }]]),
+    );
+
+    await service.pullForUser(1);
+
+    expect(sessionsRepo.insertPulledSession).not.toHaveBeenCalled();
   });
 });
