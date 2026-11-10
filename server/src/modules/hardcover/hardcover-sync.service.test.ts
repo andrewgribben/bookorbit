@@ -238,6 +238,92 @@ describe('HardcoverSyncService', () => {
       );
     });
 
+    it('omits status_id from the update_user_book payload when the library turns the status feature off for an already-linked book', async () => {
+      mockSettingsService.getTokenForUser.mockResolvedValue('tok');
+      mockRepo.findBookSyncData.mockResolvedValue(readingBook);
+      mockRepo.findBookState.mockResolvedValue(undefined);
+      mockLibraryScopeService.getEffectiveLibrarySettingsForUserId.mockResolvedValue(
+        new Map([[1, { enabled: true, features: { status: false }, seriesMode: false }]]),
+      );
+      mockMatchService.matchBook.mockResolvedValue({ hardcoverBookId: 10, hardcoverEditionId: 20, editionPages: 300, matchMethod: 'isbn' });
+      mockClient.query
+        .mockResolvedValueOnce({ me: { user_books: [{ id: 55 }] } })
+        .mockResolvedValueOnce({ update_user_book: { user_book: { id: 55 }, error: null } })
+        .mockResolvedValueOnce({ user_book_reads: [] })
+        .mockResolvedValueOnce({ insert_user_book_read: { user_book_read: { id: 77 }, error: null } });
+
+      await expect(makeService().syncBook(1, 1)).resolves.toBe('synced');
+
+      expect(mockClient.query).toHaveBeenNthCalledWith(1, 1, 'tok', expect.stringContaining('query FindUserBook'), expect.anything());
+      expect(mockClient.query).toHaveBeenNthCalledWith(
+        2,
+        1,
+        'tok',
+        expect.stringContaining('mutation UpdateUserBook'),
+        expect.objectContaining({ object: expect.not.objectContaining({ status_id: expect.anything() }) }),
+      );
+    });
+
+    it('sends nothing when only the local status changed and the library turns the status feature off', async () => {
+      mockSettingsService.getTokenForUser.mockResolvedValue('tok');
+      mockRepo.findBookSyncData.mockResolvedValue({ ...readingBook, status: 'read' });
+      mockRepo.findBookState.mockResolvedValue({
+        lastSyncedAt: new Date('2024-02-01T00:00:00Z'),
+        lastSyncedStatus: 'reading',
+        lastSyncedProgress: 42,
+        lastSyncedRating: null,
+        lastSyncedStartedAt: '2024-01-01',
+        lastSyncedFinishedAt: null,
+      });
+      mockLibraryScopeService.getEffectiveLibrarySettingsForUserId.mockResolvedValue(
+        new Map([[1, { enabled: true, features: { status: false }, seriesMode: false }]]),
+      );
+
+      await expect(makeService().syncBook(1, 1)).resolves.toBe('skipped');
+
+      expect(mockMatchService.matchBook).not.toHaveBeenCalled();
+      expect(mockClient.query).not.toHaveBeenCalled();
+    });
+
+    it('skips creating a user_book when the library turns the status feature off and the book is not on Hardcover yet', async () => {
+      mockSettingsService.getTokenForUser.mockResolvedValue('tok');
+      mockRepo.findBookSyncData.mockResolvedValue(readingBook);
+      mockRepo.findBookState.mockResolvedValue(undefined);
+      mockLibraryScopeService.getEffectiveLibrarySettingsForUserId.mockResolvedValue(
+        new Map([[1, { enabled: true, features: { status: false }, seriesMode: false }]]),
+      );
+      mockMatchService.matchBook.mockResolvedValue({ hardcoverBookId: 10, hardcoverEditionId: 20, editionPages: 300, matchMethod: 'isbn' });
+      mockClient.query.mockResolvedValueOnce({ me: { user_books: [] } });
+
+      await expect(makeService().syncBook(1, 1)).resolves.toBe('skipped');
+
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      expect(mockClient.query.mock.calls.some(([, , query]) => typeof query === 'string' && query.includes('mutation InsertUserBook'))).toBe(false);
+      expect(mockRepo.upsertBookState).not.toHaveBeenCalled();
+    });
+
+    it('syncs status normally when the library status feature is on', async () => {
+      mockSettingsService.getTokenForUser.mockResolvedValue('tok');
+      mockRepo.findBookSyncData.mockResolvedValue(readingBook);
+      mockRepo.findBookState.mockResolvedValue(undefined);
+      mockMatchService.matchBook.mockResolvedValue({ hardcoverBookId: 10, hardcoverEditionId: 20, editionPages: 300, matchMethod: 'isbn' });
+      mockClient.query
+        .mockResolvedValueOnce({ insert_user_book: { user_book: { id: 55 }, error: null } })
+        .mockResolvedValueOnce({ update_user_book: { user_book: { id: 55 }, error: null } })
+        .mockResolvedValueOnce({ user_book_reads: [] })
+        .mockResolvedValueOnce({ insert_user_book_read: { user_book_read: { id: 77 }, error: null } });
+
+      await expect(makeService().syncBook(1, 1)).resolves.toBe('synced');
+
+      expect(mockClient.query).toHaveBeenNthCalledWith(
+        2,
+        1,
+        'tok',
+        expect.stringContaining('mutation UpdateUserBook'),
+        expect.objectContaining({ object: expect.objectContaining({ status_id: expect.any(Number) }) }),
+      );
+    });
+
     it('syncs audiobook progress in seconds using the matched edition duration', async () => {
       mockSettingsService.getTokenForUser.mockResolvedValue('tok');
       mockRepo.findBookSyncData.mockResolvedValue({ ...readingBook, format: 'm4b' });
@@ -678,6 +764,28 @@ describe('HardcoverSyncService', () => {
       expect(mockMatchService.matchBook).not.toHaveBeenCalled();
       expect(mockClient.query).not.toHaveBeenCalled();
       expect(mockRepo.updateLastSyncedAt).toHaveBeenCalledWith(1, expect.any(Date));
+    });
+
+    it('counts a status-feature-off insert skip in the aggregate end log, not a per-book log', async () => {
+      const logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      mockSettingsService.getTokenForUser.mockResolvedValue('tok');
+      mockRepo.findSyncableBooks.mockResolvedValue([readingBook]);
+      mockRepo.findBookState.mockResolvedValue(undefined);
+      mockLibraryScopeService.getEffectiveLibrarySettingsForUserId.mockResolvedValue(
+        new Map([[1, { enabled: true, features: { status: false }, seriesMode: false }]]),
+      );
+      mockMatchService.matchBook.mockResolvedValue({ hardcoverBookId: 10, hardcoverEditionId: 20, editionPages: 300, matchMethod: 'isbn' });
+      mockClient.query.mockResolvedValueOnce({ me: { user_books: [] } });
+
+      const svc = makeService();
+      await svc.syncAll(1);
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[hardcover.sync_all] [end] userId=1 runId=1 durationMs='));
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('skippedBooks=1'));
+      expect(logSpy.mock.calls.some(([message]) => typeof message === 'string' && message.includes('[hardcover.sync_book]'))).toBe(false);
+      logSpy.mockRestore();
     });
 
     it('clears active sync and does not call updateLastSyncedAt when runSyncAll crashes', async () => {
