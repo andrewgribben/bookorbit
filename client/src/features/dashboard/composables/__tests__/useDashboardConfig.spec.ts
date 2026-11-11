@@ -531,6 +531,34 @@ describe('useDashboardConfig', () => {
     setItemSpy.mockRestore()
   })
 
+  it('leaves shared-order shelves untouched when smart scope prune changes nothing', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        scrollers: [
+          { id: '1', type: 'recently-added', label: 'Recently Added', enabled: true, order: 1, limit: 20, rows: 1 },
+          { id: '2', type: 'smart-scope', label: 'Unread', enabled: true, order: 3, limit: 20, rows: 1, smartScopeId: 42 },
+        ],
+        externalShelves: [{ provider: 'readwise', shelf: 'owned-elsewhere', enabled: true, order: 2 }],
+        shelfOrderVersion: 2,
+      }),
+    )
+
+    const { useDashboardConfig } = await import('../useDashboardConfig')
+    const { scrollers, externalShelves, pruneDeletedSmartScopeScrollers } = useDashboardConfig()
+    const scrollersBefore = scrollers.value
+    const externalBefore = externalShelves.value
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem')
+
+    pruneDeletedSmartScopeScrollers([42])
+
+    expect(scrollers.value).toBe(scrollersBefore)
+    expect(externalShelves.value).toBe(externalBefore)
+    expect(setItemSpy).not.toHaveBeenCalled()
+
+    setItemSpy.mockRestore()
+  })
+
   it('migrates a legacy external-first config to one shared order sequence on first shelf save', async () => {
     localStorage.setItem(
       STORAGE_KEY,
