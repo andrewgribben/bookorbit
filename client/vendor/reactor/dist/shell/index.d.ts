@@ -1,0 +1,13 @@
+export { mountShell } from './mount.js';
+export type { ChromeState, ShellHandle, ShellOptions, SidebarState, SizeClass } from './types.js';
+export { computeSizeClass } from './size-class.js';
+export { resolveTapZone, ZONE_FRACTION } from './zones.js';
+export type { TapZoneAction } from './zones.js';
+export { resolveKeyboardAction, isPreventableKey } from './keyboard.js';
+export type { KeyboardAction } from './keyboard.js';
+export { mountRightSidebar } from './right-sidebar/mount.js';
+export type { RightSidebarHandle, RightSidebarOptions } from './right-sidebar/types.js';
+export { mountPlaybackBar } from './playback/mount.js';
+export type { PlaybackBarHandle, PlaybackBarOptions } from './playback/types.js';
+export { mountSettingsPanel } from './settings/mount.js';
+export type { SettingsPanelHandle, SettingsPanelOptions, SettingsScope, SettingsTab } from './settings/types.js';

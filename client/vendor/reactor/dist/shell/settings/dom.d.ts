@@ -1,0 +1,36 @@
+export interface SettingsPanelElements {
+    root: HTMLElement;
+    scrim: HTMLElement;
+    closeBtn: HTMLButtonElement;
+    scopeGlobalBtn: HTMLButtonElement;
+    scopeBookBtn: HTMLButtonElement;
+    tabsRow: HTMLElement;
+    tabButtons: Record<string, HTMLButtonElement>;
+    panels: Record<string, HTMLElement>;
+    fontSizeInput: HTMLInputElement;
+    fontSizeValue: HTMLElement;
+    paragraphSpacingInput: HTMLInputElement;
+    paragraphSpacingValue: HTMLElement;
+    fontFamilyPills: HTMLElement;
+    flowPills: HTMLElement;
+    columnsPills: HTMLElement;
+    marginInput: HTMLInputElement;
+    marginValue: HTMLElement;
+    lineHeightInput: HTMLInputElement;
+    lineHeightValue: HTMLElement;
+    justifyToggle: HTMLButtonElement;
+    hyphenateToggle: HTMLButtonElement;
+    useBookLayoutToggle: HTMLButtonElement;
+    themeSwatches: HTMLElement;
+    swipeToggle: HTMLButtonElement;
+    tapZonePills: HTMLElement;
+    volumeKeysRow: HTMLElement;
+    volumeKeysToggle: HTMLButtonElement;
+    playbackEmpty: HTMLElement;
+    playbackControls: HTMLElement;
+    narrationSpeedInput: HTMLInputElement;
+    narrationSpeedValue: HTMLElement;
+    skipForwardInput: HTMLInputElement;
+    skipForwardValue: HTMLElement;
+}
+export declare function buildSettingsPanelDom(container: HTMLElement): SettingsPanelElements;
