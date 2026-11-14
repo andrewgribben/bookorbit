@@ -1,0 +1,40 @@
+export class Paginator extends HTMLElement {
+    static observedAttributes: string[];
+    attributeChangedCallback(name: any, _: any, value: any): void;
+    open(book: any): void;
+    bookDir: any;
+    sections: any;
+    heads: (Element | undefined)[] | null | undefined;
+    feet: (Element | undefined)[] | null | undefined;
+    render(): void;
+    get scrolled(): boolean;
+    get scrollProp(): "scrollLeft" | "scrollTop";
+    get sideProp(): "height" | "width";
+    get size(): number;
+    get viewSize(): any;
+    get start(): number;
+    get end(): number;
+    get page(): number;
+    get pages(): number;
+    scrollBy(dx: any, dy: any): void;
+    snap(vx: any, vy: any): void;
+    scrollToAnchor(anchor: any, select: any): Promise<void>;
+    goTo(target: any): Promise<void>;
+    get atStart(): boolean;
+    get atEnd(): boolean;
+    prev(distance: any): Promise<void>;
+    next(distance: any): Promise<void>;
+    prevSection(): Promise<void>;
+    nextSection(): Promise<void>;
+    firstSection(): Promise<void>;
+    lastSection(): Promise<void>;
+    getContents(): {
+        index: number;
+        overlayer: any;
+        doc: any;
+    }[];
+    setStyles(styles: any): void;
+    focusView(): void;
+    destroy(): void;
+    #private;
+}
