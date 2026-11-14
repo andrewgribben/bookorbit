@@ -58,6 +58,15 @@ export declare class ContentCore {
      * byte-identical - it still ends up calling plain `fetch`, exactly as before this parameter
      * existed. */
     openLocal(meta: ReaderOpenMeta, baseUrl: string, fetcher?: typeof fetch): Promise<void>;
+    /** Lazy remote-EPUB open (BO-41): same memory shape as `openLocal`, but for a plain EPUB URL
+     * with no server-side entries manifest - reads the zip's own central directory and entries
+     * via HTTP Range requests (see src/vendor/foliate/remote-zip-loader.js), falling back to one
+     * whole-file fetch only when the server does not honour Range with 206.
+     *
+     * `fetcher` (mirrors R-G5) is an optional caller-supplied replacement for the global `fetch`,
+     * so a host behind auth can add headers (e.g. `Authorization`) on every Range request.
+     * `size`, if the caller already knows the file's byte length, skips the one-time size probe. */
+    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number): Promise<void>;
     private finishOpen;
     private createView;
     private attachHandlersForDoc;

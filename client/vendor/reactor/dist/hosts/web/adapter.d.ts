@@ -34,6 +34,14 @@ export interface WebHost {
      * host that requires auth on every request, mirroring the web client's existing `fetchFile`
      * pattern. */
     openLocal(meta: ReaderOpenMeta, baseUrl: string, fetcher?: typeof fetch): Promise<void>;
+    /** Lazily opens a plain remote EPUB over HTTP Range (BO-41): unlike `openLocal`, `url` is the
+     * EPUB file's own URL - there is no server-side entries manifest. Reads the zip's central
+     * directory and entries straight out of the remote file via Range requests, falling back to
+     * one whole-file fetch only when the server does not answer Range with 206. `fetcher` behaves
+     * like `openLocal`'s (defaults to the global `fetch`, pass one that adds an `Authorization`
+     * header for a host that requires auth). `size`, if already known, skips a one-time size
+     * probe request. */
+    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number): Promise<void>;
     /** R-G7: sets (or clears, with `null`) extra CSS injected into every rendered section
      * alongside `applyStyles`'s generated CSS - e.g. custom @font-face rules for a user-uploaded
      * font. Additive: a host that never calls this is unaffected. */
