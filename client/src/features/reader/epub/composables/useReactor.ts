@@ -11,7 +11,7 @@ import type { SelectionDetail } from './useFoliateSelection'
 /**
  * Reactor-backed EPUB engine (W1-B2, docs/plans/W1.md). Exposes the exact same public surface as
  * `useFoliate` so `ReaderView.vue` and its sibling composables (`useToc`, `useSearch`, annotation
- * actions) never need to know which engine is mounted - only `epub/engine.ts`'s build-time flag
+ * actions) never need to know which engine is mounted - only the build-time `VITE_READER_ENGINE` check in ReaderView.vue
  * decides which of the two composables `ReaderView.vue` calls.
  *
  * Known gaps versus `useFoliate` while `VITE_READER_ENGINE=reactor` is on (see docs/plans/W1.md

@@ -5,7 +5,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { useFoliate, type RelocateDetail } from './epub/composables/useFoliate'
 import { useReactor } from './epub/composables/useReactor'
-import { isReactorEngine } from './epub/engine'
 import type { SelectionDetail } from './epub/composables/useFoliateSelection'
 import { useReaderProgress, type NewerPosition } from './shared/composables/useReaderProgress'
 import { useReadingSession } from './shared/composables/useReadingSession'
@@ -902,7 +901,7 @@ const {
   hasMediaOverlay,
   getMediaOverlay,
   getMediaActiveClass,
-} = (isReactorEngine() ? useReactor : useFoliate)(
+} = (import.meta.env.VITE_READER_ENGINE === 'reactor' ? useReactor : useFoliate)(
   () => containerRef.value,
   onRelocateHandler,
   onApplyStylesHandler,
