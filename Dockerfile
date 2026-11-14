@@ -11,6 +11,9 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY patches/ ./patches/
 COPY packages/types/package.json ./packages/types/
 COPY client/package.json ./client/
+# client/package.json depends on vendor/reactor via a "file:" path (W1-B1); pnpm needs that
+# target present at install time, before the full client/ tree is copied in below.
+COPY client/vendor/ ./client/vendor/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --filter client... --frozen-lockfile
 

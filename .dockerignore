@@ -1,6 +1,9 @@
 **/node_modules
 **/.git
 **/dist
+# vendored Reactor build output (W1-B1): a committed artifact, not a build byproduct, and the
+# client Docker stage needs it both before and after `pnpm install`.
+!client/vendor/reactor/dist
 **/*.log
 .env
 client/.env
