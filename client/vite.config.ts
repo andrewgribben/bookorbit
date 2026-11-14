@@ -192,10 +192,6 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@bookorbit/types': fileURLToPath(new URL('../packages/types/src/index.ts', import.meta.url)),
-      // Reactor's vendored foliate view.js dynamically imports a './pdf.js' it never ships
-      // (W1-B2); BookOrbit's useReactor.ts is EPUB-only and never reaches that code path, but the
-      // bundler still needs something to resolve to.
-      './pdf.js': fileURLToPath(new URL('./src/shims/reactor-pdf-stub.ts', import.meta.url)),
     },
   },
   optimizeDeps: {

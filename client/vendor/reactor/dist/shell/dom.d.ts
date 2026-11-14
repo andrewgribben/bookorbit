@@ -15,4 +15,7 @@ export interface ShellElements {
     chapterLabel: HTMLElement;
     scrubber: HTMLInputElement;
 }
+declare const ICON_PATHS: Record<string, string>;
+export declare function icon(name: keyof typeof ICON_PATHS): string;
 export declare function buildShellDom(container: HTMLElement): ShellElements;
+export {};

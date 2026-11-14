@@ -58,6 +58,15 @@ export declare class ContentCore {
      * byte-identical - it still ends up calling plain `fetch`, exactly as before this parameter
      * existed. */
     openLocal(meta: ReaderOpenMeta, baseUrl: string, fetcher?: typeof fetch): Promise<void>;
+    /** Lazy remote-EPUB open (BO-41): same memory shape as `openLocal`, but for a plain EPUB URL
+     * with no server-side entries manifest - reads the zip's own central directory and entries
+     * via HTTP Range requests (see src/vendor/foliate/remote-zip-loader.js), falling back to one
+     * whole-file fetch only when the server does not honour Range with 206.
+     *
+     * `fetcher` (mirrors R-G5) is an optional caller-supplied replacement for the global `fetch`,
+     * so a host behind auth can add headers (e.g. `Authorization`) on every Range request.
+     * `size`, if the caller already knows the file's byte length, skips the one-time size probe. */
+    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number): Promise<void>;
     private finishOpen;
     private createView;
     private attachHandlersForDoc;
@@ -82,6 +91,26 @@ export declare class ContentCore {
     goToFraction(value: number): void;
     prev(): void;
     next(): void;
+    /** BO-46 (reactor issue #46, closes R-G2 from docs/plans/W1.md section 2): the current
+     * location's Kobo span id, for a host's Kobo device sync (a web host reports this alongside
+     * the CFI so a position set from Reactor matches what a Kobo device itself would record).
+     * Additive only - not part of the frozen v1 `relocate` event (WORKTREE_BRIEF.md rule 1); a
+     * host that wants it calls this directly instead.
+     *
+     * This is a thin passthrough onto `view.lastLocation.koboLocationType/Value`, which the
+     * vendored view's own `#onRelocate` already computes via `getKoboSpanValue` (src/vendor/
+     * foliate/view.js) on every relocate - a DOM `Range` walk to the nearest enclosing
+     * `.koboSpan[id^="kobo."]` element at the visible start of the current location, then that
+     * element's `id`. This is the same derivation a web host's own foliate fork performs for the
+     * same fields - not a reimplementation, since Reactor vendors the same upstream fork and the
+     * view already carries the result.
+     *
+     * Returns null before a book is open, or for a book that carries no Kobo spans (the `koboSpan`
+     * class/id convention is Kobo-exported-only markup - most EPUBs have none). */
+    getKoboLocation(): {
+        type: string;
+        value: string;
+    } | null;
     historyBack(): void;
     historyForward(): void;
     setSwipe(enabled: boolean): void;

@@ -80,8 +80,16 @@ export interface SetSettingsScopeCommand {
     scope: 'global' | 'book';
     settings: ReaderSettings;
 }
-export type ReaderCommandV2 = ConfigureCommand | SetBookmarksCommand | SetStarredCommand | SetRelatedCommand | SetNotesCommand | SetPlaybackStateCommand | SetSettingsScopeCommand;
-export declare const READER_COMMAND_V2_TYPES: readonly ["configure", "setBookmarks", "setStarred", "setRelated", "setNotes", "setPlaybackState", "setSettingsScope"];
+/** Closes the top-most open layer (settings, then the annotation/glossary popover, then the
+ * open sidebar, then the bars) exactly as Escape does, or emits the existing `back` intent if
+ * nothing was open (src/shell/mount.ts's `closeTopmostLayer`). No fields: a host forwards its
+ * hardware back button/gesture as this one command and lets Reactor decide what "back" means
+ * at the moment it arrives, rather than the host tracking Reactor's layer state itself. */
+export interface DismissCommand {
+    type: 'dismiss';
+}
+export type ReaderCommandV2 = ConfigureCommand | SetBookmarksCommand | SetStarredCommand | SetRelatedCommand | SetNotesCommand | SetPlaybackStateCommand | SetSettingsScopeCommand | DismissCommand;
+export declare const READER_COMMAND_V2_TYPES: readonly ["configure", "setBookmarks", "setStarred", "setRelated", "setNotes", "setPlaybackState", "setSettingsScope", "dismiss"];
 export declare function isNoteKind(v: unknown): v is NoteKind;
 /** Narrow-by-type validators, one per v2 command, plus the dispatching `isReaderCommandV2`. */
 export declare const readerCommandV2Validators: {

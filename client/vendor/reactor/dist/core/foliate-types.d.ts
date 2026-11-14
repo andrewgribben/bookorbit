@@ -33,6 +33,13 @@ export interface FoliateLastLocation {
     cfi?: string;
     source?: string;
     range?: Range;
+    /** BO-46: the device-visible Kobo span id at this location (`.koboSpan[id^="kobo."]`), already
+     * derived by the vendored view's own `#onRelocate`/`getKoboSpanValue` (src/vendor/foliate/
+     * view.js) - a DOM-Range-at-the-visible-start walk, the same convention a web host's own
+     * foliate fork uses for the equivalent fields. `koboLocationType` is `'KoboSpan'` when a span
+     * was found, else null; both are null for a book that carries no Kobo spans (most EPUBs). */
+    koboLocationType?: string | null;
+    koboLocationValue?: string | null;
 }
 export interface FoliateHistory {
     canGoBack?: boolean;
