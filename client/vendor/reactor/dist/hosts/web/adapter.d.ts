@@ -42,10 +42,17 @@ export interface WebHost {
      * header for a host that requires auth). `size`, if already known, skips a one-time size
      * probe request. */
     openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number): Promise<void>;
-    /** R-G7: sets (or clears, with `null`) extra CSS injected into every rendered section
+    /** R-G7: sets (or clears, with null) extra CSS injected into every rendered section
      * alongside `applyStyles`'s generated CSS - e.g. custom @font-face rules for a user-uploaded
      * font. Additive: a host that never calls this is unaffected. */
     setExtraCss(css: string | null): void;
+    /** BO-46 (R-G2): the current location's Kobo span id, for a host's Kobo device sync. See
+     * `ContentCore.getKoboLocation`'s doc comment for the full derivation. Null before a book is
+     * open, or for a book with no Kobo spans. */
+    getKoboLocation(): {
+        type: string;
+        value: string;
+    } | null;
     /** Tears down the mounted view and drops all listeners. Safe to call once; the container
      * passed to `createWebHost` is left empty afterwards. */
     destroy(): void;

@@ -91,6 +91,26 @@ export declare class ContentCore {
     goToFraction(value: number): void;
     prev(): void;
     next(): void;
+    /** BO-46 (reactor issue #46, closes R-G2 from docs/plans/W1.md section 2): the current
+     * location's Kobo span id, for a host's Kobo device sync (a web host reports this alongside
+     * the CFI so a position set from Reactor matches what a Kobo device itself would record).
+     * Additive only - not part of the frozen v1 `relocate` event (WORKTREE_BRIEF.md rule 1); a
+     * host that wants it calls this directly instead.
+     *
+     * This is a thin passthrough onto `view.lastLocation.koboLocationType/Value`, which the
+     * vendored view's own `#onRelocate` already computes via `getKoboSpanValue` (src/vendor/
+     * foliate/view.js) on every relocate - a DOM `Range` walk to the nearest enclosing
+     * `.koboSpan[id^="kobo."]` element at the visible start of the current location, then that
+     * element's `id`. This is the same derivation a web host's own foliate fork performs for the
+     * same fields - not a reimplementation, since Reactor vendors the same upstream fork and the
+     * view already carries the result.
+     *
+     * Returns null before a book is open, or for a book that carries no Kobo spans (the `koboSpan`
+     * class/id convention is Kobo-exported-only markup - most EPUBs have none). */
+    getKoboLocation(): {
+        type: string;
+        value: string;
+    } | null;
     historyBack(): void;
     historyForward(): void;
     setSwipe(enabled: boolean): void;

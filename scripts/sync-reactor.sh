@@ -105,4 +105,9 @@ VERSION_FILE="$VENDOR_DIR/REACTOR_VERSION"
   echo "version=$PACKAGE_VERSION"
 } > "$VERSION_FILE"
 
+# pnpm copies file: dependencies into node_modules, so refresh that copy or type-check and
+# builds keep using the previous version.
+echo "Refreshing the installed copy ..."
+pnpm install --frozen-lockfile
+
 echo "Done. Pinned ref=$REF version=$PACKAGE_VERSION in $VERSION_FILE"

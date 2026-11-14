@@ -834,7 +834,7 @@ const Go = async (e) => {
   typeof e == "string" && (e = await Go(e));
   let r;
   if (e.isDirectory) {
-    const t = await Ro(e), { EPUB: o } = await import("./epub-DbQ1x9X0.js");
+    const t = await Ro(e), { EPUB: o } = await import("./epub-ckasXVeA.js");
     r = await new o(t).init();
   } else if (e.size) if (await Io(e)) {
     const t = await $o(e);
@@ -845,7 +845,7 @@ const Go = async (e) => {
       const { makeFB2: o } = await import("./fb2-C35PDn_9.js"), { entries: n } = t, s = n.find((a) => a.filename.endsWith(".fb2")), i = await t.loadBlob((s ?? n[0]).filename);
       r = await o(i);
     } else {
-      const { EPUB: o } = await import("./epub-DbQ1x9X0.js");
+      const { EPUB: o } = await import("./epub-ckasXVeA.js");
       r = await new o(t).init();
     }
   } else if (await Po(e)) {
@@ -865,7 +865,7 @@ const Go = async (e) => {
   if (!r) throw new Do("File type not supported");
   return r;
 }, Wo = async (e, r, t, o = null, n = null, s = null) => {
-  const i = yo(e, r, t, o, n, s), { EPUB: a } = await import("./epub-DbQ1x9X0.js");
+  const i = yo(e, r, t, o, n, s), { EPUB: a } = await import("./epub-ckasXVeA.js");
   return new a(i).init();
 };
 var Me, ze, qe, ue;
@@ -1970,7 +1970,7 @@ class kn {
     r.settings && (this.currentSettings = je(r.settings, null));
     try {
       this.createView();
-      const { makeLocalZipLoader: n } = await import("./local-zip-loader-DkW60oo9.js"), { EPUB: s } = await import("./epub-DbQ1x9X0.js"), i = await n(t, o), a = await new s(i).init();
+      const { makeLocalZipLoader: n } = await import("./local-zip-loader-DkW60oo9.js"), { EPUB: s } = await import("./epub-ckasXVeA.js"), i = await n(t, o), a = await new s(i).init();
       await this.view.open(a), await this.finishOpen(r);
     } catch (n) {
       this.emitError((n == null ? void 0 : n.message) ?? "Failed to open local book");
@@ -1988,7 +1988,7 @@ class kn {
     r.settings && (this.currentSettings = je(r.settings, null));
     try {
       this.createView();
-      const { makeRemoteZipLoader: s } = await import("./remote-zip-loader-Bhp_1Nfg.js"), { EPUB: i } = await import("./epub-DbQ1x9X0.js"), a = await s(t, o, n), l = await new i(a).init();
+      const { makeRemoteZipLoader: s } = await import("./remote-zip-loader-Bhp_1Nfg.js"), { EPUB: i } = await import("./epub-ckasXVeA.js"), a = await s(t, o, n), l = await new i(a).init();
       await this.view.open(l), await this.finishOpen(r);
     } catch (s) {
       this.emitError((s == null ? void 0 : s.message) ?? "Failed to open remote book");
@@ -2165,6 +2165,27 @@ class kn {
   next() {
     var r, t;
     (t = (r = this.view) == null ? void 0 : r.next) == null || t.call(r);
+  }
+  /** BO-46 (reactor issue #46, closes R-G2 from docs/plans/W1.md section 2): the current
+   * location's Kobo span id, for a host's Kobo device sync (a web host reports this alongside
+   * the CFI so a position set from Reactor matches what a Kobo device itself would record).
+   * Additive only - not part of the frozen v1 `relocate` event (WORKTREE_BRIEF.md rule 1); a
+   * host that wants it calls this directly instead.
+   *
+   * This is a thin passthrough onto `view.lastLocation.koboLocationType/Value`, which the
+   * vendored view's own `#onRelocate` already computes via `getKoboSpanValue` (src/vendor/
+   * foliate/view.js) on every relocate - a DOM `Range` walk to the nearest enclosing
+   * `.koboSpan[id^="kobo."]` element at the visible start of the current location, then that
+   * element's `id`. This is the same derivation a web host's own foliate fork performs for the
+   * same fields - not a reimplementation, since Reactor vendors the same upstream fork and the
+   * view already carries the result.
+   *
+   * Returns null before a book is open, or for a book that carries no Kobo spans (the `koboSpan`
+   * class/id convention is Kobo-exported-only markup - most EPUBs have none). */
+  getKoboLocation() {
+    var t, o, n, s;
+    const r = (o = (t = this.view) == null ? void 0 : t.lastLocation) == null ? void 0 : o.koboLocationValue;
+    return r ? { type: ((s = (n = this.view) == null ? void 0 : n.lastLocation) == null ? void 0 : s.koboLocationType) ?? "KoboSpan", value: r } : null;
   }
   historyBack() {
     var r, t;
@@ -5930,6 +5951,7 @@ function Fi(e, r = {}) {
     setExtraCss: (i) => {
       s(), t.setExtraCss(i);
     },
+    getKoboLocation: () => t.getKoboLocation(),
     destroy: () => {
       n || (n = !0, e.replaceChildren());
     }

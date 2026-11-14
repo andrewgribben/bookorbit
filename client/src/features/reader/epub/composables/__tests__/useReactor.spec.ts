@@ -42,6 +42,7 @@ interface MockHost {
   openLocal: ReturnType<typeof vi.fn>
   openRemote: ReturnType<typeof vi.fn>
   setExtraCss: ReturnType<typeof vi.fn>
+  getKoboLocation: ReturnType<typeof vi.fn>
   destroy: ReturnType<typeof vi.fn>
 }
 
@@ -60,6 +61,7 @@ function makeMockHost(): MockHost {
     openLocal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     openRemote: vi.fn<(meta: unknown, url: string, fetcher?: unknown, size?: number) => Promise<void>>().mockResolvedValue(undefined),
     setExtraCss: vi.fn<(css: string | null) => void>(),
+    getKoboLocation: vi.fn<() => { type: string; value: string } | null>().mockReturnValue(null),
     destroy: vi.fn<() => void>(),
     // test helper, not part of WebHost
     emit(event: unknown) {
@@ -202,8 +204,6 @@ describe('useReactor', () => {
     expect((detail.time as { section: number; total: number }).total).toBeCloseTo(1.09375, 5)
     expect(detail.source).toBe('ch2.xhtml')
     expect(detail.contentSourceProgressPercent).toBeCloseTo(37.5, 5)
-    // Reactor's closed shadow root gives no DOM Range to resolve a `.koboSpan` id from - these
-    // stay null regardless of the section data being available (a real gap, see useReactor.ts).
     expect(detail.koboLocationType).toBeNull()
     expect(detail.koboLocationValue).toBeNull()
     expect(detail.koreaderProgress).toBeNull()
@@ -214,6 +214,29 @@ describe('useReactor', () => {
         total: expect.any(Number),
       }),
     )
+  })
+
+  it('fills koboLocationType/Value from host.getKoboLocation()', async () => {
+    const onRelocate = vi.fn<(detail: unknown) => void>()
+    const reactor = useReactor(() => container, onRelocate)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.getKoboLocation.mockReturnValue({ type: 'KoboSpan', value: 'kobo.12.3' })
+
+    mockHost.emit({
+      type: 'relocate',
+      cfi: 'epubcfi(/6/4!)',
+      fraction: 0.5,
+      chapterTitle: null,
+      location: null,
+      reason: 'page',
+      restoring: false,
+      narrationFragment: null,
+      narrationSectionIndex: null,
+    })
+
+    const detail = onRelocate.mock.calls[0]![0] as Record<string, unknown>
+    expect(detail.koboLocationType).toBe('KoboSpan')
+    expect(detail.koboLocationValue).toBe('kobo.12.3')
   })
 
   it('exposes getSectionFractions derived from getOpenBook().sections', async () => {

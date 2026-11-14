@@ -54,12 +54,9 @@ const NAVIGATION_DEBOUNCE_MS = 300
  *   `size`/`linear` fields and the same `SIZE_PER_LOCATION`/`SIZE_PER_TIME_UNIT` math foliate's
  *   own `src/vendor/foliate/progress.js` uses) via `../lib/reactor-section-progress.ts`.
  *   `koboLocationSource` (the spine item id) is derived the same way foliate derives it:
- *   `sections[index]?.id`. `koboLocationType`/`koboLocationValue` cannot be derived: foliate
- *   computes them from a live DOM `Range` inside the rendered section
- *   (`getKoboSpanValue(range)`, walking up to a `.koboSpan[id^="kobo."]` ancestor), and Reactor's
- *   `View` mounts into a *closed* shadow root - there is no DOM handle for a host to walk, by
- *   design. Both stay `null` on this path until Reactor exposes either the Range or a built-in
- *   span lookup; this is a real, not merely deferred, gap. `koreaderProgress` stays `null` on
+ *   `sections[index]?.id`. `koboLocationType`/`koboLocationValue` come from Reactor's
+ *   `getKoboLocation()`, which reads the same `.koboSpan` lookup foliate's `view.js` does.
+ *   `koreaderProgress` stays `null` on
  *   both paths: foliate's own `view.js` always sends `null` for it too (its CFI is converted on
  *   the server, where the original XHTML is available) - there is nothing to port here.
  * - Tap zones (W1-B4): the centre-only heuristic is replaced by Reactor's own canonical model,
@@ -315,6 +312,7 @@ export function useReactor(
           const derived = deriveSectionProgress(sectionsOf(), event.fraction ?? 0)
           const sections = sectionsOf()
           const koboLocationSource = derived ? (sections[derived.section.current]?.id ?? null) : null
+          const kobo = host?.getKoboLocation() ?? null
           onRelocate?.({
             reason: event.reason ?? undefined,
             restoring: event.restoring,
@@ -325,11 +323,8 @@ export function useReactor(
             section: derived?.section,
             time: derived?.time,
             source: koboLocationSource,
-            // R-G2/the composable's own docstring: Reactor's closed shadow root exposes no DOM
-            // `Range` to look up a `.koboSpan` id from, so these two stay unavailable on this
-            // path - not merely deferred, a real gap until Reactor exposes one.
-            koboLocationType: null,
-            koboLocationValue: null,
+            koboLocationType: kobo?.type ?? null,
+            koboLocationValue: kobo?.value ?? null,
             contentSourceProgressPercent: derived?.contentSourceProgressPercent ?? undefined,
             // Matches foliate's own `view.js`: the CFI is converted to a KOReader xpointer on
             // the server, where the original XHTML is available - the client never computes it.
