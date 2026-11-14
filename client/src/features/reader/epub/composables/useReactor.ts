@@ -1,5 +1,5 @@
 import { onUnmounted, ref } from 'vue'
-import { webHost } from 'reactor'
+import { webHost, shell } from 'reactor'
 import type { webHost as WebHostNamespace } from 'reactor'
 type WebHost = WebHostNamespace.WebHost
 import { api } from '@/lib/api'
@@ -7,6 +7,13 @@ import { i18n } from '@/i18n'
 import type { EpubBookInfo } from '@bookorbit/types'
 import type { EpubOpenOptions, FoliateLocationContext, FoliateMediaOverlay, FoliateOpenOptions, FoliateRenderer, RelocateDetail } from './useFoliate'
 import type { SelectionDetail } from './useFoliateSelection'
+import { deriveSectionProgress, getSectionFractions as deriveSectionFractions, type ReactorSectionLike } from '../lib/reactor-section-progress'
+
+/** Matches `useFoliateInput`'s own suppression window (double-click threshold + 100ms), so a tap
+ * that lands on an annotation does not also turn the page underneath the popup it just opened. */
+const ANNOTATION_TAP_SUPPRESSION_MS = 400
+/** Matches `useFoliateInput`'s own swipe/tap navigation debounce. */
+const NAVIGATION_DEBOUNCE_MS = 300
 
 /**
  * Reactor-backed EPUB engine (W1-B2, docs/plans/W1.md). Exposes the exact same public surface as
@@ -33,12 +40,39 @@ import type { SelectionDetail } from './useFoliateSelection'
  *   composable does nothing to enable or disable it - `ReaderView.vue`'s TTS composables keep
  *   reaching into `useFoliateTts`'s direct-DOM-access layer, which has no renderer to attach to
  *   on this path and should be treated as non-functional behind the flag.
- * - Kobo/KOReader progress-sync fields, section index/total and elapsed time are not carried by
- *   Reactor's v1 `relocate` event (R-G2); only `cfi`, `fraction` and `chapterTitle` are populated.
- * - Tap-zone/input parity (swipe, hold-to-select suppression, `suppressNextTapNavigation`) is not
- *   reproduced. Only a simple centre-zone heuristic drives `onMiddleTap`.
+ * - Kobo/KOReader progress-sync fields (W1-B3, R-G2 "stays web-side"): `cfi`, `fraction`,
+ *   `chapterTitle`, `location` (page count) come straight off Reactor's `relocate` event (the
+ *   last is an opaque passthrough of foliate's own object, computed inside Reactor exactly as it
+ *   is for the foliate path). `section` (chapter index/total), `time` (remaining reading time)
+ *   and `koboContentSourceProgressPercent` are *not* in Reactor's v1 event, so this composable
+ *   derives them web-side from `fraction` plus `host.core.getOpenBook()?.sections` (same
+ *   `size`/`linear` fields and the same `SIZE_PER_LOCATION`/`SIZE_PER_TIME_UNIT` math foliate's
+ *   own `src/vendor/foliate/progress.js` uses) via `../lib/reactor-section-progress.ts`.
+ *   `koboLocationSource` (the spine item id) is derived the same way foliate derives it:
+ *   `sections[index]?.id`. `koboLocationType`/`koboLocationValue` cannot be derived: foliate
+ *   computes them from a live DOM `Range` inside the rendered section
+ *   (`getKoboSpanValue(range)`, walking up to a `.koboSpan[id^="kobo."]` ancestor), and Reactor's
+ *   `View` mounts into a *closed* shadow root - there is no DOM handle for a host to walk, by
+ *   design. Both stay `null` on this path until Reactor exposes either the Range or a built-in
+ *   span lookup; this is a real, not merely deferred, gap. `koreaderProgress` stays `null` on
+ *   both paths: foliate's own `view.js` always sends `null` for it too (its CFI is converted on
+ *   the server, where the original XHTML is available) - there is nothing to port here.
+ * - Tap zones (W1-B4): the centre-only heuristic is replaced by Reactor's own canonical model,
+ *   `shell.resolveTapZone` (`src/shell/zones.ts`) - left/right 30% bands (mirrored under RTL,
+ *   `loaded.isRtl`) turn the page, the middle 40% calls `onMiddleTap`. Reactor's own `tap` event
+ *   already reports `x`/`y` as viewport fractions (0-1), matching `resolveTapZone`'s input
+ *   directly - no container-relative conversion needed, unlike foliate's postMessage-based zone
+ *   math (`useFoliateInput`'s `handleWindowMessage`), which exists only to cross the iframe
+ *   boundary Reactor's closed shadow root does not expose in the first place. Swipe gestures,
+ *   `useFoliateInput`'s double-tap-same-zone debounce and its "mobile taps always toggle chrome"
+ *   heuristic have no equivalent here: Reactor's own `src/core/selection.ts` already distinguishes
+ *   a tap from a text selection and from a tap-on-an-existing-annotation at the DOM level, so the
+ *   `tap` event this composable receives is only ever a genuine single tap.
  * - `getSectionFractions`, `getLocationContext`'s fraction lookup, and `getCFI`-based selection
- *   resolution have no Reactor equivalent exposed on `WebHost`; they degrade to `[]`/`null`.
+ *   resolution have no Reactor equivalent exposed on `WebHost`; `getSectionFractions` is derived
+ *   from `host.core.getOpenBook()?.sections` (same as the relocate fields above), the other two
+ *   degrade to `null` (no Reactor equivalent of `resolveNavigation`/`getTOCItemOf` for a
+ *   *non-current* target - these back the TTS resume-position lookup, out of scope per R-G4).
  */
 
 export interface ReactorSearchSection {
@@ -57,7 +91,7 @@ export function useReactor(
   onApplyStyles?: (renderer: FoliateRenderer) => void,
   onMiddleTap?: () => void,
   onChapterLoad?: (doc: Document, viewEl: HTMLElement) => void,
-  _canNavigate?: () => boolean,
+  canNavigate?: () => boolean,
 ) {
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -66,6 +100,7 @@ export function useReactor(
   const bookLanguage = ref<string>('en')
   const isFixedLayout = ref(false)
   const hasMediaOverlay = ref(false)
+  const isRtl = ref(false)
 
   let host: WebHost | null = null
   let unsubscribe: (() => void) | null = null
@@ -73,6 +108,18 @@ export function useReactor(
   let onAnnotationClick: ((cfi: string, popupPosition: { x: number; y: number; showBelow: boolean }) => void) | null = null
   let onTextSelected: ((detail: SelectionDetail) => void) | null = null
   const annotationStyles = new Map<string, { color: string; style: string }>()
+  // Debounce state for the tap-zone model (mirrors `useFoliateInput`'s own `isNavigating` and
+  // `suppressClickNavigationUntil`).
+  let isNavigatingTap = false
+  let suppressTapNavigationUntil = 0
+
+  function suppressNextTapNavigation() {
+    suppressTapNavigationUntil = Date.now() + ANNOTATION_TAP_SUPPRESSION_MS
+  }
+
+  function isTapNavigationSuppressed() {
+    return Date.now() < suppressTapNavigationUntil
+  }
 
   function setAnnotationClickHandler(fn: (cfi: string, popupPosition: { x: number; y: number; showBelow: boolean }) => void) {
     onAnnotationClick = fn
@@ -213,13 +260,9 @@ export function useReactor(
     viewRef.value = null
   }
 
-  function middleTapZone(x: number, y: number): boolean {
-    const el = container()
-    if (!el) return false
-    const rect = el.getBoundingClientRect()
-    const relX = (x - rect.left) / Math.max(rect.width, 1)
-    const relY = (y - rect.top) / Math.max(rect.height, 1)
-    return relX > 0.3 && relX < 0.7 && relY > 0.3 && relY < 0.7
+  function sectionsOf(): ReactorSectionLike[] {
+    const book = host?.core.getOpenBook() as { sections?: ReactorSectionLike[] } | null
+    return book?.sections ?? []
   }
 
   async function open(
@@ -256,6 +299,7 @@ export function useReactor(
         case 'loaded': {
           toc = event.toc
           hasMediaOverlay.value = event.hasMediaOverlay
+          isRtl.value = event.isRtl
           clearTimeout(loadTimeoutId)
           onApplyStyles?.(rendererShim)
           if (el.firstElementChild) onChapterLoad?.(el.ownerDocument, el.firstElementChild as HTMLElement)
@@ -263,13 +307,28 @@ export function useReactor(
         }
         case 'relocate': {
           fraction.value = event.fraction ?? 0
+          const derived = deriveSectionProgress(sectionsOf(), event.fraction ?? 0)
+          const sections = sectionsOf()
+          const koboLocationSource = derived ? (sections[derived.section.current]?.id ?? null) : null
           onRelocate?.({
             reason: event.reason ?? undefined,
             restoring: event.restoring,
             cfi: event.cfi,
             fraction: event.fraction ?? undefined,
             tocItem: event.chapterTitle ? { label: event.chapterTitle } : undefined,
-            location: event.location as RelocateDetail['location'],
+            location: (event.location ?? derived?.location) as RelocateDetail['location'],
+            section: derived?.section,
+            time: derived?.time,
+            source: koboLocationSource,
+            // R-G2/the composable's own docstring: Reactor's closed shadow root exposes no DOM
+            // `Range` to look up a `.koboSpan` id from, so these two stay unavailable on this
+            // path - not merely deferred, a real gap until Reactor exposes one.
+            koboLocationType: null,
+            koboLocationValue: null,
+            contentSourceProgressPercent: derived?.contentSourceProgressPercent ?? undefined,
+            // Matches foliate's own `view.js`: the CFI is converted to a KOReader xpointer on
+            // the server, where the original XHTML is available - the client never computes it.
+            koreaderProgress: null,
           })
           break
         }
@@ -289,6 +348,7 @@ export function useReactor(
         }
         case 'annotationTap': {
           if (!event.cfi || !onAnnotationClick) break
+          suppressNextTapNavigation()
           const rect = event.rect
           const x = rect ? Math.max(100, Math.min((rect.left + rect.right) / 2, window.innerWidth - 150)) : window.innerWidth / 2
           const showBelow = rect ? rect.top < 120 : false
@@ -297,7 +357,20 @@ export function useReactor(
           break
         }
         case 'tap': {
-          if (middleTapZone(event.x, event.y)) onMiddleTap?.()
+          // W1-B4: Reactor's own canonical tap-zone model (`src/shell/zones.ts`), not a
+          // container-relative centre heuristic. `event.x` is already a viewport fraction
+          // (0-1), exactly what `resolveTapZone` expects.
+          if (isTapNavigationSuppressed()) break
+          const zone = shell.resolveTapZone(event.x, isRtl.value)
+          if (zone === 'toggle') {
+            onMiddleTap?.()
+          } else if (!isNavigatingTap && (canNavigate?.() ?? true)) {
+            isNavigatingTap = true
+            host?.dispatch({ type: zone })
+            setTimeout(() => {
+              isNavigatingTap = false
+            }, NAVIGATION_DEBOUNCE_MS)
+          }
           break
         }
         default:
@@ -387,7 +460,7 @@ export function useReactor(
       host?.dispatch({ type: 'goTo', target: String(i) })
       return Promise.resolve({ index: i })
     },
-    getSectionFractions: (): number[] => [],
+    getSectionFractions: (): number[] => deriveSectionFractions(sectionsOf()),
     getChapters: (): unknown[] => toc,
     getRenderer: (): FoliateRenderer | null => rendererShim,
     getLocationContext,

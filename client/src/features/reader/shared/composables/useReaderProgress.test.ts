@@ -1043,6 +1043,76 @@ describe('useReaderProgress', () => {
     })
   })
 
+  describe('Reactor engine relocate fixture (W1-B3)', () => {
+    // Shaped exactly as `useReactor.ts`'s enriched relocate handler produces it: `location`
+    // passed through from Reactor's own event, `section`/`time`/`contentSourceProgressPercent`
+    // derived web-side from `host.core.getOpenBook()?.sections`, `source` the spine id, and
+    // `koboLocationType`/`koboLocationValue`/`koreaderProgress` left `null` (the documented,
+    // real gaps - no DOM Range available through Reactor's closed shadow root, and
+    // `koreaderProgress` is always server-converted on both engines).
+    function reactorShapedRelocateDetail() {
+      return {
+        reason: 'page',
+        restoring: false,
+        cfi: 'epubcfi(/6/4!)',
+        fraction: 0.5,
+        tocItem: { label: 'Chapter Two' },
+        location: { current: 1, next: 1, total: 3 },
+        section: { current: 1, total: 3 },
+        time: { section: 0.78125, total: 1.09375 },
+        source: 'ch2.xhtml',
+        koboLocationType: null,
+        koboLocationValue: null,
+        contentSourceProgressPercent: 37.5,
+        koreaderProgress: null,
+      } as never
+    }
+
+    it('applies a Reactor-shaped relocate detail the same way a foliate detail is applied', () => {
+      const elapsedMinutes = ref(0)
+      const progress = useReaderProgress(1, 42, elapsedMinutes)
+
+      progress.onRelocate(reactorShapedRelocateDetail())
+
+      expect(progress.cfi.value).toBe('epubcfi(/6/4!)')
+      expect(progress.fraction.value).toBe(0.5)
+      expect(progress.percentage.value).toBe(50)
+      expect(progress.chapterTitle.value).toBe('Chapter Two')
+      expect(progress.sectionIndex.value).toBe(1)
+      expect(progress.totalSections.value).toBe(3)
+      expect(progress.locationCurrent.value).toBe(1)
+      expect(progress.locationTotal.value).toBe(3)
+      expect(progress.sectionCurrent.value).toBe(1)
+      expect(progress.sectionTotal.value).toBe(3)
+      expect(progress.timeSection.value).toBeCloseTo(0.78125, 5)
+      expect(progress.timeTotal.value).toBeCloseTo(1.09375, 5)
+      expect(progress.koboLocationSource.value).toBe('ch2.xhtml')
+      expect(progress.koboContentSourceProgressPercent.value).toBeCloseTo(37.5, 5)
+      // The real gaps: no span lookup without a DOM Range, no client-side KOReader conversion.
+      expect(progress.koboLocationType.value).toBeNull()
+      expect(progress.koboLocationValue.value).toBeNull()
+      expect(progress.koreaderProgress.value).toBeNull()
+    })
+
+    it('saves a Reactor-shaped position the same way a foliate position is saved', async () => {
+      mockApi.mockResolvedValue(makeOkResponse({}))
+      const progress = useReaderProgress(1, 42, ref(0))
+
+      progress.onRelocate(reactorShapedRelocateDetail())
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(postedProgressBody()).toMatchObject({
+        cfi: 'epubcfi(/6/4!)',
+        percentage: 50,
+        koboLocationSource: 'ch2.xhtml',
+        koboContentSourceProgressPercent: 37.5,
+        koboLocationType: null,
+        koboLocationValue: null,
+        koreaderProgress: null,
+      })
+    })
+  })
+
   describe('cycleFooterMode()', () => {
     it('starts at initialFooterMode (default 0)', () => {
       const elapsedMinutes = ref(0)

@@ -7,9 +7,22 @@ vi.mock('@/lib/api', () => ({
 
 const createWebHostMock = vi.hoisted(() => vi.fn<(container: HTMLElement) => unknown>())
 
+function resolveTapZoneMock(xFraction: number, isRtl: boolean): 'prev' | 'next' | 'toggle' {
+  const clamped = Math.min(1, Math.max(0, xFraction))
+  if (clamped < 0.3) return isRtl ? 'next' : 'prev'
+  if (clamped > 0.7) return isRtl ? 'prev' : 'next'
+  return 'toggle'
+}
+
 vi.mock('reactor', () => ({
   webHost: {
     createWebHost: createWebHostMock,
+  },
+  // Mirrors `shell.resolveTapZone`'s real implementation (`src/shell/zones.ts`) exactly, so the
+  // tap-zone tests below exercise the same left/right/middle-30/40/30 split and RTL mirroring.
+  shell: {
+    ZONE_FRACTION: 0.3,
+    resolveTapZone: resolveTapZoneMock,
   },
 }))
 
@@ -20,7 +33,7 @@ import { api } from '@/lib/api'
 import { useReactor } from '../useReactor'
 
 interface MockHost {
-  core: unknown
+  core: { getOpenBook: ReturnType<typeof vi.fn> }
   on: ReturnType<typeof vi.fn>
   dispatch: ReturnType<typeof vi.fn>
   beginOpen: ReturnType<typeof vi.fn>
@@ -34,7 +47,7 @@ interface MockHost {
 function makeMockHost(): MockHost {
   const listeners = new Set<(event: unknown) => void>()
   return {
-    core: {},
+    core: { getOpenBook: vi.fn<() => unknown>().mockReturnValue(null) },
     on: vi.fn<(listener: (event: unknown) => void) => () => void>((listener: (event: unknown) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -133,7 +146,68 @@ describe('useReactor', () => {
       fraction: 0.5,
       tocItem: { label: 'Chapter One' },
       location: { current: 1, next: 2, total: 10 },
+      section: undefined,
+      time: undefined,
+      source: null,
+      koboLocationType: null,
+      koboLocationValue: null,
+      contentSourceProgressPercent: undefined,
+      koreaderProgress: null,
     })
+  })
+
+  it('derives section/time/kobo-source fields from fraction plus getOpenBook().sections (W1-B3, R-G2)', async () => {
+    const onRelocate = vi.fn<(detail: unknown) => void>()
+    const reactor = useReactor(() => container, onRelocate)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    mockHost.core.getOpenBook.mockReturnValue({
+      sections: [
+        { id: 'ch1.xhtml', size: 1000 },
+        { id: 'ch2.xhtml', size: 2000 },
+        { id: 'ch3.xhtml', size: 500 },
+      ],
+    })
+
+    mockHost.emit({
+      type: 'relocate',
+      cfi: 'epubcfi(/6/4!)',
+      fraction: 0.5,
+      chapterTitle: 'Chapter Two',
+      location: null,
+      reason: 'page',
+      restoring: false,
+      narrationFragment: null,
+      narrationSectionIndex: null,
+    })
+
+    expect(onRelocate).toHaveBeenCalledTimes(1)
+    const detail = onRelocate.mock.calls[0]![0] as Record<string, unknown>
+    expect(detail.section).toEqual({ current: 1, total: 3 })
+    expect((detail.time as { section: number; total: number }).section).toBeCloseTo(0.78125, 5)
+    expect((detail.time as { section: number; total: number }).total).toBeCloseTo(1.09375, 5)
+    expect(detail.source).toBe('ch2.xhtml')
+    expect(detail.contentSourceProgressPercent).toBeCloseTo(37.5, 5)
+    // Reactor's closed shadow root gives no DOM Range to resolve a `.koboSpan` id from - these
+    // stay null regardless of the section data being available (a real gap, see useReactor.ts).
+    expect(detail.koboLocationType).toBeNull()
+    expect(detail.koboLocationValue).toBeNull()
+    expect(detail.koreaderProgress).toBeNull()
+    // The real location object from foliate, when present, is used as-is rather than recomputed.
+    expect(detail.location).toEqual(
+      expect.objectContaining({
+        current: expect.any(Number),
+        total: expect.any(Number),
+      }),
+    )
+  })
+
+  it('exposes getSectionFractions derived from getOpenBook().sections', async () => {
+    const reactor = useReactor(() => container)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.core.getOpenBook.mockReturnValue({ sections: [{ size: 1000 }, { size: 2000 }, { size: 500 }] })
+
+    expect(reactor.getSectionFractions()).toEqual([0, 1000 / 3500, 3000 / 3500, 1])
   })
 
   it('maps reader settings (including the new letter/word-spacing fields) through applyStyles and setExtraCss', async () => {
@@ -208,6 +282,72 @@ describe('useReactor', () => {
       type: 'setAnnotations',
       items: [{ cfi: 'epubcfi(/6/4)', color: '#FF0000', style: 'strikethrough' }],
     })
+  })
+
+  it('tap in the middle zone calls onMiddleTap', async () => {
+    const onMiddleTap = vi.fn<() => void>()
+    const reactor = useReactor(() => container, undefined, undefined, onMiddleTap)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.dispatch.mockClear()
+
+    mockHost.emit({ type: 'tap', x: 0.5, y: 0.5 })
+
+    expect(onMiddleTap).toHaveBeenCalledTimes(1)
+    expect(mockHost.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('tap in the left zone dispatches prev, tap in the right zone dispatches next (LTR)', async () => {
+    const onMiddleTap = vi.fn<() => void>()
+    const reactor = useReactor(() => container, undefined, undefined, onMiddleTap)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.dispatch.mockClear()
+
+    mockHost.emit({ type: 'tap', x: 0.1, y: 0.5 })
+    expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'prev' })
+
+    // Matches useReactor's own NAVIGATION_DEBOUNCE_MS (300ms) plus a margin.
+    await new Promise((resolve) => setTimeout(resolve, 350))
+
+    mockHost.emit({ type: 'tap', x: 0.9, y: 0.5 })
+    expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'next' })
+    expect(onMiddleTap).not.toHaveBeenCalled()
+  })
+
+  it('mirrors left/right zones under RTL (loaded.isRtl)', async () => {
+    const reactor = useReactor(() => container)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: true, metadata: { title: null, language: null } })
+    mockHost.dispatch.mockClear()
+
+    mockHost.emit({ type: 'tap', x: 0.1, y: 0.5 })
+    expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'next' })
+  })
+
+  it('does not navigate on a zone tap while canNavigate() returns false', async () => {
+    const canNavigate = vi.fn<() => boolean>().mockReturnValue(false)
+    const reactor = useReactor(() => container, undefined, undefined, undefined, undefined, canNavigate)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.dispatch.mockClear()
+
+    mockHost.emit({ type: 'tap', x: 0.1, y: 0.5 })
+
+    expect(canNavigate).toHaveBeenCalled()
+    expect(mockHost.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('suppresses zone navigation on the tap immediately following an annotation tap', async () => {
+    const onAnnotationClick = vi.fn<(cfi: string, pos: unknown) => void>()
+    const reactor = useReactor(() => container)
+    reactor.setAnnotationClickHandler(onAnnotationClick)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    mockHost.dispatch.mockClear()
+
+    mockHost.emit({ type: 'annotationTap', cfi: 'epubcfi(/6/4)', rect: { left: 10, top: 200, right: 20, bottom: 210 } })
+    expect(onAnnotationClick).toHaveBeenCalledTimes(1)
+
+    mockHost.emit({ type: 'tap', x: 0.1, y: 0.5 })
+
+    expect(mockHost.dispatch).not.toHaveBeenCalledWith({ type: 'prev' })
   })
 
   it('destroys the previous host and unmounts the host on unmount', async () => {
