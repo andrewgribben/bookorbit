@@ -23,12 +23,17 @@ const NAVIGATION_DEBOUNCE_MS = 300
  *
  * Known gaps versus `useFoliate` while `VITE_READER_ENGINE=reactor` is on (see docs/plans/W1.md
  * section 2 "Gaps to file as Reactor tasks" and section 9's standing decisions):
- * - No true lazy/streaming EPUB open. Reactor's `openLocal` expects a zip-entries listing shaped
- *   like `src/vendor/foliate/local-zip-loader.js` (an `entries.json` + per-entry `entry/<name>`
- *   URL contract), which BookOrbit's `/api/v1/epub` routes do not expose. This composable instead
- *   fetches the whole EPUB file once (same pattern `useFoliate` already uses for non-EPUB
- *   formats) and feeds it through `beginOpen`/`pushChunk`/`commitOpen`. Larger books use more
- *   peak memory than the foliate path until a matching lazy-entries endpoint exists (R-G5).
+ * - Lazy EPUB open (R-G5, resolved by Reactor BO-41): this composable calls `host.openRemote`
+ *   against the book file's own `/api/v1/books/files/:fileId/serve` URL, which already supports
+ *   HTTP Range (`fileValidators`/`planFileResponse` in the server's `book.controller.ts`). There
+ *   is no server-side entries manifest (unlike `openLocal`, which BookOrbit's routes do not
+ *   expose) - Reactor reads the zip's central directory and each opened entry's bytes lazily via
+ *   Range requests on that one URL, so peak memory stays proportional to the current section
+ *   rather than the whole book. The `fetcher` passed in is the same authenticated `api()` helper
+ *   `useFoliate`'s `makeFoliateFetchFile` uses for its own Range requests, so every Range request
+ *   this path makes carries the same `Authorization` header. No book byte-size is known ahead of
+ *   time from `/api/v1/epub/:bookId/info`, so `openRemote`'s optional `size` is omitted; Reactor
+ *   does one small Range probe request instead.
  * - `isFixedLayout` is always `false`: Reactor's v1 `loaded` event does not report whether the
  *   opened book is pre-paginated (no equivalent of `useFoliate`'s `rendition.layout` check).
  * - Media overlay (embedded narration) is unavailable: `getMediaOverlay`/`startMediaOverlay`
@@ -388,13 +393,8 @@ export function useReactor(
       }
       bookLanguage.value = typeof bookLanguageRaw === 'string' && bookLanguageRaw ? (bookLanguageRaw.split('-')[0] ?? 'en').toLowerCase() : 'en'
 
-      const fileRes = await api(`/api/v1/books/files/${fileId}/serve`)
-      if (!fileRes.ok) throw new Error(`Failed to fetch book file: ${fileRes.status}`)
-      const bytes = new Uint8Array(await fileRes.arrayBuffer())
-
-      host.beginOpen({ format, cfi: null, fraction: null, settings: null, previousCfi: null })
-      host.pushChunk(bytes)
-      await host.commitOpen()
+      const fetcher: typeof fetch = (input, init) => api(input, init)
+      await host.openRemote({ format, cfi: null, fraction: null, settings: null, previousCfi: null }, `/api/v1/books/files/${fileId}/serve`, fetcher)
 
       const navigateTo = async (target: string | number | null | undefined): Promise<boolean> => {
         if (target === null || target === undefined) return false

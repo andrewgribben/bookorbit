@@ -40,6 +40,7 @@ interface MockHost {
   pushChunk: ReturnType<typeof vi.fn>
   commitOpen: ReturnType<typeof vi.fn>
   openLocal: ReturnType<typeof vi.fn>
+  openRemote: ReturnType<typeof vi.fn>
   setExtraCss: ReturnType<typeof vi.fn>
   destroy: ReturnType<typeof vi.fn>
 }
@@ -57,6 +58,7 @@ function makeMockHost(): MockHost {
     pushChunk: vi.fn<(bytes: Uint8Array) => void>(),
     commitOpen: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     openLocal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    openRemote: vi.fn<(meta: unknown, url: string, fetcher?: unknown, size?: number) => Promise<void>>().mockResolvedValue(undefined),
     setExtraCss: vi.fn<(css: string | null) => void>(),
     destroy: vi.fn<() => void>(),
     // test helper, not part of WebHost
@@ -89,17 +91,29 @@ describe('useReactor', () => {
     container.remove()
   })
 
-  it('mounts a WebHost against the container and opens the EPUB using an authenticated fetch', async () => {
+  it('mounts a WebHost against the container and opens the EPUB via a lazy Range fetch', async () => {
     const reactor = useReactor(() => container)
 
     await reactor.open(1, 2, 'epub', null, undefined)
 
     expect(createWebHostMock).toHaveBeenCalledWith(container)
     expect(api).toHaveBeenCalledWith('/api/v1/epub/1/info?fileId=2')
-    expect(api).toHaveBeenCalledWith('/api/v1/books/files/2/serve')
-    expect(mockHost.beginOpen).toHaveBeenCalledWith({ format: 'epub', cfi: null, fraction: null, settings: null, previousCfi: null })
-    expect(mockHost.pushChunk).toHaveBeenCalledTimes(1)
-    expect(mockHost.commitOpen).toHaveBeenCalledTimes(1)
+    expect(mockHost.openRemote).toHaveBeenCalledTimes(1)
+    const [meta, url, fetcher] = mockHost.openRemote.mock.calls[0]!
+    expect(meta).toEqual({ format: 'epub', cfi: null, fraction: null, settings: null, previousCfi: null })
+    expect(url).toBe('/api/v1/books/files/2/serve')
+    expect(typeof fetcher).toBe('function')
+
+    // The fetcher passed to openRemote is the same authenticated `api()` helper used elsewhere,
+    // so every Range request Reactor makes through it carries the session's auth header.
+    await (fetcher as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)('/api/v1/books/files/2/serve', {
+      headers: { Range: 'bytes=0-0' },
+    })
+    expect(api).toHaveBeenCalledWith('/api/v1/books/files/2/serve', { headers: { Range: 'bytes=0-0' } })
+
+    expect(mockHost.beginOpen).not.toHaveBeenCalled()
+    expect(mockHost.pushChunk).not.toHaveBeenCalled()
+    expect(mockHost.commitOpen).not.toHaveBeenCalled()
     expect(reactor.loading.value).toBe(false)
     expect(reactor.error.value).toBeNull()
     expect(reactor.bookLanguage.value).toBe('en')
