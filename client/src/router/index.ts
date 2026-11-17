@@ -117,6 +117,7 @@ const INTEGRATION_ROUTES: Record<IntegrationTab, string> = {
   hardcover: 'settings-hardcover',
   readwise: 'settings-readwise',
   storygraph: 'settings-storygraph',
+  tk: 'settings-tk',
 }
 
 /** Settings pages are their own routes now, so the legacy `?tab=` value is consumed by the redirect. */
@@ -438,6 +439,13 @@ export const routes: RouteRecordRaw[] = [
             component: () => import('@/features/storygraph/components/StorygraphSettings.vue'),
             props: { embedded: true },
             meta: { maxWidth: 'max-w-3xl', title: () => t('settings.integrations.tabs.storygraph') },
+          },
+          {
+            path: 'tk',
+            name: 'settings-tk',
+            component: () => import('@/features/tk/components/TkSettings.vue'),
+            props: { embedded: true },
+            meta: { maxWidth: 'max-w-3xl', title: () => t('settings.integrations.tabs.tk') },
           },
           {
             path: 'integrations/:provider',

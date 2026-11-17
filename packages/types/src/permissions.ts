@@ -14,6 +14,7 @@ export enum Permission {
   KoreaderSync = "koreader_sync",
   HardcoverSync = "hardcover_sync",
   ReadwiseSync = "readwise_sync",
+  TkSync = "tk_sync",
   StorygraphSync = "storygraph_sync",
   OpdsAccess = "opds_access",
 
@@ -51,6 +52,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   [Permission.KoreaderSync]: "KOReader sync",
   [Permission.HardcoverSync]: "Hardcover sync",
   [Permission.ReadwiseSync]: "Readwise sync",
+  [Permission.TkSync]: "TK sync",
   [Permission.StorygraphSync]: "StoryGraph sync",
   [Permission.OpdsAccess]: "OPDS access",
   [Permission.EmailSend]: "Send by email",

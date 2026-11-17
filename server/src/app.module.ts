@@ -90,6 +90,7 @@ import { AchievementModule } from './modules/achievement/achievement.module';
 import { HardcoverModule } from './modules/hardcover/hardcover.module';
 import { ReadwiseModule } from './modules/readwise/readwise.module';
 import { ReadingServicesModule } from './modules/reading-services/reading-services.module';
+import { TkModule } from './modules/tk/tk.module';
 import { StorygraphModule } from './modules/storygraph/storygraph.module';
 import { CustomMetadataModule } from './modules/custom-metadata/custom-metadata.module';
 import { CustomIconModule } from './modules/custom-icon/custom-icon.module';
@@ -210,6 +211,7 @@ import { ReadAloudModule } from './modules/read-aloud/read-aloud.module';
     AchievementModule,
     HardcoverModule,
     ReadwiseModule,
+    TkModule,
     ReadingServicesModule,
     StorygraphModule,
     AccountActivityModule,

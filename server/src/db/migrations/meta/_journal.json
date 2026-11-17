@@ -1023,6 +1023,20 @@
       "when": 1794249812674,
       "tag": "0145_add_comic_series_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1794933919093,
+      "tag": "0146_add_tk_daily_notes_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1794940247903,
+      "tag": "0147_tk_sync_per_kind_toggles",
+      "breakpoints": true
     }
   ]
 }
