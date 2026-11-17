@@ -51,8 +51,10 @@ const NAVIGATION_DEBOUNCE_MS = 300
  *   (`shouldRestoreByFraction`, mirroring `useFoliate.ts:302-303,328`) and, since `ReaderView.vue`
  *   reads this same ref to force `flow:'paginated'` for fixed-layout books, the forced-paginated
  *   cascade now works under Reactor too. The fixed-layout spread override
- *   (`fixedLayoutSpread:'none'`) is still a gap: Reactor's protocol v1 has no command to set
- *   `rendition.spread`, so this is a Reactor-side follow-up, not fixable from this composable.
+ *   (`fixedLayoutSpread:'none'`) is forwarded to `host.openRemote`'s additive `options` parameter
+ *   (reactor issue #50, BO-50): Reactor applies the same `rendition.spread = 'none'` mutation
+ *   `useFoliate.ts`'s `applyEpubOpenOptions` applies, before the view renders, so the gap this
+ *   comment used to describe is closed.
  * - Media overlay (embedded narration, W1-B5): `getMediaOverlay()`/`startMediaOverlay()`/
  *   `getMediaActiveClass()` expose the Reactor web host's own additive API wrapping the vendored
  *   foliate view's full `MediaOverlay` player (real `<audio>` playback, same shape BookOrbit's
@@ -471,7 +473,13 @@ export function useReactor(
       bookLanguage.value = typeof bookLanguageRaw === 'string' && bookLanguageRaw ? (bookLanguageRaw.split('-')[0] ?? 'en').toLowerCase() : 'en'
 
       const fetcher: typeof fetch = (input, init) => api(input, init)
-      await host.openRemote({ format, cfi: null, fraction: null, settings: null, previousCfi: null }, `/api/v1/books/files/${fileId}/serve`, fetcher)
+      await host.openRemote(
+        { format, cfi: null, fraction: null, settings: null, previousCfi: null },
+        `/api/v1/books/files/${fileId}/serve`,
+        fetcher,
+        undefined,
+        options.fixedLayoutSpread === 'none' ? { fixedLayoutSpread: 'none' } : undefined,
+      )
 
       const navigateTo = async (target: string | number | null | undefined): Promise<boolean> => {
         if (target === null || target === undefined) return false

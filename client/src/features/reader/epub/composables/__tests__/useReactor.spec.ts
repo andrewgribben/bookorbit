@@ -133,6 +133,34 @@ describe('useReactor', () => {
     expect(reactor.bookLanguage.value).toBe('en')
   })
 
+  it('forwards epubOptions.fixedLayoutSpread to host.openRemote as the 5th argument (BO-50)', async () => {
+    const reactor = useReactor(() => container)
+
+    await reactor.open(1, 2, 'epub', null, undefined, { fixedLayoutSpread: 'none' })
+
+    expect(mockHost.openRemote).toHaveBeenCalledTimes(1)
+    const [, , , , options] = mockHost.openRemote.mock.calls[0]!
+    expect(options).toEqual({ fixedLayoutSpread: 'none' })
+  })
+
+  it('forwards undefined to host.openRemote when epubOptions has no fixedLayoutSpread (BO-50)', async () => {
+    const reactor = useReactor(() => container)
+
+    await reactor.open(1, 2, 'epub', null, undefined, {})
+
+    const [, , , , options] = mockHost.openRemote.mock.calls[0]!
+    expect(options).toBeUndefined()
+  })
+
+  it('forwards undefined to host.openRemote when epubOptions is omitted entirely (BO-50)', async () => {
+    const reactor = useReactor(() => container)
+
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    const [, , , , options] = mockHost.openRemote.mock.calls[0]!
+    expect(options).toBeUndefined()
+  })
+
   it('navigates to the requested CFI after opening', async () => {
     const reactor = useReactor(() => container)
 

@@ -109,13 +109,13 @@ fetch).
 
 ### Settings / theme / fonts
 
-| Feature                                                                                                                | Foliate                                                                                  | Reactor                                                                                                                                                                                                                         | Evidence                                                                                                                                   | Status                                                                                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core typography fields (fontSize, lineHeight, fontFamily, columns, gap, margins, justify, hyphenate, dark/theme, flow) | `renderer.setAttribute`/`setStyles` (`useReaderState.applyToRenderer`)                   | `applyStyles{settings}` v1 command via `makeRendererShim`, same field set (R-G1 reconciled)                                                                                                                                     | `useReactor.ts:174-213`; `useReactor.spec.ts:262-298`                                                                                      | parity                                                                                                                                                                     |
-| Letter/word spacing, text indent, font weight/style, footer display mode                                               | Applied as raw generated CSS, not discrete `ReaderSettings` fields (`useReaderState.ts`) | Not sent as discrete `applyStyles` fields either; folded into the `setExtraCss` CSS string forwarded as-is after `applyStyles` (`useReactor.ts:168-173,210`)                                                                    | `useReactor.ts:168-173,183-211`; `useReactor.spec.ts:281,297` (CSS string forwarded verbatim)                                              | parity (same mechanism: generated CSS, not protocol fields, on both engines)                                                                                               |
-| Custom font upload / font-face CSS injection (`useCustomFonts.ts`)                                                     | Font-face CSS is part of the same generated CSS string passed to `renderer.setStyles`    | Same CSS string reaches `host.setExtraCss` via the same `setStyles` call path (R-G7 escape hatch, confirmed to exist per `docs/hosts/web.md:63-64`)                                                                             | `useReactor.ts:183-211`; `docs/hosts/web.md:63-64`                                                                                         | parity                                                                                                                                                                     |
-| Publisher font-size scaling for reflowable books (`scalePublisherFontSizes`)                                           | Called explicitly for non-fixed-layout books (`useFoliate.ts:304`)                       | Not called anywhere in `useReactor.ts` - no equivalent transform is applied to the opened book before/after `openRemote`                                                                                                        | `useFoliate.ts:304`; `useReactor.ts` (no reference to `publisher-font-sizes` or `scalePublisherFontSizes`)                                 | **gap** (reflowable books with large publisher-specified font sizes in their own CSS will render larger under Reactor than under foliate until a user overrides font size) |
-| Fixed-layout spread override (`fixedLayoutSpread:'none'` forces `rendition.spread='none'`)                             | `applyEpubOpenOptions` (`useFoliate.ts:62-72,301`)                                       | Still a gap: `epubOptions`/`options.fixedLayoutSpread` is accepted in `useReactor`'s `open()` signature but never read or forwarded, since Reactor's protocol v1 has no command for `rendition.spread` (see Fixed-layout table) | `useFoliate.ts:62-72,301`; `useReactor.ts` (`epubOptions` parameter present, unused); `D:/Development/reactor/src/protocol/v1/commands.ts` | **gap** (Reactor-side protocol follow-up)                                                                                                                                  |
+| Feature                                                                                                                | Foliate                                                                                  | Reactor                                                                                                                                                                                                                                                                                        | Evidence                                                                                                                                            | Status                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core typography fields (fontSize, lineHeight, fontFamily, columns, gap, margins, justify, hyphenate, dark/theme, flow) | `renderer.setAttribute`/`setStyles` (`useReaderState.applyToRenderer`)                   | `applyStyles{settings}` v1 command via `makeRendererShim`, same field set (R-G1 reconciled)                                                                                                                                                                                                    | `useReactor.ts:174-213`; `useReactor.spec.ts:262-298`                                                                                               | parity                                                                                                                                                                     |
+| Letter/word spacing, text indent, font weight/style, footer display mode                                               | Applied as raw generated CSS, not discrete `ReaderSettings` fields (`useReaderState.ts`) | Not sent as discrete `applyStyles` fields either; folded into the `setExtraCss` CSS string forwarded as-is after `applyStyles` (`useReactor.ts:168-173,210`)                                                                                                                                   | `useReactor.ts:168-173,183-211`; `useReactor.spec.ts:281,297` (CSS string forwarded verbatim)                                                       | parity (same mechanism: generated CSS, not protocol fields, on both engines)                                                                                               |
+| Custom font upload / font-face CSS injection (`useCustomFonts.ts`)                                                     | Font-face CSS is part of the same generated CSS string passed to `renderer.setStyles`    | Same CSS string reaches `host.setExtraCss` via the same `setStyles` call path (R-G7 escape hatch, confirmed to exist per `docs/hosts/web.md:63-64`)                                                                                                                                            | `useReactor.ts:183-211`; `docs/hosts/web.md:63-64`                                                                                                  | parity                                                                                                                                                                     |
+| Publisher font-size scaling for reflowable books (`scalePublisherFontSizes`)                                           | Called explicitly for non-fixed-layout books (`useFoliate.ts:304`)                       | Not called anywhere in `useReactor.ts` - no equivalent transform is applied to the opened book before/after `openRemote`                                                                                                                                                                       | `useFoliate.ts:304`; `useReactor.ts` (no reference to `publisher-font-sizes` or `scalePublisherFontSizes`)                                          | **gap** (reflowable books with large publisher-specified font sizes in their own CSS will render larger under Reactor than under foliate until a user overrides font size) |
+| Fixed-layout spread override (`fixedLayoutSpread:'none'` forces `rendition.spread='none'`)                             | `applyEpubOpenOptions` (`useFoliate.ts:62-72,301`)                                       | **Fixed (BO-50).** `open()` forwards `epubOptions.fixedLayoutSpread` to `host.openRemote`'s additive `options` parameter; Reactor applies the same `rendition.spread = 'none'` mutation before the view renders (reactor issue #50, `client/vendor/reactor/dist` synced to `v0.4.3-fxl-local`) | `useFoliate.ts:62-72,301`; `useReactor.ts` (`open()` forwards `options.fixedLayoutSpread`); `docs/hosts/web.md` (Reactor-side `ContentOpenOptions`) | parity                                                                                                                                                                     |
 
 ### Progress fields, incl. Kobo/KOReader sync
 
@@ -169,10 +169,10 @@ fetch).
 
 ### Fixed-layout EPUBs
 
-| Feature                           | Foliate                                                                                                                     | Reactor                                                                                                                                                                                                                                                                                           | Evidence                                                                                                                                                                                                                                                          | Status                                                                                                                     |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Detection (`isFixedLayout`)       | `rendition.layout === 'pre-paginated'` check on the opened book object (`isFixedLayoutBook`, `useFoliate.ts:58-60,302-303`) | **Fixed (W1-B6).** `isFixedLayoutBook` is exported from `useFoliate.ts` and reused: `host.core.getOpenBook()` returns the same vendored foliate book object, so `isFixedLayoutBook(openBook)` works identically. Set in the `loaded` event handler, reset to `false` at the top of every `open()` | `useFoliate.ts:58-60,302-303` (now exported); `useReactor.ts` (`loaded` case); `useReactor.spec.ts` ("sets isFixedLayout from the opened book rendition.layout", "detects a pre-paginated book as fixed layout", "resets isFixedLayout to false on a new open()") | parity, which also fixes the two regressions it previously cascaded into (forced paginated flow, restore-by-fraction tier) |
-| Spread override (`spread:'none'`) | Applied when detected (see Settings table)                                                                                  | Still not applied: Reactor's protocol v1 `applyStyles`/`ReaderCommand` has no field to set `rendition.spread`, so there is nothing this composable can dispatch even with `isFixedLayout` now correct                                                                                             | see Settings table; `D:/Development/reactor/src/protocol/v1/commands.ts` (no `spread` field anywhere)                                                                                                                                                             | **gap** (Reactor-side protocol follow-up, not fixable from this repo)                                                      |
+| Feature                           | Foliate                                                                                                                     | Reactor                                                                                                                                                                                                                                                                                                                   | Evidence                                                                                                                                                                                                                                                          | Status                                                                                                                     |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Detection (`isFixedLayout`)       | `rendition.layout === 'pre-paginated'` check on the opened book object (`isFixedLayoutBook`, `useFoliate.ts:58-60,302-303`) | **Fixed (W1-B6).** `isFixedLayoutBook` is exported from `useFoliate.ts` and reused: `host.core.getOpenBook()` returns the same vendored foliate book object, so `isFixedLayoutBook(openBook)` works identically. Set in the `loaded` event handler, reset to `false` at the top of every `open()`                         | `useFoliate.ts:58-60,302-303` (now exported); `useReactor.ts` (`loaded` case); `useReactor.spec.ts` ("sets isFixedLayout from the opened book rendition.layout", "detects a pre-paginated book as fixed layout", "resets isFixedLayout to false on a new open()") | parity, which also fixes the two regressions it previously cascaded into (forced paginated flow, restore-by-fraction tier) |
+| Spread override (`spread:'none'`) | Applied when detected (see Settings table)                                                                                  | **Fixed (BO-50).** `isFixedLayout` is still used as the detection, but the spread mutation itself is applied Reactor-side now: `open()` forwards `options.fixedLayoutSpread` on `host.openRemote`, and Reactor's `ContentOpenOptions.fixedLayoutSpread:'none'` forces `rendition.spread = 'none'` before the view renders | see Settings table; `client/vendor/reactor/dist` (synced to `v0.4.3-fxl-local`, reactor issue #50)                                                                                                                                                                | parity                                                                                                                     |
 
 ### Large lazy-loaded EPUB
 
@@ -215,31 +215,32 @@ had no modifier-key guard at all.
 | Open-failure message             | `i18n.global.t('reader.failedToLoadBook')` fallback, `console.error('[useFoliate]', e)` (`useFoliate.ts:356-360`) | Same fallback key, `console.error('[useReactor]', e)` (`useReactor.ts:443-447`)   | both files | parity |
 | Mid-session renderer error event | `view` dispatches an `error` custom event -> sets `error.value` (`useFoliate.ts:264-270`)                         | `host`'s `error` event -> same `error.value` assignment (`useReactor.ts:358-363`) | both files | parity |
 
-## Gaps and regressions summary (updated W1-B6: keyboard + fixed-layout fixed)
+## Gaps and regressions summary (updated BO-50: fixed-layout spread override fixed; W1-B6: keyboard + fixed-layout detection fixed)
 
 Counted directly from the matrix's 53 data rows (a row whose cell carries two
 labels, e.g. "parity, **untested-needs-owner**", is counted once in each
-bucket below, so the bucket totals sum to more than 53). This update fixed
-the two confirmed regressions this card was scoped to (keyboard page-turn,
-fixed-layout detection) and, as a direct consequence of fixing fixed-layout
-detection, the fixed-layout restore-by-fraction tier that cascaded from it:
+bucket below, so the bucket totals sum to more than 53). W1-B6 fixed the two
+confirmed regressions it was scoped to (keyboard page-turn, fixed-layout
+detection) and, as a direct consequence of fixing fixed-layout detection, the
+fixed-layout restore-by-fraction tier that cascaded from it. BO-50 then closed
+the remaining fixed-layout gap (the spread override) by adding an additive
+Reactor web-host option rather than a protocol v1 change:
 
-- **parity**: 39 rows (34 from the original pass, plus the 5 rows this card
+- **parity**: 41 rows (34 from the original pass, plus the 5 rows W1-B6
   moved out of regression/gap: keyboard page-turn (Keyboard table),
   keyboard-only operability (Accessibility table), forced-paginated flow for
   fixed-layout books (Pagination table), fixed-layout detection itself
   (Fixed-layout table), and the fixed-layout restore-by-fraction tier (Open/
-  restore table)).
-- **gap**: 10 rows (down from 12): media-overlay `mediaOverlaySectionIndex`
-  resume tier; scrolled-flow swipe gesture; mobile-tap-always-toggles
-  heuristic; `getLocationContext`; publisher font-size scaling; fixed-layout
+  restore table), plus the 2 rows BO-50 moved out of gap: the fixed-layout
   spread override, listed once in the Settings table and once in the
-  Fixed-layout table since it is one gap visible from two feature angles
-  (still open - it needs a new Reactor protocol v1 command, out of this
-  card's scope); media-overlay resume heuristics parity check (R-G6); TTS
-  resume-position lookup; selection-interaction-start signal.
+  Fixed-layout table).
+- **gap**: 8 rows (down from 10): media-overlay `mediaOverlaySectionIndex`
+  resume tier; scrolled-flow swipe gesture; mobile-tap-always-toggles
+  heuristic; `getLocationContext`; publisher font-size scaling; media-overlay
+  resume heuristics parity check (R-G6); TTS resume-position lookup;
+  selection-interaction-start signal.
 - **regression**: 0 rows (down from 3 - both confirmed regressions from the
-  original pass are fixed by this card).
+  original pass are fixed by W1-B6).
 - **untested-needs-owner**: 6 row-mentions, unchanged (3 rows are purely
   untested-needs-owner: double-tap debounce, the Range/200-fallback probe
   behaviour, screen-reader/focus behaviour; 3 more rows are parity-with-a-
@@ -249,18 +250,22 @@ detection, the fixed-layout restore-by-fraction tier that cascaded from it:
   pre-existing **foliate** gap, not a Reactor regression, so it is noted
   separately rather than counted against Reactor.
 
-Gaps list (file:line) - no regressions remain after this card's two fixes:
+Gaps list (file:line) - no regressions remain after W1-B6's two fixes, and
+the fixed-layout spread override is no longer on this list after BO-50:
 
-1. **Gap - fixed-layout spread override (`spread:'none'`) never applied under Reactor.** `useReactor.ts`'s `open()` accepts `epubOptions`/`fixedLayoutSpread` but never reads it, because Reactor's protocol v1 `ReaderCommand`/`applyStyles` has no field for `rendition.spread` at all (`D:/Development/reactor/src/protocol/v1/commands.ts`); compare `useFoliate.ts:62-72,301`. This is a Reactor-side protocol follow-up, not fixable from this repo.
-2. **Gap - media-overlay `mediaOverlaySectionIndex` resume tier missing under Reactor.** `useFoliate.ts:347-349` vs `useReactor.ts` (no such tier).
-3. **Gap - `getLocationContext` always returns null under Reactor.** `useReactor.ts`'s `getLocationContext`, affects TTS resume-by-TOC-target UI and any other caller of this method.
-4. **Gap - publisher font-size scaling not applied under Reactor.** `scalePublisherFontSizes` is called in `useFoliate.ts:304` but never referenced in `useReactor.ts`.
-5. **Gap - swipe-to-turn-page gesture has no Reactor equivalent.** Only tap zones exist under Reactor; foliate supports both tap and swipe (`useFoliateInput.ts:134-146` swipe handling vs nothing in `useReactor.ts`).
-6. **Gap - "mobile always toggles chrome" tap heuristic differs under Reactor.** `useFoliateInput.ts:270,286-290` special-cases touch devices; `useReactor.ts`'s `tap` case has no device-type branch, so a touch-device tap in the left/right 30% bands turns a page instead of toggling chrome.
-7. **Gap - selection-interaction-start has no Reactor signal.** `setSelectionInteractionStartHandler` is a no-op in `useReactor.ts`.
-8. **Gap - double-tap-same-zone debounce has no explicit Reactor equivalent** (relies on Reactor's own tap/selection disambiguation at the DOM level, unverified from this worktree). `useFoliateInput.ts:256-291` vs nothing explicit in `useReactor.ts`.
+1. **Gap - media-overlay `mediaOverlaySectionIndex` resume tier missing under Reactor.** `useFoliate.ts:347-349` vs `useReactor.ts` (no such tier).
+2. **Gap - `getLocationContext` always returns null under Reactor.** `useReactor.ts`'s `getLocationContext`, affects TTS resume-by-TOC-target UI and any other caller of this method.
+3. **Gap - publisher font-size scaling not applied under Reactor.** `scalePublisherFontSizes` is called in `useFoliate.ts:304` but never referenced in `useReactor.ts`.
+4. **Gap - swipe-to-turn-page gesture has no Reactor equivalent.** Only tap zones exist under Reactor; foliate supports both tap and swipe (`useFoliateInput.ts:134-146` swipe handling vs nothing in `useReactor.ts`).
+5. **Gap - "mobile always toggles chrome" tap heuristic differs under Reactor.** `useFoliateInput.ts:270,286-290` special-cases touch devices; `useReactor.ts`'s `tap` case has no device-type branch, so a touch-device tap in the left/right 30% bands turns a page instead of toggling chrome.
+6. **Gap - selection-interaction-start has no Reactor signal.** `setSelectionInteractionStartHandler` is a no-op in `useReactor.ts`.
+7. **Gap - double-tap-same-zone debounce has no explicit Reactor equivalent** (relies on Reactor's own tap/selection disambiguation at the DOM level, unverified from this worktree). `useFoliateInput.ts:256-291` vs nothing explicit in `useReactor.ts`.
 
-Fixed in this card (file:line):
+Fixed by BO-50 (file:line):
+
+1. **Fixed-layout spread override (was: gap, `spread:'none'` never applied under Reactor).** Fixed by adding an additive `ContentOpenOptions.fixedLayoutSpread:'none'` to Reactor's web host (`host.openRemote`'s 5th parameter), rather than changing the frozen v1 wire protocol. `useReactor.ts`'s `open()` now forwards `epubOptions.fixedLayoutSpread` through unchanged, mirroring `useFoliate.ts:62-72,301`. Vendored Reactor bundle synced to `v0.4.3-fxl-local` via `scripts/sync-reactor.sh`. Test: `useReactor.spec.ts`'s new forwarding suite ("forwards epubOptions.fixedLayoutSpread to host.openRemote...").
+
+Fixed in W1-B6 (file:line):
 
 1. **Keyboard page-turn (was: regression, no ArrowLeft/ArrowRight/PageUp/PageDown/Space handling under Reactor).** Fixed via a new shared helper `client/src/features/reader/epub/composables/usePageTurnKeyboard.ts` (`createPageTurnKeydownHandler`), used by both `useFoliateInput.ts` (refactored to call it) and `useReactor.ts` (new `handleKeydown`, attached to `document` and to every section `Document` from `host.getContents()`). Tests: `usePageTurnKeyboard.spec.ts`, `useReactor.spec.ts`'s "keyboard page-turn (W1-B6 fix)" suite.
 2. **Fixed-layout detection (was: gap, `isFixedLayout` always `false`).** Fixed in `client/src/features/reader/epub/composables/useReactor.ts`'s `loaded` event case: `isFixedLayout.value = isFixedLayoutBook(host?.core.getOpenBook() ?? null)`, reusing `isFixedLayoutBook` exported from `useFoliate.ts`. Reset to `false` at the top of every `open()`. Tests: `useReactor.spec.ts`'s "sets isFixedLayout...", "detects a pre-paginated book...", "resets isFixedLayout...".
@@ -282,10 +287,12 @@ fixed here since it is out of this card's scope (parity matrix only).
    unit test against a mocked host, not a real book in a real browser.
 2. Open a fixed-layout (pre-paginated, e.g. a comic-style or illustrated
    children's EPUB) with both engines side by side; confirm the flow is now
-   forced to paginated under Reactor too, and that the restore position
-   after closing and reopening lands correctly (fraction-based, not CFI).
-   The `spread:'none'` setting still has no effect under Reactor (known,
-   unfixed gap - needs a new Reactor protocol command).
+   forced to paginated under Reactor too, that the restore position
+   after closing and reopening lands correctly (fraction-based, not CFI),
+   and that the `fixedLayoutSpread:'none'` setting now shows one page per
+   spread under Reactor too (BO-50; verified by unit test and Reactor's own
+   e2e harness against a fixed-layout fixture, not yet by hand on a real
+   book in a real browser).
 3. Open a book with embedded media overlay narration under both engines;
    verify the player drop-in works identically (play/pause/next/prev/rate/
    volume, highlight-follow) and that resuming playback after closing and
@@ -317,17 +324,18 @@ confirmed regression remains.** Keyboard page-turn now works under Reactor
 iframe - Reactor's content iframes are same-origin so `host.getContents()`'s
 documents are reachable, but this is unverified in a real browser, see owner
 checklist item 1). Fixed-layout books are now correctly detected, forced to
-paginated flow, and restored by fraction rather than CFI, matching foliate.
+paginated flow, restored by fraction rather than CFI, and (BO-50) render
+with the same `spread:'none'` one-page-per-spread behaviour, all matching
+foliate.
 
-The remaining gaps are all either small UX differences (swipe gesture,
-double-tap debounce, mobile-tap heuristic, selection-interaction-start) or
+The remaining gaps are all small UX differences (swipe gesture, double-tap
+debounce, mobile-tap heuristic, selection-interaction-start) or
 already-acceptable per the W1 plan's own standing decisions (TTS primitive,
 media-overlay resume heuristic parity, Kobo/KOReader fields computed
-web-side), plus one new follow-up for the Reactor repo (the fixed-layout
-spread override needs a new protocol v1 command - Reactor's protocol is
-frozen per WORKTREE_BRIEF.md rule 1, so this is additive work for that repo,
-not fixable here). The `untested-needs-owner` items should be run through the
-owner checklist above before any flag flip.
+web-side). The fixed-layout spread override, the one gap that previously
+needed a Reactor repo follow-up, is closed (BO-50 added an additive web-host
+option instead of changing the frozen v1 protocol). The `untested-needs-owner`
+items should be run through the owner checklist above before any flag flip.
 
 **Before flipping `VITE_READER_ENGINE=reactor` to default, the owner should
 still run the checklist above** (none of these are automatable from this
