@@ -237,6 +237,15 @@ function areScrollersEqual(left: ScrollerConfig[], right: ScrollerConfig[]): boo
   })
 }
 
+function areExternalShelvesEqual(left: ExternalShelfConfig[], right: ExternalShelfConfig[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((shelf, index) => {
+    const other = right[index]
+    if (!other) return false
+    return shelf.provider === other.provider && shelf.shelf === other.shelf && shelf.enabled === other.enabled && shelf.order === other.order
+  })
+}
+
 // Module-level singletons - all callers share the same reactive state
 const initialConfig = loadConfig()
 const scrollers = ref<ScrollerConfig[]>(initialConfig.scrollers)
@@ -372,7 +381,7 @@ export function useDashboardConfig() {
       next = filtered.map((scroller, index) => ({ ...scroller, order: index + 1 }))
     }
 
-    if (areScrollersEqual(scrollers.value, next) && nextExternal === externalShelves.value) return
+    if (areScrollersEqual(scrollers.value, next) && areExternalShelvesEqual(externalShelves.value, nextExternal)) return
     scrollers.value = next
     externalShelves.value = nextExternal
     save()
