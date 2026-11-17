@@ -1,3 +1,5 @@
+import { createPageTurnKeydownHandler } from './usePageTurnKeyboard'
+
 const LEFT_ZONE = 0.3
 const RIGHT_ZONE = 0.7
 const DOUBLE_CLICK_MS = 300
@@ -347,37 +349,10 @@ export function useFoliateInput(
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    const target = (e.composedPath?.()[0] || e.target) as HTMLElement | null
-    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return
-    const view = getViewEl()
-    if (!view) return
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      if (!canProceedNavigation()) return
-      navigateLeft()
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      if (!canProceedNavigation()) return
-      navigateRight()
-    } else if (e.key === 'PageUp') {
-      e.preventDefault()
-      if (!canProceedNavigation()) return
-      navigatePrev()
-    } else if (e.key === 'PageDown') {
-      e.preventDefault()
-      if (!canProceedNavigation()) return
-      navigateNext()
-    } else if (e.key === ' ' && e.shiftKey) {
-      e.preventDefault()
-      if (!canProceedNavigation()) return
-      navigatePrev()
-    } else if (e.key === ' ') {
-      e.preventDefault()
-      if (!canProceedNavigation()) return
-      navigateNext()
-    }
-  }
+  const handleKeydown = createPageTurnKeydownHandler(
+    { left: navigateLeft, right: navigateRight, prev: navigatePrev, next: navigateNext },
+    canNavigate,
+  )
 
   window.addEventListener('message', handleWindowMessage)
   document.addEventListener('keydown', handleKeydown)

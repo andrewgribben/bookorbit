@@ -55,7 +55,7 @@ function isResolvedNavigation(value: unknown): boolean {
   return Boolean(value && typeof value === 'object' && typeof (value as { index?: unknown }).index === 'number')
 }
 
-function isFixedLayoutBook(book: unknown): boolean {
+export function isFixedLayoutBook(book: unknown): boolean {
   return Boolean(book && typeof book === 'object' && (book as { rendition?: { layout?: unknown } }).rendition?.layout === 'pre-paginated')
 }
 

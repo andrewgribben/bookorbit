@@ -445,6 +445,155 @@ describe('useReactor', () => {
     expect(reactor.getMediaActiveClass()).toBe('-epub-media-overlay-active')
   })
 
+  it('sets isFixedLayout from the opened book rendition.layout (W1-B6 fix)', async () => {
+    mockHost.openRemote.mockImplementationOnce(async () => {
+      mockHost.core.getOpenBook.mockReturnValue({ rendition: { layout: 'reflowable' } })
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+    })
+    const reactor = useReactor(() => container)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    expect(reactor.isFixedLayout.value).toBe(false)
+  })
+
+  it('detects a pre-paginated book as fixed layout (W1-B6 fix)', async () => {
+    mockHost.openRemote.mockImplementationOnce(async () => {
+      mockHost.core.getOpenBook.mockReturnValue({ rendition: { layout: 'pre-paginated' } })
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+    })
+    const reactor = useReactor(() => container)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    expect(reactor.isFixedLayout.value).toBe(true)
+  })
+
+  it('resets isFixedLayout to false on a new open() (not sticky across books)', async () => {
+    mockHost.openRemote.mockImplementationOnce(async () => {
+      mockHost.core.getOpenBook.mockReturnValue({ rendition: { layout: 'pre-paginated' } })
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+    })
+    const reactor = useReactor(() => container)
+    await reactor.open(1, 2, 'epub', null, undefined)
+    expect(reactor.isFixedLayout.value).toBe(true)
+
+    const secondHost = makeMockHost() as MockHost & { emit: (event: unknown) => void }
+    createWebHostMock.mockReturnValue(secondHost)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    expect(reactor.isFixedLayout.value).toBe(false)
+  })
+
+  it('skips the CFI restore tier for a fixed-layout book (shouldRestoreByFraction, mirrors useFoliate.ts)', async () => {
+    mockHost.openRemote.mockImplementationOnce(async () => {
+      mockHost.core.getOpenBook.mockReturnValue({ rendition: { layout: 'pre-paginated' } })
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+    })
+    const reactor = useReactor(() => container)
+
+    await reactor.open(1, 2, 'epub', 'epubcfi(/6/2!)', 0.3)
+
+    expect(mockHost.dispatch).not.toHaveBeenCalledWith({ type: 'goTo', target: 'epubcfi(/6/2!)' })
+    expect(mockHost.dispatch).toHaveBeenCalledWith({ type: 'goToFraction', value: 0.3 })
+  })
+
+  describe('keyboard page-turn (W1-B6 fix)', () => {
+    afterEach(() => {
+      document.body.replaceChildren()
+    })
+
+    it('ArrowLeft/ArrowRight dispatch prev/next in LTR', async () => {
+      const reactor = useReactor(() => container)
+      await reactor.open(1, 2, 'epub', null, undefined)
+      mockHost.dispatch.mockClear()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'prev' })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'next' })
+    })
+
+    it('mirrors ArrowLeft/ArrowRight under RTL (loaded.isRtl)', async () => {
+      const reactor = useReactor(() => container)
+      await reactor.open(1, 2, 'epub', null, undefined)
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: true, metadata: { title: null, language: null } })
+      mockHost.dispatch.mockClear()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'next' })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'prev' })
+    })
+
+    it('PageUp/PageDown and Space/Shift+Space use reading order regardless of RTL', async () => {
+      const reactor = useReactor(() => container)
+      await reactor.open(1, 2, 'epub', null, undefined)
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: true, metadata: { title: null, language: null } })
+      mockHost.dispatch.mockClear()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'prev' })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'next' })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'next' })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', shiftKey: true, bubbles: true, cancelable: true }))
+      expect(mockHost.dispatch).toHaveBeenLastCalledWith({ type: 'prev' })
+    })
+
+    it('ignores page-turn keys while typing in an input', async () => {
+      const reactor = useReactor(() => container)
+      await reactor.open(1, 2, 'epub', null, undefined)
+      mockHost.dispatch.mockClear()
+
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }))
+
+      expect(mockHost.dispatch).not.toHaveBeenCalled()
+    })
+
+    it('ignores page-turn keys combined with a modifier key', async () => {
+      const reactor = useReactor(() => container)
+      await reactor.open(1, 2, 'epub', null, undefined)
+      mockHost.dispatch.mockClear()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', metaKey: true, bubbles: true, cancelable: true }))
+
+      expect(mockHost.dispatch).not.toHaveBeenCalled()
+    })
+
+    it('respects canNavigate() for keyboard page-turn', async () => {
+      const canNavigate = vi.fn<() => boolean>().mockReturnValue(false)
+      const reactor = useReactor(() => container, undefined, undefined, undefined, undefined, canNavigate)
+      await reactor.open(1, 2, 'epub', null, undefined)
+      mockHost.dispatch.mockClear()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+
+      expect(canNavigate).toHaveBeenCalled()
+      expect(mockHost.dispatch).not.toHaveBeenCalled()
+    })
+
+    it('attaches the page-turn handler to every rendered section document via getContents()', async () => {
+      const reactor = useReactor(() => container)
+      await reactor.open(1, 2, 'epub', null, undefined)
+
+      const sectionDoc = document.implementation.createHTMLDocument('section')
+      mockHost.getContents.mockReturnValue([{ index: 0, doc: sectionDoc }])
+      mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+      mockHost.dispatch.mockClear()
+
+      sectionDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+
+      expect(mockHost.dispatch).toHaveBeenCalledWith({ type: 'next' })
+    })
+  })
+
   it('onChapterLoad receives a shim satisfying useFoliateTts.setFoliateSource against the host (R-G4)', async () => {
     const onChapterLoad = vi.fn<(doc: Document, viewEl: HTMLElement) => void>()
     const reactor = useReactor(() => container, undefined, undefined, undefined, onChapterLoad)
