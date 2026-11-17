@@ -3,6 +3,7 @@ import { type HostChannel } from '../../host-api/index.js';
 import type { ReaderCommand } from '../../protocol/v1/commands.js';
 import type { ReaderEvent } from '../../protocol/v1/events.js';
 import type { ReaderOpenMeta } from '../../protocol/v1/meta.js';
+import type { FoliateContent, FoliateMediaOverlayFull } from '../../core/foliate-types.js';
 export interface WebHostOptions {
     /** Creates a protocol v2 `HostChannel` alongside `core` (SPEC.md D3). Omitted (the default)
      * means `chrome: "host"`-only: no v2 traffic, matching W1's section-4 decision for the first
@@ -53,6 +54,26 @@ export interface WebHost {
         type: string;
         value: string;
     } | null;
+    /** W1-B5: the vendored view's own media-overlay player (real `<audio>` playback). Null before
+     * a book with no media overlays has loaded. See `ContentCore.getMediaOverlay`'s doc comment. */
+    getMediaOverlay(): FoliateMediaOverlayFull | null;
+    /** Starts `getMediaOverlay()`'s playback at the current section. */
+    startMediaOverlay(): unknown;
+    /** The book's active-overlay CSS class, for recognising the vendored view's own "currently
+     * playing" element. */
+    getMediaActiveClass(): string | null;
+    /** W1-B5 (R-G4): `{ index, doc, overlayer }` per currently rendered section, for a host that
+     * synthesizes speech server-side and needs to draw its own block highlight. See
+     * `ContentCore.getContents`'s doc comment. */
+    getContents(): FoliateContent[];
+    /** Scrolls an arbitrary Range into view. See `ContentCore.scrollToRange`'s doc comment. */
+    scrollToRange(range: Range, select?: boolean): Promise<void>;
+    /** Resolves a CFI to `{ index, anchor }` without navigating. See `ContentCore.resolveCFI`'s
+     * doc comment. */
+    resolveCFI(cfi: string): {
+        index: number;
+        anchor: (doc: Document) => Range;
+    } | undefined;
     /** Tears down the mounted view and drops all listeners. Safe to call once; the container
      * passed to `createWebHost` is left empty afterwards. */
     destroy(): void;

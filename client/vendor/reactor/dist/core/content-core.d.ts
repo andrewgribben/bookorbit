@@ -3,7 +3,7 @@ import type { ReaderOpenMeta } from '../protocol/v1/meta.js';
 import type { ReaderCommand } from '../protocol/v1/commands.js';
 import type { ReaderEvent } from '../protocol/v1/events.js';
 import type { ReaderSettings } from '../protocol/v1/settings.js';
-import type { FoliateBook } from './foliate-types.js';
+import type { FoliateBook, FoliateContent, FoliateMediaOverlayFull } from './foliate-types.js';
 import { type SecondaryView } from './secondary-view.js';
 import { type GlossaryTapRect, type GlossaryTerm } from './glossary.js';
 /** MIME types for every format the host app routes to the WebView (SPEC.md D11) plus the comic
@@ -118,6 +118,34 @@ export declare class ContentCore {
     narrationCancelPrepare(): void;
     narrationHighlight(textHref: string): void;
     narrationUnhighlight(): void;
+    /** W1-B5: the vendored view's own full media-overlay player (src/vendor/foliate/epub.js
+     * `MediaOverlay`) - owns real `<audio>` playback, unlike `narrationPrepare`/`narrationHighlight`
+     * above which only track SMIL timing for a host that plays audio itself natively.
+     * Null before a book with no media overlays has loaded; present only after `loaded` reports
+     * `hasMediaOverlay: true`. Additive, non-protocol (same shape as `getKoboLocation`) - a host
+     * that never calls this is unaffected. */
+    getMediaOverlay(): FoliateMediaOverlayFull | null;
+    /** Starts `getMediaOverlay()`'s playback at the current section. */
+    startMediaOverlay(): unknown;
+    /** The book's active-overlay CSS class (`book.media.activeClass`), for a host that wants to
+     * recognise which element the vendored view itself marks as currently playing. */
+    getMediaActiveClass(): string | null;
+    /** `renderer.getContents()` passthrough: `{ index, doc, overlayer }` per currently rendered
+     * section. `overlayer.add/remove` let a host draw its own highlight (e.g. `Overlayer.highlight`
+     * from src/vendor/foliate/overlayer.js, importable by a host that wants the exact same draw
+     * function Reactor's own annotations use) for a Range it computed itself. */
+    getContents(): FoliateContent[];
+    /** Scrolls an arbitrary Range into view, the same call the vendored view's own TTS/search
+     * result navigation uses internally. */
+    scrollToRange(range: Range, select?: boolean): Promise<void>;
+    /** Resolves a CFI to `{ index, anchor }` without navigating - `anchor` must be called with the
+     * matching section's own Document (from `getContents()`) to get a `Range`. Returns undefined
+     * before a book is open, for an unparseable CFI, or when the vendored view does not expose
+     * `resolveCFI` (older cached bundle). */
+    resolveCFI(cfi: string): {
+        index: number;
+        anchor: (doc: Document) => Range;
+    } | undefined;
     /** Dispatches a parsed `ReaderCommand`, mirroring `__readerCommand`'s switch exactly. */
     dispatch(command: ReaderCommand): void;
     emitReady(): void;

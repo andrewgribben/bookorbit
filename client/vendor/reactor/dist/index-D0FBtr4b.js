@@ -1,8 +1,8 @@
-var Mn = Object.defineProperty;
+var On = Object.defineProperty;
 var qt = (e) => {
   throw TypeError(e);
 };
-var $n = (e, r, t) => r in e ? Mn(e, r, { enumerable: !0, configurable: !0, writable: !0, value: t }) : e[r] = t;
+var $n = (e, r, t) => r in e ? On(e, r, { enumerable: !0, configurable: !0, writable: !0, value: t }) : e[r] = t;
 var L = (e, r, t) => $n(e, typeof r != "symbol" ? r + "" : r, t), pt = (e, r, t) => r.has(e) || qt("Cannot " + t);
 var E = (e, r, t) => (pt(e, r, "read from private field"), t ? t.call(e) : r.get(e)), X = (e, r, t) => r.has(e) ? qt("Cannot add the same private member more than once") : r instanceof WeakSet ? r.add(e) : r.set(e, t), Z = (e, r, t, o) => (pt(e, r, "write to private field"), o ? o.call(e, t) : r.set(e, t), t), K = (e, r, t) => (pt(e, r, "access private method"), t);
 var Kt = (e, r, t, o) => ({
@@ -175,9 +175,9 @@ function Fr(e) {
 function Zn(e) {
   return Array.isArray(e) && e.every(Fr);
 }
-const Jn = "entries.json", Or = "entry/";
+const Jn = "entries.json", Mr = "entry/";
 function Qn(e) {
-  return Or + e.split("/").map(encodeURIComponent).join("/");
+  return Mr + e.split("/").map(encodeURIComponent).join("/");
 }
 const eo = {
   /** `(metaJson: string) => void` - begins a streamed open; see ./meta.ts for the payload. */
@@ -191,10 +191,10 @@ const eo = {
   openLocal: "__readerOpenLocal",
   /** `(commandJson: string) => void` - everything else; see ./commands.ts. */
   command: "__readerCommand"
-}, Mi = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+}, Oi = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   LOCAL_EPUB_ENTRIES_PATH: Jn,
-  LOCAL_EPUB_ENTRY_PATH_PREFIX: Or,
+  LOCAL_EPUB_ENTRY_PATH_PREFIX: Mr,
   READER_COMMAND_TYPES: Hn,
   READER_EVENT_TYPES: jn,
   READER_GLOBALS: eo,
@@ -210,7 +210,7 @@ const eo = {
   parseReaderEvent: Xn,
   readerCommandValidators: Lr,
   readerEventValidators: Ir
-}, Symbol.toStringTag, { value: "Module" })), to = (e, r) => e.map((t, o, n) => r(t, o, n) ? o : null).filter((t) => t != null), Mr = (e, r) => [-1, ...r, e.length].reduce(({ xs: t, a: o }, n) => ({ xs: (t == null ? void 0 : t.concat([e.slice(o + 1, n)])) ?? [], a: n }), {}).xs, ro = (e, r) => e.slice(0, -1).concat([e[e.length - 1].concat(r[0])]).concat(r.slice(1)), ht = /\d/, lt = /^epubcfi\((.*)\)$/, Yt = (e) => e.replace(/[\^[\](),;=]/g, "^$&"), $r = (e) => lt.test(e) ? e : `epubcfi(${e})`, no = (e) => {
+}, Symbol.toStringTag, { value: "Module" })), to = (e, r) => e.map((t, o, n) => r(t, o, n) ? o : null).filter((t) => t != null), Or = (e, r) => [-1, ...r, e.length].reduce(({ xs: t, a: o }, n) => ({ xs: (t == null ? void 0 : t.concat([e.slice(o + 1, n)])) ?? [], a: n }), {}).xs, ro = (e, r) => e.slice(0, -1).concat([e[e.length - 1].concat(r[0])]).concat(r.slice(1)), ht = /\d/, lt = /^epubcfi\((.*)\)$/, Yt = (e) => e.replace(/[\^[\](),;=]/g, "^$&"), $r = (e) => lt.test(e) ? e : `epubcfi(${e})`, no = (e) => {
   var r;
   return ((r = e.match(lt)) == null ? void 0 : r[1]) ?? e;
 }, oo = (e) => (...r) => `epubcfi(${e(...r.map((t) => {
@@ -277,10 +277,10 @@ const eo = {
     t = o;
   }
   return r;
-}, Xt = (e) => Mr(e, Rr(e, "!")).map(ao), $e = (e) => {
+}, Xt = (e) => Or(e, Rr(e, "!")).map(ao), $e = (e) => {
   const r = io(no(e)), t = Rr(r, ",");
   if (!t.length) return Xt(r);
-  const [o, n, s] = Mr(r, t).map(Xt);
+  const [o, n, s] = Or(r, t).map(Xt);
   return { parent: o, start: n, end: s };
 }, lo = ({ index: e, id: r, offset: t, temporal: o, spatial: n, text: s, side: i }) => {
   var l;
@@ -771,7 +771,7 @@ const go = (e, r) => {
 }, Po = async (e) => {
   const r = new Uint8Array(await e.slice(0, 5).arrayBuffer());
   return r[0] === 37 && r[1] === 80 && r[2] === 68 && r[3] === 70 && r[4] === 45;
-}, Fo = ({ name: e, type: r }) => r === "application/vnd.comicbook+zip" || e.endsWith(".cbz"), Oo = async (e) => {
+}, Fo = ({ name: e, type: r }) => r === "application/vnd.comicbook+zip" || e.endsWith(".cbz"), Mo = async (e) => {
   const { name: r, type: t } = e;
   if (console.log("[isFB2] name:", r, "type:", t), t === "application/x-fictionbook+xml" || r && r.endsWith(".fb2"))
     return !0;
@@ -783,7 +783,7 @@ const go = (e, r) => {
     console.error("[isFB2] Error reading file content:", o);
   }
   return !1;
-}, Mo = ({ name: e, type: r }) => r === "application/x-zip-compressed-fb2" || e.endsWith(".fb2.zip") || e.endsWith(".fbz"), $o = async (e) => {
+}, Oo = ({ name: e, type: r }) => r === "application/x-zip-compressed-fb2" || e.endsWith(".fb2.zip") || e.endsWith(".fbz"), $o = async (e) => {
   const { configure: r, ZipReader: t, BlobReader: o, TextWriter: n, BlobWriter: s } = await import("./zip-DYE5jiUF.js");
   r({ useWebWorkers: !1 });
   const a = await new t(new o(e)).getEntries(), l = new Map(a.map((h) => [h.filename, h])), c = (h) => (f, ...b) => l.has(f) ? h(l.get(f), ...b) : null, d = c((h) => h.getData(new n())), u = c((h, f) => h.getData(new s(f)));
@@ -834,18 +834,18 @@ const Go = async (e) => {
   typeof e == "string" && (e = await Go(e));
   let r;
   if (e.isDirectory) {
-    const t = await Ro(e), { EPUB: o } = await import("./epub-ckasXVeA.js");
+    const t = await Ro(e), { EPUB: o } = await import("./epub-C5TVyO5f.js");
     r = await new o(t).init();
   } else if (e.size) if (await Io(e)) {
     const t = await $o(e);
     if (Fo(e)) {
       const { makeComicBook: o } = await import("./comic-book-CFGkssgs.js");
       r = o(t, e);
-    } else if (Mo(e)) {
+    } else if (Oo(e)) {
       const { makeFB2: o } = await import("./fb2-C35PDn_9.js"), { entries: n } = t, s = n.find((a) => a.filename.endsWith(".fb2")), i = await t.loadBlob((s ?? n[0]).filename);
       r = await o(i);
     } else {
-      const { EPUB: o } = await import("./epub-ckasXVeA.js");
+      const { EPUB: o } = await import("./epub-C5TVyO5f.js");
       r = await new o(t).init();
     }
   } else if (await Po(e)) {
@@ -856,7 +856,7 @@ const Go = async (e) => {
     if (await t(e)) {
       const n = await import("./fflate-Cq_OVrsP.js");
       r = await new o({ unzlib: n.unzlibSync }).open(e);
-    } else if (Oo(e)) {
+    } else if (Mo(e)) {
       const { makeFB2: n } = await import("./fb2-C35PDn_9.js");
       r = await n(e);
     }
@@ -865,20 +865,20 @@ const Go = async (e) => {
   if (!r) throw new Do("File type not supported");
   return r;
 }, Wo = async (e, r, t, o = null, n = null, s = null) => {
-  const i = yo(e, r, t, o, n, s), { EPUB: a } = await import("./epub-ckasXVeA.js");
+  const i = yo(e, r, t, o, n, s), { EPUB: a } = await import("./epub-C5TVyO5f.js");
   return new a(i).init();
 };
-var Me, ze, qe, ue;
+var Oe, ze, qe, ue;
 const Rt = class Rt {
   constructor(r, t, o = {}) {
-    X(this, Me);
+    X(this, Oe);
     X(this, ze);
     X(this, qe);
     X(this, ue);
     Z(this, ze, r), Z(this, qe, t), Z(this, ue, o), E(this, ue).hidden && this.hide(), E(this, ze).addEventListener(
       "mousemove",
       ({ screenX: n, screenY: s }) => {
-        n === E(this, ue).x && s === E(this, ue).y || (E(this, ue).x = n, E(this, ue).y = s, this.show(), E(this, Me) && clearTimeout(E(this, Me)), t() && Z(this, Me, setTimeout(this.hide.bind(this), 1e3)));
+        n === E(this, ue).x && s === E(this, ue).y || (E(this, ue).x = n, E(this, ue).y = s, this.show(), E(this, Oe) && clearTimeout(E(this, Oe)), t() && Z(this, Oe, setTimeout(this.hide.bind(this), 1e3)));
       },
       !1
     );
@@ -893,7 +893,7 @@ const Rt = class Rt {
     E(this, ze).style.removeProperty("cursor"), E(this, ue).hidden = !1;
   }
 };
-Me = new WeakMap(), ze = new WeakMap(), qe = new WeakMap(), ue = new WeakMap();
+Oe = new WeakMap(), ze = new WeakMap(), qe = new WeakMap(), ue = new WeakMap();
 let kt = Rt;
 var pe, le;
 class Uo extends EventTarget {
@@ -1262,7 +1262,7 @@ function Ft(e) {
     subitems: Ft(r == null ? void 0 : r.subitems)
   })) : [];
 }
-const ut = "-epub-media-overlay-active", Ot = "rgba(255, 214, 10, 0.4)", Jr = 1e4, Qr = "data-reactor-narration", Ko = "http://www.w3.org/ns/SMIL", nr = 6;
+const ut = "-epub-media-overlay-active", Mt = "rgba(255, 214, 10, 0.4)", Jr = 1e4, Qr = "data-reactor-narration", Ko = "http://www.w3.org/ns/SMIL", nr = 6;
 function wt(e) {
   if (!e) return;
   const r = e.split(":").map((i) => parseFloat(i));
@@ -1421,7 +1421,7 @@ function rn(e, r) {
         }
       })) return;
       const n = e.createElement("style");
-      n.setAttribute(Qr, "1"), n.textContent = `.${r} { background-color: ${Ot}; border-radius: 2px; }`, (t = e.head) == null || t.appendChild(n);
+      n.setAttribute(Qr, "1"), n.textContent = `.${r} { background-color: ${Mt}; border-radius: 2px; }`, (t = e.head) == null || t.appendChild(n);
     } catch {
     }
 }
@@ -1483,7 +1483,7 @@ function sn(e, r) {
            a:any-link { color: ${n.link} !important; }
            svg, img { background-color: transparent !important; ${o ? "" : "mix-blend-mode: multiply;"} }
            /* The forced body * background above hides the publisher's read-aloud highlight, so these themes deliberately draw ours instead. */
-           ${tn(r)} { background-color: ${Ot} !important; }` : ""}
+           ${tn(r)} { background-color: ${Mt} !important; }` : ""}
     ::selection { background-color: rgba(128, 128, 128, 0.3); }
   `;
 }
@@ -1516,7 +1516,7 @@ function ln(e) {
 function cn(e, r) {
   return sn(e, r) + ln(e) + (e.useBookLayout ? "" : an(e));
 }
-function Mt(e) {
+function Ot(e) {
   var n, s, i;
   const r = e.getBoundingClientRect(), t = (i = (s = (n = e.startContainer) == null ? void 0 : n.ownerDocument) == null ? void 0 : s.defaultView) == null ? void 0 : i.frameElement, o = t ? t.getBoundingClientRect() : { left: 0, top: 0 };
   return { left: r.left + o.left, top: r.top + o.top, right: r.right + o.left, bottom: r.bottom + o.top };
@@ -1554,7 +1554,7 @@ function un(e, r) {
       const l = a.getRangeAt(0), c = l.toString().trim();
       if (!c) return;
       const d = r.getCFI(l);
-      r.onSelection(c, d, Mt(l));
+      r.onSelection(c, d, Ot(l));
     }, 300);
   };
   return e.addEventListener("pointerdown", n, !0), e.addEventListener("click", s), e.addEventListener("selectionchange", i), () => {
@@ -1713,7 +1713,7 @@ class gn {
     }
   }
 }
-const Oe = "rx-glossary-term", or = "data-reactor-glossary-marked", sr = "data-reactor-glossary-style", Yo = "http://www.idpf.org/2007/ops", ir = 8;
+const Me = "rx-glossary-term", or = "data-reactor-glossary-marked", sr = "data-reactor-glossary-style", Yo = "http://www.idpf.org/2007/ops", ir = 8;
 function Tt(e) {
   return (e.textContent ?? "").replace(/\s+/g, " ").trim();
 }
@@ -1806,11 +1806,11 @@ function ot(e, r, t) {
   for (; l = i.nextNode(); ) a.push(l);
   for (const u of a) {
     const p = u.parentElement;
-    if (!p || p.closest(`.${Oe}, a, dfn`)) continue;
+    if (!p || p.closest(`.${Me}, a, dfn`)) continue;
     const h = u.textContent ?? "", f = s.exec(h);
     if (!(f != null && f[1])) continue;
     const b = f[1], m = h.slice(0, f.index), g = h.slice(f.index + b.length), v = e.createElement("span");
-    v.className = Oe, v.setAttribute("tabindex", "0"), v.setAttribute("role", "button"), v.setAttribute("data-gloss-term", b), v.textContent = b;
+    v.className = Me, v.setAttribute("tabindex", "0"), v.setAttribute("role", "button"), v.setAttribute("data-gloss-term", b), v.textContent = b;
     const A = e.createDocumentFragment();
     m && A.appendChild(e.createTextNode(m)), A.appendChild(v), g && A.appendChild(e.createTextNode(g)), (d = u.parentNode) == null || d.replaceChild(A, u);
   }
@@ -1820,19 +1820,19 @@ function ot(e, r, t) {
   }
   e.addEventListener("click", (u) => {
     var h, f;
-    const p = (f = (h = u.target) == null ? void 0 : h.closest) == null ? void 0 : f.call(h, `.${Oe}`);
+    const p = (f = (h = u.target) == null ? void 0 : h.closest) == null ? void 0 : f.call(h, `.${Me}`);
     p && c(p);
   }), e.addEventListener("keydown", (u) => {
     var f;
     const p = u, h = p.target;
-    (f = h == null ? void 0 : h.classList) != null && f.contains(Oe) && (p.key === "Enter" || p.key === " ") && (p.preventDefault(), c(h));
+    (f = h == null ? void 0 : h.classList) != null && f.contains(Me) && (p.key === "Enter" || p.key === " ") && (p.preventDefault(), c(h));
   });
 }
 function xn(e) {
   var t;
   if (e.querySelector(`[${sr}]`)) return;
   const r = e.createElement("style");
-  r.setAttribute(sr, "1"), r.textContent = `.${Oe} { text-decoration: underline; text-decoration-style: dotted; text-decoration-color: currentColor; text-decoration-thickness: 1px; cursor: pointer; }`, (t = e.head) == null || t.appendChild(r);
+  r.setAttribute(sr, "1"), r.textContent = `.${Me} { text-decoration: underline; text-decoration-style: dotted; text-decoration-color: currentColor; text-decoration-thickness: 1px; cursor: pointer; }`, (t = e.head) == null || t.appendChild(r);
 }
 function yn(e, r, t = {}) {
   const o = document.createElement("foliate-view");
@@ -1970,7 +1970,7 @@ class kn {
     r.settings && (this.currentSettings = je(r.settings, null));
     try {
       this.createView();
-      const { makeLocalZipLoader: n } = await import("./local-zip-loader-DkW60oo9.js"), { EPUB: s } = await import("./epub-ckasXVeA.js"), i = await n(t, o), a = await new s(i).init();
+      const { makeLocalZipLoader: n } = await import("./local-zip-loader-DkW60oo9.js"), { EPUB: s } = await import("./epub-C5TVyO5f.js"), i = await n(t, o), a = await new s(i).init();
       await this.view.open(a), await this.finishOpen(r);
     } catch (n) {
       this.emitError((n == null ? void 0 : n.message) ?? "Failed to open local book");
@@ -1988,7 +1988,7 @@ class kn {
     r.settings && (this.currentSettings = je(r.settings, null));
     try {
       this.createView();
-      const { makeRemoteZipLoader: s } = await import("./remote-zip-loader-Bhp_1Nfg.js"), { EPUB: i } = await import("./epub-ckasXVeA.js"), a = await s(t, o, n), l = await new i(a).init();
+      const { makeRemoteZipLoader: s } = await import("./remote-zip-loader-Bhp_1Nfg.js"), { EPUB: i } = await import("./epub-C5TVyO5f.js"), a = await s(t, o, n), l = await new i(a).init();
       await this.view.open(l), await this.finishOpen(r);
     } catch (s) {
       this.emitError((s == null ? void 0 : s.message) ?? "Failed to open remote book");
@@ -2055,7 +2055,7 @@ class kn {
     }), r.addEventListener("show-annotation", (t) => {
       this.lastAnnotationHitAt = performance.now();
       const o = t.detail;
-      this.emit({ type: "annotationTap", cfi: (o == null ? void 0 : o.value) ?? null, rect: o != null && o.range ? Mt(o.range) : null });
+      this.emit({ type: "annotationTap", cfi: (o == null ? void 0 : o.value) ?? null, rect: o != null && o.range ? Ot(o.range) : null });
     }), r.addEventListener("relocate", (t) => {
       const o = t.detail ?? {};
       r._narrationNav || this.narration.markManualNav(performance.now());
@@ -2219,6 +2219,61 @@ class kn {
     var r, t;
     (t = (r = this.view) == null ? void 0 : r.mediaOverlay) == null || t.dispatchEvent(new CustomEvent("unhighlight"));
   }
+  /** W1-B5: the vendored view's own full media-overlay player (src/vendor/foliate/epub.js
+   * `MediaOverlay`) - owns real `<audio>` playback, unlike `narrationPrepare`/`narrationHighlight`
+   * above which only track SMIL timing for a host that plays audio itself natively.
+   * Null before a book with no media overlays has loaded; present only after `loaded` reports
+   * `hasMediaOverlay: true`. Additive, non-protocol (same shape as `getKoboLocation`) - a host
+   * that never calls this is unaffected. */
+  getMediaOverlay() {
+    var r;
+    return ((r = this.view) == null ? void 0 : r.mediaOverlay) ?? null;
+  }
+  /** Starts `getMediaOverlay()`'s playback at the current section. */
+  startMediaOverlay() {
+    var r, t;
+    return (t = (r = this.view) == null ? void 0 : r.startMediaOverlay) == null ? void 0 : t.call(r);
+  }
+  /** The book's active-overlay CSS class (`book.media.activeClass`), for a host that wants to
+   * recognise which element the vendored view itself marks as currently playing. */
+  getMediaActiveClass() {
+    var r, t, o;
+    return ((o = (t = (r = this.view) == null ? void 0 : r.book) == null ? void 0 : t.media) == null ? void 0 : o.activeClass) ?? null;
+  }
+  /* --------------------------------------------------------------- tts (synthesized speech) */
+  // R-G4 (W1-B5): Reactor owns no TTS audio and no block segmentation - a host that synthesizes
+  // speech server-side (not Reactor's own SSML/Web Speech path) still needs to keep its own
+  // block highlight in sync with whatever Document is actually rendered. These three methods are
+  // the narrow, engine-neutral primitives that need: resolve a CFI to a Range on the currently
+  // rendered document, read the per-section overlayer to draw/clear an arbitrary highlight, and
+  // scroll a Range into view. None of this touches protocol v1 (frozen, WORKTREE_BRIEF.md rule
+  // 1) - same non-protocol shape as `setExtraCss`/`getKoboLocation` above.
+  /** `renderer.getContents()` passthrough: `{ index, doc, overlayer }` per currently rendered
+   * section. `overlayer.add/remove` let a host draw its own highlight (e.g. `Overlayer.highlight`
+   * from src/vendor/foliate/overlayer.js, importable by a host that wants the exact same draw
+   * function Reactor's own annotations use) for a Range it computed itself. */
+  getContents() {
+    var r, t, o;
+    return ((o = (t = (r = this.view) == null ? void 0 : r.renderer) == null ? void 0 : t.getContents) == null ? void 0 : o.call(t)) ?? [];
+  }
+  /** Scrolls an arbitrary Range into view, the same call the vendored view's own TTS/search
+   * result navigation uses internally. */
+  async scrollToRange(r, t = !1) {
+    var o, n, s;
+    await ((s = (n = (o = this.view) == null ? void 0 : o.renderer) == null ? void 0 : n.scrollToAnchor) == null ? void 0 : s.call(n, r, t));
+  }
+  /** Resolves a CFI to `{ index, anchor }` without navigating - `anchor` must be called with the
+   * matching section's own Document (from `getContents()`) to get a `Range`. Returns undefined
+   * before a book is open, for an unparseable CFI, or when the vendored view does not expose
+   * `resolveCFI` (older cached bundle). */
+  resolveCFI(r) {
+    var t, o;
+    try {
+      return (o = (t = this.view) == null ? void 0 : t.resolveCFI) == null ? void 0 : o.call(t, r);
+    } catch {
+      return;
+    }
+  }
   /* --------------------------------------------------------------------- dispatch */
   /** Dispatches a parsed `ReaderCommand`, mirroring `__readerCommand`'s switch exactly. */
   dispatch(r) {
@@ -2352,10 +2407,10 @@ const _i = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   ContentCore: kn,
   DEFAULT_ACTIVE_CLASS: ut,
   DEFAULT_SETTINGS: nn,
-  GLOSSARY_INLINE_CLASS: Oe,
+  GLOSSARY_INLINE_CLASS: Me,
   MIME: vn,
   NARRATION_FOLLOW_PAUSE_MS: Jr,
-  NARRATION_HIGHLIGHT: Ot,
+  NARRATION_HIGHLIGHT: Mt,
   NARRATION_STYLE_ATTR: Qr,
   NarrationController: en,
   SEARCH_MAX_RESULTS: hn,
@@ -2382,7 +2437,7 @@ const _i = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   serializeToc: Ft,
   themeCSS: sn,
   themeFor: on,
-  viewportRect: Mt
+  viewportRect: Ot
 }, Symbol.toStringTag, { value: "Module" })), Hi = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   AnnotationManager: gn,
@@ -3326,14 +3381,14 @@ function Ns(e, r, t = {}) {
     var w;
     return (w = t.onBack) == null ? void 0 : w.call(t);
   });
-  let U = 0, O = 0, V = "other", R = !1;
+  let U = 0, M = 0, V = "other", R = !1;
   function H(w) {
-    w.pointerType !== "pen" && (U = w.clientX, O = w.clientY, V = Cs(w.target, n.root, e), R = V !== "other");
+    w.pointerType !== "pen" && (U = w.clientX, M = w.clientY, V = Cs(w.target, n.root, e), R = V !== "other");
   }
   function z(w) {
     if (!R) return;
     R = !1;
-    const W = w.clientX - U, ne = w.clientY - O, ce = Es(V, W, ne, v());
+    const W = w.clientX - U, ne = w.clientY - M, ce = Es(V, W, ne, v());
     !a && ce.action !== null || (ce.action === "cycle-next" ? P(1) : ce.action === "cycle-prev" ? P(-1) : ce.action === "close" && F());
   }
   e.addEventListener("pointerdown", H), e.addEventListener("pointerup", z);
@@ -3749,15 +3804,15 @@ class Fs {
     this.stack = [{ kind: "blank" }], this.index = 0;
   }
 }
-const Os = {
+const Ms = {
   "fold-tablet": 320,
   desktop: 340
-}, et = 240, ur = 16, Ms = {
+}, et = 240, ur = 16, Os = {
   "fold-tablet": 0.6,
   desktop: 0.7
 };
 function $s(e, r, t) {
-  const o = Ms[t], n = Math.max(et, r * o);
+  const o = Os[t], n = Math.max(et, r * o);
   return e < et ? et : e > n ? n : e;
 }
 const Ln = /* @__PURE__ */ new WeakMap();
@@ -4040,12 +4095,12 @@ function Ys({ container: e, core: r, hostChannel: t, options: o = {} }) {
     F.className = "rx-notes-row-swatch", P.color && F.style.setProperty("--rx-notes-row-color", P.color);
     const U = n.createElement("span");
     U.className = "rx-notes-row-body";
-    const O = n.createElement("span");
-    O.className = "rx-notes-row-snippet", O.textContent = P.note ?? P.text ?? "";
+    const M = n.createElement("span");
+    M.className = "rx-notes-row-snippet", M.textContent = P.note ?? P.text ?? "";
     const V = n.createElement("span");
     V.className = "rx-notes-row-meta";
     const R = c.get(P.cfi);
-    V.textContent = Ks(P.kind, R ?? null), U.append(O, V), D.append(F, U), D.setAttribute("aria-label", `${V.textContent}: ${O.textContent}`), R === void 0 && u(P.cfi), D.addEventListener("click", () => r.goTo(P.cfi));
+    V.textContent = Ks(P.kind, R ?? null), U.append(M, V), D.append(F, U), D.setAttribute("aria-label", `${V.textContent}: ${M.textContent}`), R === void 0 && u(P.cfi), D.addEventListener("click", () => r.goTo(P.cfi));
     const H = n.createElement("div");
     return H.setAttribute("role", "listitem"), H.appendChild(D), H;
   }
@@ -4357,19 +4412,19 @@ function Nn(e, r, t) {
   const b = f ? Ys({ container: n.notesBody, core: r, hostChannel: t.hostChannel }) : null;
   ((Re = t.capabilities) == null ? void 0 : Re.glossary) === !1 && (n.glossaryTabBtn.hidden = !0);
   function m(k) {
-    k !== c && (c = k, n.contextTabBtn.classList.toggle("active", k === "context"), n.contextTabBtn.setAttribute("aria-selected", String(k === "context")), n.glossaryTabBtn.classList.toggle("active", k === "glossary"), n.glossaryTabBtn.setAttribute("aria-selected", String(k === "glossary")), n.notesTabBtn.classList.toggle("active", k === "notes"), n.notesTabBtn.setAttribute("aria-selected", String(k === "notes")), n.searchBar.hidden = k !== "context", n.glossaryPanelMount.hidden = k !== "glossary", n.notesBody.hidden = k !== "notes", k === "context" ? O(a.current) : k === "glossary" ? (n.resultsScroller.hidden = !0, n.contextPage.hidden = !0, r.getGlossaryTerms().then((M) => l.setTerms(M))) : (n.resultsScroller.hidden = !0, n.contextPage.hidden = !0, b == null || b.onActivate()));
+    k !== c && (c = k, n.contextTabBtn.classList.toggle("active", k === "context"), n.contextTabBtn.setAttribute("aria-selected", String(k === "context")), n.glossaryTabBtn.classList.toggle("active", k === "glossary"), n.glossaryTabBtn.setAttribute("aria-selected", String(k === "glossary")), n.notesTabBtn.classList.toggle("active", k === "notes"), n.notesTabBtn.setAttribute("aria-selected", String(k === "notes")), n.searchBar.hidden = k !== "context", n.glossaryPanelMount.hidden = k !== "glossary", n.notesBody.hidden = k !== "notes", k === "context" ? M(a.current) : k === "glossary" ? (n.resultsScroller.hidden = !0, n.contextPage.hidden = !0, r.getGlossaryTerms().then((O) => l.setTerms(O))) : (n.resultsScroller.hidden = !0, n.contextPage.hidden = !0, b == null || b.onActivate()));
   }
   const g = () => m("context"), v = () => m("glossary"), A = () => m("notes");
   n.contextTabBtn.addEventListener("click", g), n.glossaryTabBtn.addEventListener("click", v), n.notesTabBtn.addEventListener("click", A);
   function T(k) {
-    const M = i.rowAt(k);
-    if (!M) return o.createElement("div");
-    if (M.kind === "header") {
+    const O = i.rowAt(k);
+    if (!O) return o.createElement("div");
+    if (O.kind === "header") {
       const Ce = o.createElement("div");
-      return Ce.className = "rx-ctx-group-header", Ce.setAttribute("role", "listitem"), Ce.textContent = M.label, Ce;
+      return Ce.className = "rx-ctx-group-header", Ce.setAttribute("role", "listitem"), Ce.textContent = O.label, Ce;
     }
     const oe = o.createElement("button");
-    oe.type = "button", oe.className = "rx-ctx-result", oe.setAttribute("role", "listitem"), oe.innerHTML = ii(M.item), oe.addEventListener("click", () => H(M.item, M.groupLabel));
+    oe.type = "button", oe.className = "rx-ctx-result", oe.setAttribute("role", "listitem"), oe.innerHTML = ii(O.item), oe.addEventListener("click", () => H(O.item, O.groupLabel));
     const xe = o.createElement("div");
     return xe.setAttribute("role", "listitem"), xe.appendChild(oe), xe;
   }
@@ -4383,8 +4438,8 @@ function Nn(e, r, t) {
     n.breadcrumb.replaceChildren();
     const k = o.createElement("button");
     k.type = "button", k.textContent = "Back", k.disabled = !a.canGoBack, k.setAttribute("aria-label", "Back"), k.addEventListener("click", V);
-    const M = o.createElement("button");
-    M.type = "button", M.textContent = "Forward", M.disabled = !a.canGoForward, M.setAttribute("aria-label", "Forward"), M.addEventListener("click", R), n.breadcrumb.append(k, M), n.openInMainBtn.disabled = a.current.kind !== "page";
+    const O = o.createElement("button");
+    O.type = "button", O.textContent = "Forward", O.disabled = !a.canGoForward, O.setAttribute("aria-label", "Forward"), O.addEventListener("click", R), n.breadcrumb.append(k, O), n.openInMainBtn.disabled = a.current.kind !== "page";
   }
   function P() {
     n.resultsScroller.hidden = !1, n.contextPage.hidden = !0, N.render();
@@ -4397,26 +4452,26 @@ function Nn(e, r, t) {
   }
   function U(k) {
     n.resultsScroller.hidden = !0, n.contextPage.hidden = !1;
-    const M = F();
-    M && M.goTo(k);
+    const O = F();
+    O && O.goTo(k);
   }
-  function O(k) {
+  function M(k) {
     k.kind === "blank" ? D() : k.kind === "results" ? P() : U(k.target), C();
   }
   function V() {
     const k = a.back();
-    k && O(k);
+    k && M(k);
   }
   function R() {
     const k = a.forward();
-    k && O(k);
+    k && M(k);
   }
-  function H(k, M) {
-    a.push({ kind: "page", target: k.cfi, label: M }), O(a.current);
+  function H(k, O) {
+    a.push({ kind: "page", target: k.cfi, label: O }), M(a.current);
   }
   function z() {
     const k = n.searchInput.value.trim();
-    i.reset(), k ? a.current.kind !== "results" && a.push({ kind: "results" }) : a.reset(), O(a.current), h && clearTimeout(h), k && (h = setTimeout(() => r.runSearch(k), oi));
+    i.reset(), k ? a.current.kind !== "results" && a.push({ kind: "results" }) : a.reset(), M(a.current), h && clearTimeout(h), k && (h = setTimeout(() => r.runSearch(k), oi));
   }
   n.searchInput.addEventListener("input", z);
   function x(k) {
@@ -4435,18 +4490,18 @@ function Nn(e, r, t) {
   const re = () => be();
   s.addEventListener("click", re);
   function Y() {
-    const k = getComputedStyle(e).getPropertyValue("--rx-ctx-width"), M = parseFloat(k);
-    if (!Number.isNaN(M) && M > 0) return M;
+    const k = getComputedStyle(e).getPropertyValue("--rx-ctx-width"), O = parseFloat(k);
+    if (!Number.isNaN(O) && O > 0) return O;
     const oe = t.getSizeClass();
-    return oe === "phone" ? et : Os[oe];
+    return oe === "phone" ? et : Ms[oe];
   }
   n.resizeHandle.setAttribute("aria-valuenow", String(Math.round(Y())));
-  function J(k, M) {
+  function J(k, O) {
     var Ce;
     const oe = t.getSizeClass();
     if (oe === "phone") return;
     const xe = $s(k, e.clientWidth || 1200, oe);
-    e.style.setProperty("--rx-ctx-width", `${xe}px`), n.resizeHandle.setAttribute("aria-valuenow", String(Math.round(xe))), u && Ne(e, { right: xe }), M && ((Ce = t.onWidthChange) == null || Ce.call(t, xe));
+    e.style.setProperty("--rx-ctx-width", `${xe}px`), n.resizeHandle.setAttribute("aria-valuenow", String(Math.round(xe))), u && Ne(e, { right: xe }), O && ((Ce = t.onWidthChange) == null || Ce.call(t, xe));
   }
   let Q = !1, w = 0, W = 0;
   function ne(k) {
@@ -4473,14 +4528,14 @@ function Nn(e, r, t) {
     u ? be() : ve();
   }
   function B(k) {
-    u || ve(), m("glossary"), r.getGlossaryTerms().then((M) => {
-      l.setTerms(M), l.scrollToAndFlash(k);
+    u || ve(), m("glossary"), r.getGlossaryTerms().then((O) => {
+      l.setTerms(O), l.scrollToAndFlash(k);
     });
   }
   function ee() {
     u && (t.getSizeClass() === "phone" ? Ne(e, { right: 0 }) : Ne(e, { right: Y() }));
   }
-  O(a.current);
+  M(a.current);
   function ae() {
     p || (p = !0, h && clearTimeout(h), I(), n.searchInput.removeEventListener("input", z), n.openInMainBtn.removeEventListener("click", _), n.closeBtn.removeEventListener("click", te), s.removeEventListener("click", re), n.resizeHandle.removeEventListener("pointerdown", ne), o.removeEventListener("pointermove", ce), o.removeEventListener("pointerup", ie), n.resizeHandle.removeEventListener("keydown", Ee), n.contextTabBtn.removeEventListener("click", g), n.notesTabBtn.removeEventListener("click", A), b == null || b.destroy(), n.glossaryTabBtn.removeEventListener("click", v), l.destroy(), N.destroy(), d == null || d.destroy(), e.classList.remove("right-sidebar-open", "right-sidebar-resizing"), Ne(e, { right: 0 }), n.root.remove(), s.remove());
   }
@@ -4690,7 +4745,7 @@ function Bn(e, r, t, o = {}) {
     }
   }
   const U = r.on(F);
-  function O(z) {
+  function M(z) {
     if (z.type === "configure") {
       if (l) return;
       l = !0, z.capabilities.playback && C();
@@ -4699,8 +4754,8 @@ function Bn(e, r, t, o = {}) {
       c = z.playing, d = z.positionSec, u = z.rate, T(), D();
     }
   }
-  const V = t.onCommand(O), R = t.getConfig();
-  R && O(R);
+  const V = t.onCommand(M), R = t.getConfig();
+  R && M(R);
   function H() {
     a || (a = !0, U(), V(), s && (s.playPauseBtn.removeEventListener("click", m), s.skipBackBtn.removeEventListener("click", g), s.skipForwardBtn.removeEventListener("click", v), s.rateBtn.removeEventListener("click", A), s.root.remove(), Ne(e, { bottom: 0 })));
   }
@@ -4995,10 +5050,10 @@ function bi({ shellRoot: e, core: r, hostChannel: t, options: o = {} }) {
     s.noteForm.hidden = !x, s.noteToggleBtn.setAttribute("aria-expanded", String(x)), x && s.noteTextarea.focus();
   }
   s.noteToggleBtn.addEventListener("click", U);
-  function O() {
+  function M() {
     s.noteForm.hidden = !0, s.noteToggleBtn.setAttribute("aria-expanded", "false");
   }
-  s.noteCancelBtn.addEventListener("click", O);
+  s.noteCancelBtn.addEventListener("click", M);
   function V() {
     const x = s.noteTextarea.value.trim() || null;
     (c == null ? void 0 : c.kind) === "create" ? (t.emitIntent({
@@ -5023,7 +5078,7 @@ function bi({ shellRoot: e, core: r, hostChannel: t, options: o = {} }) {
       l = !0, A(), N();
       for (const x of s.colorButtons) x.removeEventListener("click", D);
       for (const [x, I] of Object.entries(s.styleButtons)) I.removeEventListener("click", F[x]);
-      s.noteToggleBtn.removeEventListener("click", U), s.noteCancelBtn.removeEventListener("click", O), s.noteSaveBtn.removeEventListener("click", V), s.deleteBtn.removeEventListener("click", R), s.closeBtn.removeEventListener("click", H), s.root.remove();
+      s.noteToggleBtn.removeEventListener("click", U), s.noteCancelBtn.removeEventListener("click", M), s.noteSaveBtn.removeEventListener("click", V), s.deleteBtn.removeEventListener("click", R), s.closeBtn.removeEventListener("click", H), s.root.remove();
     }
   }
   return { isOpen: () => !s.root.hidden, close: u, destroy: z };
@@ -5118,7 +5173,7 @@ function vi(e) {
   g.append(v, A, T.row, N.row, C, P, D);
   const F = Ge("theme"), U = document.createElement("div");
   U.className = "rx-settings-swatches", U.setAttribute("role", "radiogroup"), U.setAttribute("aria-label", "Theme"), F.append(U);
-  const O = Ge("controls"), V = De("Swipe to turn pages", "swipe"), R = Xe(
+  const M = Ge("controls"), V = De("Swipe to turn pages", "swipe"), R = Xe(
     "Tap zone size",
     [
       { id: "standard", label: "Standard" },
@@ -5128,13 +5183,13 @@ function vi(e) {
   ), H = document.createElement("div");
   H.className = "rx-settings-volumekeys", H.hidden = !0;
   const z = De("Volume keys turn pages", "volumeKeys");
-  H.append(z), O.append(V, R, H);
+  H.append(z), M.append(V, R, H);
   const x = Ge("playback"), I = document.createElement("p");
   I.className = "rx-settings-empty", I.textContent = "No narration provider for this book.";
   const _ = document.createElement("div");
   _.className = "rx-settings-playback-controls", _.hidden = !0;
   const te = Pe("Narration speed", 0.5, 3, 0.1), re = Pe("Skip forward (seconds)", 5, 60, 5);
-  return _.append(te.row, re.row), x.append(I, _), p.append(h, g, F, O, x), t.append(o, i, c, p), e.append(r, t), {
+  return _.append(te.row, re.row), x.append(I, _), p.append(h, g, F, M, x), t.append(o, i, c, p), e.append(r, t), {
     root: t,
     scrim: r,
     closeBtn: s,
@@ -5146,7 +5201,7 @@ function vi(e) {
       typography: h,
       layout: g,
       theme: F,
-      controls: O,
+      controls: M,
       playback: x
     },
     fontSizeInput: f.input,
@@ -5581,10 +5636,10 @@ function In(e, r, t) {
     T({ lineHeight: Number(n.lineHeightInput.value) });
   }
   n.lineHeightInput.addEventListener("change", U);
-  function O() {
+  function M() {
     T({ justify: !f().justify });
   }
-  n.justifyToggle.addEventListener("click", O);
+  n.justifyToggle.addEventListener("click", M);
   function V() {
     T({ hyphenate: !f().hyphenate });
   }
@@ -5762,10 +5817,10 @@ function Ii(e, r, t = {}) {
   function U() {
     F(), ie.refreshLayout();
   }
-  const O = typeof ResizeObserver == "function" ? new ResizeObserver(() => U()) : null;
-  O == null || O.observe(e);
+  const M = typeof ResizeObserver == "function" ? new ResizeObserver(() => U()) : null;
+  M == null || M.observe(e);
   const V = () => U();
-  O || window.addEventListener("resize", V);
+  M || window.addEventListener("resize", V);
   const R = typeof matchMedia == "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null, H = () => N();
   (Wt = R == null ? void 0 : R.addEventListener) == null || Wt.call(R, "change", H);
   function z(S, q) {
@@ -5835,7 +5890,7 @@ function Ii(e, r, t = {}) {
     onOpenInGlossary: (S) => {
       ie.openGlossaryTerm(S), c = "right", s.contextBtn.setAttribute("aria-pressed", "true"), f();
     }
-  }), M = (Vt = t.hostChannel) == null ? void 0 : Vt.onCommand((S) => {
+  }), O = (Vt = t.hostChannel) == null ? void 0 : Vt.onCommand((S) => {
     var q;
     S.type === "dismiss" && !w() && ((q = t.hostChannel) == null || q.emitIntent({ type: "back" }));
   }), oe = () => {
@@ -5864,9 +5919,9 @@ function Ii(e, r, t = {}) {
   function Fn() {
     F();
   }
-  function On() {
+  function Mn() {
     var S;
-    u || (u = !0, Pn(), O == null || O.disconnect(), O || window.removeEventListener("resize", V), (S = R == null ? void 0 : R.removeEventListener) == null || S.call(R, "change", H), n.removeEventListener("keydown", W), s.zoneLeft.removeEventListener("click", _), s.zoneRight.removeEventListener("click", te), s.zoneCentre.removeEventListener("click", re), s.zoneLeft.removeEventListener("keydown", Y), s.zoneRight.removeEventListener("keydown", J), s.zoneCentre.removeEventListener("keydown", Q), s.historyBackBtn.removeEventListener("click", ne), s.historyForwardBtn.removeEventListener("click", ce), s.contextBtn.removeEventListener("click", Ee), s.bookmarkBtn.removeEventListener("click", B), ee == null || ee(), M == null || M(), D == null || D(), ae == null || ae.destroy(), ie.destroy(), ve == null || ve.destroy(), s.settingsBtn.removeEventListener("click", Re), me.destroy(), k.destroy(), s.scrubber.removeEventListener("pointerdown", oe), s.scrubber.removeEventListener("change", xe), s.contentsBtn.removeEventListener("click", A), g.destroy(), h.clear(), i.classList.remove(
+    u || (u = !0, Pn(), M == null || M.disconnect(), M || window.removeEventListener("resize", V), (S = R == null ? void 0 : R.removeEventListener) == null || S.call(R, "change", H), n.removeEventListener("keydown", W), s.zoneLeft.removeEventListener("click", _), s.zoneRight.removeEventListener("click", te), s.zoneCentre.removeEventListener("click", re), s.zoneLeft.removeEventListener("keydown", Y), s.zoneRight.removeEventListener("keydown", J), s.zoneCentre.removeEventListener("keydown", Q), s.historyBackBtn.removeEventListener("click", ne), s.historyForwardBtn.removeEventListener("click", ce), s.contextBtn.removeEventListener("click", Ee), s.bookmarkBtn.removeEventListener("click", B), ee == null || ee(), O == null || O(), D == null || D(), ae == null || ae.destroy(), ie.destroy(), ve == null || ve.destroy(), s.settingsBtn.removeEventListener("click", Re), me.destroy(), k.destroy(), s.scrubber.removeEventListener("pointerdown", oe), s.scrubber.removeEventListener("change", xe), s.contentsBtn.removeEventListener("click", A), g.destroy(), h.clear(), i.classList.remove(
       "reader-shell",
       "ui-visible",
       "e-ink",
@@ -5883,7 +5938,7 @@ function Ii(e, r, t = {}) {
     onChromeState: (S) => (h.add(S), () => h.delete(S)),
     setBarsVisible: b,
     refreshSizeClass: Fn,
-    destroy: On
+    destroy: Mn
   };
 }
 const Di = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -5952,6 +6007,12 @@ function Fi(e, r = {}) {
       s(), t.setExtraCss(i);
     },
     getKoboLocation: () => t.getKoboLocation(),
+    getMediaOverlay: () => t.getMediaOverlay(),
+    startMediaOverlay: () => t.startMediaOverlay(),
+    getMediaActiveClass: () => t.getMediaActiveClass(),
+    getContents: () => t.getContents(),
+    scrollToRange: (i, a) => t.scrollToRange(i, a),
+    resolveCFI: (i) => t.resolveCFI(i),
     destroy: () => {
       n || (n = !0, e.replaceChildren());
     }
@@ -5965,7 +6026,7 @@ export {
   ji as R,
   po as a,
   Hi as b,
-  Mi as c,
+  Oi as c,
   Di as d,
   Gi as e,
   $i as f,

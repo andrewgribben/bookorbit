@@ -36,15 +36,19 @@ const NAVIGATION_DEBOUNCE_MS = 300
  *   does one small Range probe request instead.
  * - `isFixedLayout` is always `false`: Reactor's v1 `loaded` event does not report whether the
  *   opened book is pre-paginated (no equivalent of `useFoliate`'s `rendition.layout` check).
- * - Media overlay (embedded narration) is unavailable: `getMediaOverlay`/`startMediaOverlay`
- *   return `null`/no-op. Reactor's narration primitive is a different command/event shape
- *   (`narrationPrepare`/`narrationHighlight`/`narrationTimeline`) that B5 would need to wire up;
- *   out of scope here (R-G6).
- * - Synthesized TTS block-highlighting has no Reactor equivalent at all (R-G4). Per the plan's
- *   standing decision (section 9.5), TTS is a known regression while this flag is on; this
- *   composable does nothing to enable or disable it - `ReaderView.vue`'s TTS composables keep
- *   reaching into `useFoliateTts`'s direct-DOM-access layer, which has no renderer to attach to
- *   on this path and should be treated as non-functional behind the flag.
+ * - Media overlay (embedded narration, W1-B5): `getMediaOverlay()`/`startMediaOverlay()`/
+ *   `getMediaActiveClass()` expose the Reactor web host's own additive API wrapping the vendored
+ *   foliate view's full `MediaOverlay` player (real `<audio>` playback, same shape BookOrbit's
+ *   `useMediaOverlay`/`media-overlay-start.ts` already drive against the plain foliate path) -
+ *   this is a drop-in, no change needed in those composables. `narrationPrepare`/
+ *   `narrationTimeline` (used by Android's host-driven-audio model) are untouched and available
+ *   too, but this composable does not need them for the web reader's existing player.
+ * - Synthesized TTS block-highlighting (R-G4): Reactor has no block segmentation or TTS audio of
+ *   its own, but exposes a narrow escape hatch (`host.getContents()`/`host.scrollToRange()`/
+ *   `host.resolveCFI()`) that this composable wraps in `makeTtsViewShim()` into the exact
+ *   foliate-view shape `useFoliateTts.setFoliateSource(doc, viewEl)` already expects
+ *   (`.renderer.getContents()`/`.renderer.scrollToAnchor()`, `.resolveCFI()`) - `useFoliateTts`
+ *   itself needs no change to work against either engine.
  * - Kobo/KOReader progress-sync fields (W1-B3, R-G2 "stays web-side"): `cfi`, `fraction`,
  *   `chapterTitle`, `location` (page count) come straight off Reactor's `relocate` event (the
  *   last is an opaque passthrough of foliate's own object, computed inside Reactor exactly as it
@@ -211,6 +215,25 @@ export function useReactor(
 
   const rendererShim = makeRendererShim()
 
+  /** R-G4 (W1-B5): `useFoliateTts.setFoliateSource(doc, viewEl)` expects a foliate-view-shaped
+   * element (`.renderer.getContents()`/`.renderer.scrollToAnchor()`, `.resolveCFI()`) so it can
+   * draw its own block highlight and resolve a resume CFI - the exact same contract it already
+   * uses against the full foliate view. This shim satisfies that contract against the Reactor
+   * host's own additive escape hatch (`getContents`/`scrollToRange`/`resolveCFI`), so
+   * `useFoliateTts` itself needs no change to work against either engine. */
+  function makeTtsViewShim(el: HTMLElement): HTMLElement {
+    const shim = el as HTMLElement & {
+      renderer?: { getContents(): unknown[]; scrollToAnchor?(range: Range, select?: boolean): Promise<void> }
+      resolveCFI?: (cfi: string) => { index: number; anchor: (doc: Document) => Range } | undefined
+    }
+    shim.renderer = {
+      getContents: () => host?.getContents() ?? [],
+      scrollToAnchor: (range, select) => host?.scrollToRange(range, select) ?? Promise.resolve(),
+    }
+    shim.resolveCFI = (cfi) => host?.resolveCFI(cfi)
+    return shim
+  }
+
   function makeViewShim(): ReactorView {
     return {
       search: (opts) => runSearch(opts.query),
@@ -304,7 +327,7 @@ export function useReactor(
           isRtl.value = event.isRtl
           clearTimeout(loadTimeoutId)
           onApplyStyles?.(rendererShim)
-          if (el.firstElementChild) onChapterLoad?.(el.ownerDocument, el.firstElementChild as HTMLElement)
+          if (el.firstElementChild) onChapterLoad?.(el.ownerDocument, makeTtsViewShim(el.firstElementChild as HTMLElement))
           break
         }
         case 'relocate': {
@@ -439,9 +462,9 @@ export function useReactor(
     bookLanguage,
     isFixedLayout,
     hasMediaOverlay,
-    getMediaOverlay: (): FoliateMediaOverlay | null => null,
-    startMediaOverlay: (): unknown => undefined,
-    getMediaActiveClass: (): string | null => null,
+    getMediaOverlay: (): FoliateMediaOverlay | null => (host?.getMediaOverlay() as FoliateMediaOverlay | null) ?? null,
+    startMediaOverlay: (): unknown => host?.startMediaOverlay(),
+    getMediaActiveClass: (): string | null => host?.getMediaActiveClass() ?? null,
     view: viewRef,
     open,
     prev: () => host?.dispatch({ type: 'prev' }),
