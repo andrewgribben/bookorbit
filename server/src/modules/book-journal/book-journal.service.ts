@@ -4,6 +4,7 @@ import { BOOK_JOURNAL_LIST_LIMIT, type BookJournalEntry, type BookJournalStatus 
 
 import type { RequestUser } from '../../common/types/request-user';
 import type { BookJournalEntryRow } from '../../db/schema';
+import { AchievementEventsService, ACHIEVEMENT_EVENT_BOOK_JOURNAL_CREATED } from '../achievement/achievement-events.service';
 import { BookService } from '../book/book.service';
 import { BookJournalRepository, type BookJournalEntryPatch } from './book-journal.repository';
 import type { CreateBookJournalEntryDto } from './dto/create-book-journal-entry.dto';
@@ -18,6 +19,7 @@ export class BookJournalService {
   constructor(
     private readonly repo: BookJournalRepository,
     private readonly bookService: BookService,
+    private readonly achievementEvents: AchievementEventsService,
   ) {}
 
   async list(bookId: number, user: RequestUser, status: BookJournalStatus = 'active'): Promise<BookJournalEntry[]> {
@@ -45,7 +47,10 @@ export class BookJournalService {
       positionSeconds: dto.positionSeconds ?? null,
       createdAt: resolveCreatedAt(dto.createdAt, now),
     });
-    if (inserted) return toBookJournalEntry(inserted);
+    if (inserted) {
+      this.achievementEvents.emit(ACHIEVEMENT_EVENT_BOOK_JOURNAL_CREATED, { userId: user.id, bookId, journalEntryId: inserted.id });
+      return toBookJournalEntry(inserted);
+    }
 
     const existing = await this.repo.findByClientId(user.id, dto.clientId);
     if (!existing) throw new ConflictException('Journal entry could not be created; retry the request');

@@ -60,8 +60,9 @@ function makeService() {
     purge: vi.fn().mockResolvedValue(false),
   };
   const bookService = { verifyBookAccess: vi.fn().mockResolvedValue(undefined) };
-  const service = new BookJournalService(repo as never, bookService as never);
-  return { service, repo, bookService };
+  const achievementEvents = { emit: vi.fn() };
+  const service = new BookJournalService(repo as never, bookService as never, achievementEvents as never);
+  return { service, repo, bookService, achievementEvents };
 }
 
 function createDto(overrides?: Partial<CreateBookJournalEntryDto>): CreateBookJournalEntryDto {
