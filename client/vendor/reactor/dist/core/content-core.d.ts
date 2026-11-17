@@ -1,4 +1,3 @@
-import '../vendor/foliate/view.js';
 import type { ReaderOpenMeta } from '../protocol/v1/meta.js';
 import type { ReaderCommand } from '../protocol/v1/commands.js';
 import type { ReaderEvent } from '../protocol/v1/events.js';
@@ -10,7 +9,28 @@ import { type GlossaryTapRect, type GlossaryTerm } from './glossary.js';
  * formats listed in SPEC.md section 4's architecture sketch. Unknown formats fall back to
  * `application/octet-stream`, same as bridge.js. */
 export declare const MIME: Record<string, string>;
+/** BO-50: mirrors `useFoliate.ts`'s `applyEpubOpenOptions` exactly - forces `rendition.spread =
+ * 'none'` on the parsed book before `view.open`, the only point where it can still be changed
+ * before the `FixedLayout` renderer reads it (`src/vendor/foliate/fixed-layout.js`'s `open()`).
+ * No-op for any option value other than `'none'`, and no-op for a book whose `rendition.layout`
+ * is not `'pre-paginated'` (reflowable books have no spread concept here). Exported as a pure
+ * function (not a `ContentCore` method) so it is unit-testable against plain book-shaped
+ * objects, same as `useFoliate.ts`'s `isFixedLayoutBook`. */
+export declare function applyFixedLayoutSpreadOption(book: unknown, options: ContentOpenOptions | undefined): void;
 type Listener = (event: ReaderEvent) => void;
+/** BO-50 (reactor issue #50): additive open-time options, orthogonal to the frozen v1
+ * `ReaderOpenMeta` (WORKTREE_BRIEF.md rule 1 - this is a host-adapter-only parameter, never part
+ * of the wire protocol). Currently just the one web-host need: a reflowable-vs-fixed-layout
+ * host's own foliate-based reader path forces `rendition.spread = 'none'` on a fixed-layout book
+ * before the first render, so a Reactor-backed web host can request the exact same override
+ * instead of showing the publisher's two-page spread default (see docs/hosts/web.md). */
+export interface ContentOpenOptions {
+    /** Forces `rendition.spread = 'none'` on the parsed book before `view.open`, matching the
+     * same web-host-side mutation documented in `docs/hosts/web.md`. No-op for a book that is not
+     * fixed-layout (`rendition.layout !== 'pre-paginated'`), and no-op when omitted - an existing
+     * caller that never passes this sees the book's own declared spread, unchanged. */
+    fixedLayoutSpread?: 'none';
+}
 export declare class ContentCore {
     private readonly container;
     private listeners;
@@ -41,8 +61,9 @@ export declare class ContentCore {
     private emit;
     private emitError;
     /** Begins a streamed open (mirrors `__readerBegin`'s payload handling). Byte decoding from the
-     * wire (e.g. base64) is a host adapter concern; this takes already-decoded bytes. */
-    beginOpen(meta: ReaderOpenMeta): void;
+     * wire (e.g. base64) is a host adapter concern; this takes already-decoded bytes. `options`
+     * (BO-50) is additive - see `ContentOpenOptions`. */
+    beginOpen(meta: ReaderOpenMeta, options?: ContentOpenOptions): void;
     /** One chunk of the file started by `beginOpen` (mirrors `__readerChunk`). */
     pushChunk(bytes: Uint8Array): void;
     /** Finishes the transfer started by `beginOpen`/`pushChunk`* and opens it (mirrors `__readerCommit`). */
@@ -65,8 +86,9 @@ export declare class ContentCore {
      *
      * `fetcher` (mirrors R-G5) is an optional caller-supplied replacement for the global `fetch`,
      * so a host behind auth can add headers (e.g. `Authorization`) on every Range request.
-     * `size`, if the caller already knows the file's byte length, skips the one-time size probe. */
-    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number): Promise<void>;
+     * `size`, if the caller already knows the file's byte length, skips the one-time size probe.
+     * `options` (BO-50) is additive - see `ContentOpenOptions`. */
+    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number, options?: ContentOpenOptions): Promise<void>;
     private finishOpen;
     private createView;
     private attachHandlersForDoc;
