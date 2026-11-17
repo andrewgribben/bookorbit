@@ -5,9 +5,18 @@ type WebHost = WebHostNamespace.WebHost
 import { api } from '@/lib/api'
 import { i18n } from '@/i18n'
 import type { EpubBookInfo } from '@bookorbit/types'
-import type { EpubOpenOptions, FoliateLocationContext, FoliateMediaOverlay, FoliateOpenOptions, FoliateRenderer, RelocateDetail } from './useFoliate'
+import {
+  isFixedLayoutBook,
+  type EpubOpenOptions,
+  type FoliateLocationContext,
+  type FoliateMediaOverlay,
+  type FoliateOpenOptions,
+  type FoliateRenderer,
+  type RelocateDetail,
+} from './useFoliate'
 import type { SelectionDetail } from './useFoliateSelection'
 import { deriveSectionProgress, getSectionFractions as deriveSectionFractions, type ReactorSectionLike } from '../lib/reactor-section-progress'
+import { createPageTurnKeydownHandler } from './usePageTurnKeyboard'
 
 /** Matches `useFoliateInput`'s own suppression window (double-click threshold + 100ms), so a tap
  * that lands on an annotation does not also turn the page underneath the popup it just opened. */
@@ -34,8 +43,16 @@ const NAVIGATION_DEBOUNCE_MS = 300
  *   this path makes carries the same `Authorization` header. No book byte-size is known ahead of
  *   time from `/api/v1/epub/:bookId/info`, so `openRemote`'s optional `size` is omitted; Reactor
  *   does one small Range probe request instead.
- * - `isFixedLayout` is always `false`: Reactor's v1 `loaded` event does not report whether the
- *   opened book is pre-paginated (no equivalent of `useFoliate`'s `rendition.layout` check).
+ * - `isFixedLayout` is derived web-side (W1-B6 fix): Reactor's v1 `loaded` event does not report
+ *   layout type, but `host.core.getOpenBook()` returns the same vendored foliate book object
+ *   `useFoliate.ts` reads, so `isFixedLayoutBook(openBook)` (shared with `useFoliate.ts`) works
+ *   identically here. Set right after `openRemote` resolves, reset to `false` on every
+ *   `open()`/`destroyHost()`. This also restores the fixed-layout restore-by-fraction tier
+ *   (`shouldRestoreByFraction`, mirroring `useFoliate.ts:302-303,328`) and, since `ReaderView.vue`
+ *   reads this same ref to force `flow:'paginated'` for fixed-layout books, the forced-paginated
+ *   cascade now works under Reactor too. The fixed-layout spread override
+ *   (`fixedLayoutSpread:'none'`) is still a gap: Reactor's protocol v1 has no command to set
+ *   `rendition.spread`, so this is a Reactor-side follow-up, not fixable from this composable.
  * - Media overlay (embedded narration, W1-B5): `getMediaOverlay()`/`startMediaOverlay()`/
  *   `getMediaActiveClass()` expose the Reactor web host's own additive API wrapping the vendored
  *   foliate view's full `MediaOverlay` player (real `<audio>` playback, same shape BookOrbit's
@@ -79,6 +96,17 @@ const NAVIGATION_DEBOUNCE_MS = 300
  *   from `host.core.getOpenBook()?.sections` (same as the relocate fields above), the other two
  *   degrade to `null` (no Reactor equivalent of `resolveNavigation`/`getTOCItemOf` for a
  *   *non-current* target - these back the TTS resume-position lookup, out of scope per R-G4).
+ * - Keyboard page-turn (W1-B6 fix): `createPageTurnKeydownHandler` (shared with
+ *   `useFoliateInput.ts`) is attached to `document` for the lifetime of this composable, giving
+ *   ArrowLeft/ArrowRight/PageUp/PageDown/Space parity with the foliate engine, including RTL
+ *   mirroring of the left/right keys (via `isRtl`) and the same typing-target/modifier-key/
+ *   `canNavigate` guards. It is also attached to every section `Document` Reactor exposes via
+ *   `host.getContents()` (re-scanned on `loaded` and `relocate`, deduped with a `WeakSet`), which
+ *   mirrors `useFoliateInput`'s own `attachIframeClicks` and keeps the keys working when focus
+ *   moves into the book's content iframe - confirmed reachable because those iframes use
+ *   `sandbox="allow-same-origin"` (`src/vendor/foliate/paginator.js`/`fixed-layout.js` in the
+ *   Reactor repo), so `getContents()[].doc` is a live, listener-attachable `Document` despite the
+ *   closed shadow root around it.
  */
 
 export interface ReactorSearchSection {
@@ -138,6 +166,34 @@ export function useReactor(
   function setSelectionInteractionStartHandler(_fn: () => void) {
     // No equivalent event on WebHost (selection start vs selection-cleared only); no-op.
   }
+
+  const attachedContentDocs = new WeakSet<Document>()
+
+  const handleKeydown = createPageTurnKeydownHandler(
+    {
+      left: () => host?.dispatch({ type: isRtl.value ? 'next' : 'prev' }),
+      right: () => host?.dispatch({ type: isRtl.value ? 'prev' : 'next' }),
+      prev: () => host?.dispatch({ type: 'prev' }),
+      next: () => host?.dispatch({ type: 'next' }),
+    },
+    canNavigate,
+  )
+
+  /** Mirrors `useFoliateInput`'s `attachIframeClicks`: Reactor's content iframes are same-origin
+   * (`sandbox="allow-same-origin"`), so `host.getContents()[].doc` is a real, listener-attachable
+   * `Document` even though the view itself sits in a closed shadow root. Re-scanned on `loaded`
+   * and `relocate` since a new section's iframe document is not announced by its own event. */
+  function attachContentKeydownListeners() {
+    if (!host) return
+    for (const content of host.getContents()) {
+      const doc = content.doc
+      if (!doc || attachedContentDocs.has(doc)) continue
+      attachedContentDocs.add(doc)
+      doc.addEventListener('keydown', handleKeydown)
+    }
+  }
+
+  document.addEventListener('keydown', handleKeydown)
 
   function pushAnnotations() {
     if (!host) return
@@ -325,13 +381,16 @@ export function useReactor(
           toc = event.toc
           hasMediaOverlay.value = event.hasMediaOverlay
           isRtl.value = event.isRtl
+          isFixedLayout.value = isFixedLayoutBook(host?.core.getOpenBook() ?? null)
           clearTimeout(loadTimeoutId)
           onApplyStyles?.(rendererShim)
+          attachContentKeydownListeners()
           if (el.firstElementChild) onChapterLoad?.(el.ownerDocument, makeTtsViewShim(el.firstElementChild as HTMLElement))
           break
         }
         case 'relocate': {
           fraction.value = event.fraction ?? 0
+          attachContentKeydownListeners()
           const derived = deriveSectionProgress(sectionsOf(), event.fraction ?? 0)
           const sections = sectionsOf()
           const koboLocationSource = derived ? (sections[derived.section.current]?.id ?? null) : null
@@ -424,8 +483,12 @@ export function useReactor(
         }
       }
 
+      // Mirrors `useFoliate.ts:302-303,328`'s `shouldRestoreByFraction`: a pre-paginated book
+      // restores by fraction, not CFI, since fixed-layout CFIs do not round-trip reliably.
+      const shouldRestoreByFraction = isFixedLayout.value
+
       let didNavigate = false
-      if (!didNavigate && options.cfi) {
+      if (!didNavigate && options.cfi && !shouldRestoreByFraction) {
         didNavigate = await navigateTo(options.cfi)
       }
       if (!didNavigate && options.fallbackFraction !== undefined && options.fallbackFraction > 0) {
@@ -453,7 +516,10 @@ export function useReactor(
     return { chapterTitle: null, fraction: null }
   }
 
-  onUnmounted(destroyHost)
+  onUnmounted(() => {
+    document.removeEventListener('keydown', handleKeydown)
+    destroyHost()
+  })
 
   return {
     loading,
