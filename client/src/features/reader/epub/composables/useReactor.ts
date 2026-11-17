@@ -140,6 +140,10 @@ export function useReactor(
 
   let host: WebHost | null = null
   let unsubscribe: (() => void) | null = null
+  // Bumped on every `open()` call; a stale call (superseded mid-flight by a newer `open()`,
+  // e.g. navigating straight from one book to another, or a dev-mode double mount) checks this
+  // after its own awaits to stop touching shared state once it is no longer the active call.
+  let openGeneration = 0
   let toc: unknown[] = []
   let onAnnotationClick: ((cfi: string, popupPosition: { x: number; y: number; showBelow: boolean }) => void) | null = null
   let onTextSelected: ((detail: SelectionDetail) => void) | null = null
@@ -367,7 +371,9 @@ export function useReactor(
     hasMediaOverlay.value = false
 
     destroyHost()
+    const generation = ++openGeneration
     host = webHost.createWebHost(el)
+    const currentHost = host
     viewRef.value = makeViewShim()
 
     const loadTimeoutId = setTimeout(() => {
@@ -377,7 +383,7 @@ export function useReactor(
       }
     }, 30_000)
 
-    unsubscribe = host.on((event) => {
+    unsubscribe = currentHost.on((event) => {
       switch (event.type) {
         case 'loaded': {
           toc = event.toc
@@ -472,8 +478,10 @@ export function useReactor(
       }
       bookLanguage.value = typeof bookLanguageRaw === 'string' && bookLanguageRaw ? (bookLanguageRaw.split('-')[0] ?? 'en').toLowerCase() : 'en'
 
+      if (generation !== openGeneration) return
+
       const fetcher: typeof fetch = (input, init) => api(input, init)
-      await host.openRemote(
+      await currentHost.openRemote(
         { format, cfi: null, fraction: null, settings: null, previousCfi: null },
         `/api/v1/books/files/${fileId}/serve`,
         fetcher,
@@ -481,10 +489,17 @@ export function useReactor(
         options.fixedLayoutSpread === 'none' ? { fixedLayoutSpread: 'none' } : undefined,
       )
 
+      // A newer `open()` call (navigating straight to a different book, or a dev-mode double
+      // mount) already superseded this one while `openRemote` was in flight - `host` now points
+      // at that newer call's host, not `currentHost`. Stop here instead of dispatching this
+      // call's own navigation (CFI/fraction) onto the wrong host, which is what produced
+      // `TypeError: this.renderer.goTo is not a function` and `Could not go to 0` (BO-52).
+      if (generation !== openGeneration) return
+
       const navigateTo = async (target: string | number | null | undefined): Promise<boolean> => {
         if (target === null || target === undefined) return false
         try {
-          host!.dispatch({ type: 'goTo', target: String(target) })
+          currentHost.dispatch({ type: 'goTo', target: String(target) })
           return true
         } catch {
           return false
@@ -500,7 +515,7 @@ export function useReactor(
         didNavigate = await navigateTo(options.cfi)
       }
       if (!didNavigate && options.fallbackFraction !== undefined && options.fallbackFraction > 0) {
-        host.dispatch({ type: 'goToFraction', value: options.fallbackFraction })
+        currentHost.dispatch({ type: 'goToFraction', value: options.fallbackFraction })
         didNavigate = true
       }
       if (!didNavigate && options.fallbackFraction === 0) {
@@ -510,8 +525,10 @@ export function useReactor(
         didNavigate = await navigateTo(options.mediaOverlayFragment)
       }
 
+      if (generation !== openGeneration) return
       loading.value = false
     } catch (e) {
+      if (generation !== openGeneration) return
       console.error('[useReactor]', e)
       clearTimeout(loadTimeoutId)
       error.value = e instanceof Error && e.message ? e.message : i18n.global.t('reader.failedToLoadBook')

@@ -439,6 +439,54 @@ describe('useReactor', () => {
     expect(firstHost.destroy).toHaveBeenCalledTimes(1)
   })
 
+  it("does not dispatch a superseded open() call onto a later open() call's host (BO-52)", async () => {
+    // Regression test for BO-52 ("goTo not a function" / blank reader): `open()`'s own
+    // `host.openRemote`/`host.dispatch` calls used to read the *shared* `host` variable after
+    // an `await` (the EPUB info fetch), so a second `open()` landing in that window reassigned
+    // `host` before the first call's own navigation ran - sending book 1's CFI/goTo onto book
+    // 2's freshly-created, possibly not-yet-ready host.
+    let resolveFirstInfo!: (res: Response) => void
+    const firstInfo = new Promise<Response>((resolve) => {
+      resolveFirstInfo = resolve
+    })
+    const infoResponse = (lang: string) =>
+      ({
+        ok: true,
+        json: vi.fn<() => Promise<unknown>>().mockResolvedValue({ metadata: { language: lang } }),
+      }) as unknown as Response
+
+    vi.mocked(api).mockImplementation((input) => {
+      if (input === '/api/v1/epub/1/info?fileId=10') return firstInfo
+      if (input === '/api/v1/epub/2/info?fileId=20') return Promise.resolve(infoResponse('fr-FR'))
+      return Promise.resolve(infoResponse('en-GB'))
+    })
+
+    const reactor = useReactor(() => container)
+    const firstHost = mockHost
+
+    // Book 1's open() is now parked awaiting its own info fetch.
+    const firstOpenDone = reactor.open(1, 10, 'epub', 'epubcfi(/6/2!book-one)', undefined)
+
+    // Book 2's open() runs to completion first - a real second `open()` call, not a mock swap.
+    const secondHost = makeMockHost() as MockHost & { emit: (event: unknown) => void }
+    createWebHostMock.mockReturnValue(secondHost)
+    await reactor.open(2, 20, 'epub', 'epubcfi(/6/4!book-two)', undefined)
+
+    expect(secondHost.openRemote).toHaveBeenCalledTimes(1)
+    expect(secondHost.dispatch).toHaveBeenCalledWith({ type: 'goTo', target: 'epubcfi(/6/4!book-two)' })
+    secondHost.openRemote.mockClear()
+    secondHost.dispatch.mockClear()
+
+    // Now let book 1's stalled info fetch resolve.
+    resolveFirstInfo(infoResponse('de-DE'))
+    await firstOpenDone
+
+    // Book 1's call must never touch book 2's host, and must not retry on its own (destroyed) one.
+    expect(firstHost.openRemote).not.toHaveBeenCalled()
+    expect(secondHost.openRemote).not.toHaveBeenCalled()
+    expect(secondHost.dispatch).not.toHaveBeenCalledWith({ type: 'goTo', target: 'epubcfi(/6/2!book-one)' })
+  })
+
   it('destroys the host when the owning component unmounts', async () => {
     let reactorInstance!: ReturnType<typeof useReactor>
     const TestComponent = defineComponent({
