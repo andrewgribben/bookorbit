@@ -1744,11 +1744,13 @@
       "tabs": {
         "hardcover": "Hardcover",
         "readwise": "Readwise",
-        "storygraph": "StoryGraph"
+        "storygraph": "StoryGraph",
+        "tk": "TK"
       },
       "providerSubtitles": {
         "readwise": "Send your highlights to Readwise automatically.",
-        "storygraph": "Sync your reading progress and status to The StoryGraph."
+        "storygraph": "Sync your reading progress and status to The StoryGraph.",
+        "tk": "Send your highlights, journal entries and finished books to TK daily notes."
       }
     },
     "readwise": {

@@ -468,6 +468,15 @@ export const SETTINGS_NAV: readonly SettingsNavGroup[] = [
         keywords: 'storygraph shelves progress mirror',
         isVisible: anyPermission(Permission.StorygraphSync),
       },
+      {
+        id: 'tk',
+        routeName: 'settings-tk',
+        labelKey: 'settings.integrations.tabs.tk',
+        descriptionKey: 'settings.integrations.providerSubtitles.tk',
+        icon: History,
+        keywords: 'tk daily notes sync highlights journal',
+        isVisible: anyPermission(Permission.TkSync),
+      },
     ],
   },
   {
