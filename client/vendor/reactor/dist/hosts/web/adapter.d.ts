@@ -1,4 +1,4 @@
-import { ContentCore } from '../../core/content-core.js';
+import { ContentCore, type ContentOpenOptions } from '../../core/content-core.js';
 import { type HostChannel } from '../../host-api/index.js';
 import type { ReaderCommand } from '../../protocol/v1/commands.js';
 import type { ReaderEvent } from '../../protocol/v1/events.js';
@@ -22,8 +22,9 @@ export interface WebHost {
     /** Dispatches a typed `ReaderCommand`, equivalent to Android's `__readerCommand` but with no
      * JSON round trip. */
     dispatch(command: ReaderCommand): void;
-    /** Begins a streamed open (equivalent to `__readerBegin`). */
-    beginOpen(meta: ReaderOpenMeta): void;
+    /** Begins a streamed open (equivalent to `__readerBegin`). `options` (BO-50) is additive - see
+     * `ContentOpenOptions`. */
+    beginOpen(meta: ReaderOpenMeta, options?: ContentOpenOptions): void;
     /** One chunk of the file started by `beginOpen` (equivalent to `__readerChunk`, but taking
      * already-decoded bytes - no base64). */
     pushChunk(bytes: Uint8Array): void;
@@ -41,8 +42,8 @@ export interface WebHost {
      * one whole-file fetch only when the server does not answer Range with 206. `fetcher` behaves
      * like `openLocal`'s (defaults to the global `fetch`, pass one that adds an `Authorization`
      * header for a host that requires auth). `size`, if already known, skips a one-time size
-     * probe request. */
-    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number): Promise<void>;
+     * probe request. `options` (BO-50) is additive - see `ContentOpenOptions`. */
+    openRemote(meta: ReaderOpenMeta, url: string, fetcher?: typeof fetch, size?: number, options?: ContentOpenOptions): Promise<void>;
     /** R-G7: sets (or clears, with null) extra CSS injected into every rendered section
      * alongside `applyStyles`'s generated CSS - e.g. custom @font-face rules for a user-uploaded
      * font. Additive: a host that never calls this is unaffected. */
