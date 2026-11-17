@@ -284,16 +284,18 @@ export function useReactor(
    * host's own additive escape hatch (`getContents`/`scrollToRange`/`resolveCFI`), so
    * `useFoliateTts` itself needs no change to work against either engine. */
   function makeTtsViewShim(el: HTMLElement): HTMLElement {
-    const shim = el as HTMLElement & {
-      renderer?: { getContents(): unknown[]; scrollToAnchor?(range: Range, select?: boolean): Promise<void> }
-      resolveCFI?: (cfi: string) => { index: number; anchor: (doc: Document) => Range } | undefined
+    // A separate object, never the view element itself: assigning `renderer` on Reactor's
+    // foliate-view replaces its real paginator and every later goTo fails (BO-52).
+    const shim = {
+      addEventListener: el.addEventListener.bind(el),
+      removeEventListener: el.removeEventListener.bind(el),
+      renderer: {
+        getContents: () => host?.getContents() ?? [],
+        scrollToAnchor: (range: Range, select?: boolean) => host?.scrollToRange(range, select) ?? Promise.resolve(),
+      },
+      resolveCFI: (cfi: string) => host?.resolveCFI(cfi),
     }
-    shim.renderer = {
-      getContents: () => host?.getContents() ?? [],
-      scrollToAnchor: (range, select) => host?.scrollToRange(range, select) ?? Promise.resolve(),
-    }
-    shim.resolveCFI = (cfi) => host?.resolveCFI(cfi)
-    return shim
+    return shim as unknown as HTMLElement
   }
 
   function makeViewShim(): ReactorView {

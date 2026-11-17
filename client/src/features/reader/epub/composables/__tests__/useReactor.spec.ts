@@ -699,4 +699,26 @@ describe('useReactor', () => {
     expect(shim.resolveCFI('epubcfi(/6/4!/4/2)')).toEqual({ index: 2, anchor: expect.any(Function) })
     expect(mockHost.resolveCFI).toHaveBeenCalledWith('epubcfi(/6/4!/4/2)')
   })
+
+  it("does not overwrite the view element's own renderer or resolveCFI (BO-52)", async () => {
+    const onChapterLoad = vi.fn<(doc: Document, viewEl: HTMLElement) => void>()
+    const reactor = useReactor(() => container, undefined, undefined, undefined, onChapterLoad)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    const realRenderer = { goTo: vi.fn<() => Promise<void>>() }
+    const realResolveCFI = vi.fn<() => undefined>()
+    const view = Object.assign(document.createElement('div'), { renderer: realRenderer, resolveCFI: realResolveCFI })
+    container.appendChild(view)
+    mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+
+    const [, viewEl] = onChapterLoad.mock.calls[0]!
+    expect(viewEl).not.toBe(view)
+    expect(view.renderer).toBe(realRenderer)
+    expect(view.resolveCFI).toBe(realResolveCFI)
+
+    const onRelocate = vi.fn<() => void>()
+    viewEl.addEventListener('relocate', onRelocate)
+    view.dispatchEvent(new Event('relocate'))
+    expect(onRelocate).toHaveBeenCalledTimes(1)
+  })
 })
