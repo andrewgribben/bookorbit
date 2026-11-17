@@ -43,6 +43,12 @@ interface MockHost {
   openRemote: ReturnType<typeof vi.fn>
   setExtraCss: ReturnType<typeof vi.fn>
   getKoboLocation: ReturnType<typeof vi.fn>
+  getMediaOverlay: ReturnType<typeof vi.fn>
+  startMediaOverlay: ReturnType<typeof vi.fn>
+  getMediaActiveClass: ReturnType<typeof vi.fn>
+  getContents: ReturnType<typeof vi.fn>
+  scrollToRange: ReturnType<typeof vi.fn>
+  resolveCFI: ReturnType<typeof vi.fn>
   destroy: ReturnType<typeof vi.fn>
 }
 
@@ -62,6 +68,12 @@ function makeMockHost(): MockHost {
     openRemote: vi.fn<(meta: unknown, url: string, fetcher?: unknown, size?: number) => Promise<void>>().mockResolvedValue(undefined),
     setExtraCss: vi.fn<(css: string | null) => void>(),
     getKoboLocation: vi.fn<() => { type: string; value: string } | null>().mockReturnValue(null),
+    getMediaOverlay: vi.fn<() => unknown>().mockReturnValue(null),
+    startMediaOverlay: vi.fn<() => unknown>(),
+    getMediaActiveClass: vi.fn<() => string | null>().mockReturnValue(null),
+    getContents: vi.fn<() => unknown[]>().mockReturnValue([]),
+    scrollToRange: vi.fn<(range: unknown, select?: boolean) => Promise<void>>().mockResolvedValue(undefined),
+    resolveCFI: vi.fn<(cfi: string) => unknown>().mockReturnValue(undefined),
     destroy: vi.fn<() => void>(),
     // test helper, not part of WebHost
     emit(event: unknown) {
@@ -415,5 +427,51 @@ describe('useReactor', () => {
     wrapper.unmount()
 
     expect(mockHost.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('getMediaOverlay/startMediaOverlay/getMediaActiveClass forward to the host (W1-B5)', async () => {
+    const reactor = useReactor(() => container)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    expect(reactor.getMediaOverlay()).toBeNull()
+    const fakeMediaOverlay = { start: vi.fn<() => void>(), pause: vi.fn<() => void>() }
+    mockHost.getMediaOverlay.mockReturnValue(fakeMediaOverlay)
+    expect(reactor.getMediaOverlay()).toBe(fakeMediaOverlay)
+
+    reactor.startMediaOverlay()
+    expect(mockHost.startMediaOverlay).toHaveBeenCalledTimes(1)
+
+    mockHost.getMediaActiveClass.mockReturnValue('-epub-media-overlay-active')
+    expect(reactor.getMediaActiveClass()).toBe('-epub-media-overlay-active')
+  })
+
+  it('onChapterLoad receives a shim satisfying useFoliateTts.setFoliateSource against the host (R-G4)', async () => {
+    const onChapterLoad = vi.fn<(doc: Document, viewEl: HTMLElement) => void>()
+    const reactor = useReactor(() => container, undefined, undefined, undefined, onChapterLoad)
+    await reactor.open(1, 2, 'epub', null, undefined)
+
+    const child = document.createElement('div')
+    container.appendChild(child)
+    mockHost.emit({ type: 'loaded', toc: [], hasMediaOverlay: false, isRtl: false, metadata: { title: null, language: null } })
+
+    expect(onChapterLoad).toHaveBeenCalledTimes(1)
+    const [doc, viewEl] = onChapterLoad.mock.calls[0]!
+    expect(doc).toBe(container.ownerDocument)
+
+    const shim = viewEl as unknown as {
+      renderer: { getContents(): unknown[]; scrollToAnchor(range: unknown, select?: boolean): Promise<void> }
+      resolveCFI(cfi: string): unknown
+    }
+    const contents = [{ index: 0, doc: document, overlayer: { add: vi.fn<() => void>(), remove: vi.fn<() => void>() } }]
+    mockHost.getContents.mockReturnValue(contents)
+    expect(shim.renderer.getContents()).toBe(contents)
+
+    const range = document.createRange()
+    await shim.renderer.scrollToAnchor(range, true)
+    expect(mockHost.scrollToRange).toHaveBeenCalledWith(range, true)
+
+    mockHost.resolveCFI.mockReturnValue({ index: 2, anchor: () => document.createRange() })
+    expect(shim.resolveCFI('epubcfi(/6/4!/4/2)')).toEqual({ index: 2, anchor: expect.any(Function) })
+    expect(mockHost.resolveCFI).toHaveBeenCalledWith('epubcfi(/6/4!/4/2)')
   })
 })
