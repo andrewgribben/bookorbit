@@ -6,6 +6,7 @@ import { RequirePermission } from '../../common/decorators/require-permission.de
 import type { RequestUser } from '../../common/types/request-user';
 import { TkConnectFinishDto, TkConnectStartDto, UpsertTkSettingsDto } from './dto';
 import { TkAutoSyncSchedulerService } from './tk-auto-sync-scheduler.service';
+import { TkBackfillService } from './tk-backfill.service';
 import { TkOAuthService } from './tk-oauth.service';
 import { TkSettingsService } from './tk-settings.service';
 
@@ -16,6 +17,7 @@ export class TkController {
     private readonly settingsService: TkSettingsService,
     private readonly oauth: TkOAuthService,
     private readonly scheduler: TkAutoSyncSchedulerService,
+    private readonly backfill: TkBackfillService,
   ) {}
 
   @Get('settings')
@@ -49,5 +51,16 @@ export class TkController {
   sync(@CurrentUser() user: RequestUser) {
     this.scheduler.requestSync(user.id);
     return { requested: true };
+  }
+
+  @Post('backfill/preview')
+  previewBackfill(@CurrentUser() user: RequestUser) {
+    return this.backfill.preview(user.id);
+  }
+
+  @Post('backfill')
+  async requestBackfill(@CurrentUser() user: RequestUser) {
+    await this.backfill.requestBackfill(user.id);
+    return this.settingsService.getSettings(user.id);
   }
 }

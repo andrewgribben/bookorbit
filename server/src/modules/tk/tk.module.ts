@@ -5,6 +5,7 @@ import { TkController } from './tk.controller';
 import { TkRepository } from './tk.repository';
 import { TK_FETCH } from './tk.tokens';
 import { TkAutoSyncSchedulerService } from './tk-auto-sync-scheduler.service';
+import { TkBackfillService } from './tk-backfill.service';
 import { TkEventListener } from './tk-event-listener.service';
 import { TkOAuthService } from './tk-oauth.service';
 import { TkSettingsService } from './tk-settings.service';
@@ -18,6 +19,7 @@ import { TkSyncService } from './tk-sync.service';
     TkOAuthService,
     TkSettingsService,
     TkSyncService,
+    TkBackfillService,
     TkAutoSyncSchedulerService,
     TkEventListener,
     { provide: TK_FETCH, useValue: fetch },

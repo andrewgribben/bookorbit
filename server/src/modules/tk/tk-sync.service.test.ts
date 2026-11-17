@@ -175,4 +175,69 @@ describe('TkSyncService.flush', () => {
     expect(callTool.mock.calls[1][1].content).toContain('annotationId=1');
     expect(callTool.mock.calls[1][1].content).not.toContain('annotationId=2');
   });
+
+  it('sends items older than connectedAt once a backfill has been requested', async () => {
+    const olderAnnotation = { ...ANNOTATION, annotationId: 2, createdAt: new Date('2020-01-01T00:00:00Z'), bookId: 9 };
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: new Date('2026-01-01T00:00:00Z'),
+        backfillRequestedAt: new Date('2026-02-01T00:00:00Z'),
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([olderAnnotation]),
+    });
+    const oauth = makeOAuth();
+    const callTool = vi.fn().mockResolvedValueOnce({ found: false }).mockResolvedValueOnce({ id: 'doc-old' });
+    const service = makeService(repo, oauth, callTool);
+
+    await service.flush(1);
+
+    expect(callTool).toHaveBeenCalledWith('create_daily_note', expect.objectContaining({ date: '2020-01-01' }));
+  });
+
+  it('an interrupted backfill resumes without duplicates: already-ledgered items are not re-sent', async () => {
+    const repo = makeRepo({
+      findPendingAnnotations: vi.fn().mockResolvedValue([ANNOTATION]),
+      findSyncedSourceKeys: vi.fn().mockResolvedValue(new Set(['1'])),
+    });
+    const oauth = makeOAuth();
+    const callTool = vi.fn();
+    const service = makeService(repo, oauth, callTool);
+
+    await service.flush(1);
+
+    expect(callTool).not.toHaveBeenCalled();
+    expect(repo.recordSyncedDay).not.toHaveBeenCalled();
+  });
+
+  it('previewBackfill counts a seeded fixture across two days regardless of connectedAt', async () => {
+    const dayOne = { ...ANNOTATION, annotationId: 2, createdAt: new Date('2020-01-01T09:00:00Z') };
+    const dayTwo = { ...ANNOTATION, annotationId: 3, createdAt: new Date('2020-01-02T09:00:00Z') };
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: new Date('2026-01-01T00:00:00Z'),
+        backfillRequestedAt: null,
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([dayOne, dayTwo]),
+    });
+    const oauth = makeOAuth();
+    const service = makeService(repo, oauth, vi.fn());
+
+    const preview = await service.previewBackfill(1);
+
+    expect(preview).toEqual({ itemCount: 2, dayCount: 2, oldestDateKey: '2020-01-01' });
+  });
+
+  it('previewBackfill returns a zero preview for a user with no settings row', async () => {
+    const repo = makeRepo({ findSettings: vi.fn().mockResolvedValue(undefined) });
+    const service = makeService(repo, makeOAuth(), vi.fn());
+    await expect(service.previewBackfill(1)).resolves.toEqual({ itemCount: 0, dayCount: 0, oldestDateKey: null });
+  });
 });

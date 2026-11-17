@@ -49,7 +49,7 @@ export class TkSyncService {
     const token = this.oauth.getToken(settings);
     if (!token) return;
 
-    const items = await this.collectPendingItems(userId, settings);
+    const items = await this.collectPendingItems(userId, settings, false);
     if (items.length === 0) return;
 
     const client = new TkMcpClient({
@@ -171,6 +171,15 @@ export class TkSyncService {
     }
   }
 
+  /** Dry-run count for the settings page's "Backfill: N items across M days" preview. */
+  async previewBackfill(userId: number): Promise<{ itemCount: number; dayCount: number; oldestDateKey: string | null }> {
+    const settings = await this.repo.findSettings(userId);
+    if (!settings) return { itemCount: 0, dayCount: 0, oldestDateKey: null };
+    const items = await this.collectPendingItems(userId, settings, true);
+    const dateKeys = [...groupItemsByDateKey(items).keys()];
+    return { itemCount: items.length, dayCount: dateKeys.length, oldestDateKey: dateKeys[0] ?? null };
+  }
+
   private async collectPendingItems(
     userId: number,
     settings: {
@@ -180,11 +189,12 @@ export class TkSyncService {
       connectedAt: Date | null;
       backfillRequestedAt: Date | null;
     },
+    forceAll: boolean,
   ): Promise<TkSyncItem[]> {
     const timezoneSource = await this.repo.findUserTimezone(userId);
     const timeZone = resolveTimeZone(timezoneSource, 'UTC');
     const appUrl = this.appConfiguration.appUrl;
-    const backfilling = Boolean(settings.backfillRequestedAt);
+    const backfilling = forceAll || Boolean(settings.backfillRequestedAt);
 
     const [annotations, journalEntries, finishedBooks] = await Promise.all([
       this.repo.findPendingAnnotations(userId, settings.lastAnnotationId, TK_FLUSH_PAGE_SIZE),
