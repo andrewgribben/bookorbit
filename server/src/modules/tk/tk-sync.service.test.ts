@@ -5,6 +5,8 @@ import { TkHttpError, TkMcpClient, TkRpcError } from './tk-mcp-client';
 
 const BOOK_ROW = { bookId: 7, bookTitle: 'Dune', bookAuthor: 'Frank Herbert' };
 const ANNOTATION = { ...BOOK_ROW, annotationId: 1, text: 'Fear is the mind-killer.', note: null, createdAt: new Date('2026-11-17T10:00:00Z') };
+const JOURNAL_ENTRY = { ...BOOK_ROW, clientId: 'journal-1', body: 'Great chapter.', quote: null, createdAt: new Date('2026-11-17T10:00:00Z') };
+const FINISHED_BOOK = { ...BOOK_ROW, finishedAt: new Date('2026-11-17T10:00:00Z'), rating: 5 };
 
 function emptyDoc() {
   return { type: 'doc', content: [{ type: 'paragraph', attrs: { id: 'p0' }, content: [] }] };
@@ -29,6 +31,9 @@ function makeRepo(overrides: Partial<Record<string, unknown>> = {}) {
       lastFinishedAt: null,
       connectedAt: null,
       backfillRequestedAt: null,
+      syncAnnotations: true,
+      syncJournal: true,
+      syncFinished: true,
     }),
     userHasTkSyncPermission: vi.fn().mockResolvedValue(true),
     findUserTimezone: vi.fn().mockResolvedValue('UTC'),
@@ -163,6 +168,9 @@ describe('TkSyncService.flush', () => {
         lastFinishedAt: null,
         connectedAt: new Date('2026-01-01T00:00:00Z'),
         backfillRequestedAt: null,
+        syncAnnotations: true,
+        syncJournal: true,
+        syncFinished: true,
       }),
       findPendingAnnotations: vi.fn().mockResolvedValue([olderAnnotation, ANNOTATION]),
     });
@@ -186,6 +194,9 @@ describe('TkSyncService.flush', () => {
         lastFinishedAt: null,
         connectedAt: new Date('2026-01-01T00:00:00Z'),
         backfillRequestedAt: new Date('2026-02-01T00:00:00Z'),
+        syncAnnotations: true,
+        syncJournal: true,
+        syncFinished: true,
       }),
       findPendingAnnotations: vi.fn().mockResolvedValue([olderAnnotation]),
     });
@@ -224,6 +235,9 @@ describe('TkSyncService.flush', () => {
         lastFinishedAt: null,
         connectedAt: new Date('2026-01-01T00:00:00Z'),
         backfillRequestedAt: null,
+        syncAnnotations: true,
+        syncJournal: true,
+        syncFinished: true,
       }),
       findPendingAnnotations: vi.fn().mockResolvedValue([dayOne, dayTwo]),
     });
@@ -239,5 +253,151 @@ describe('TkSyncService.flush', () => {
     const repo = makeRepo({ findSettings: vi.fn().mockResolvedValue(undefined) });
     const service = makeService(repo, makeOAuth(), vi.fn());
     await expect(service.previewBackfill(1)).resolves.toEqual({ itemCount: 0, dayCount: 0, oldestDateKey: null });
+  });
+});
+
+describe('TkSyncService per-kind toggles', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('does not query, send or advance the watermark for a kind that is turned off', async () => {
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: null,
+        backfillRequestedAt: null,
+        syncAnnotations: false,
+        syncJournal: true,
+        syncFinished: true,
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([ANNOTATION]),
+    });
+    const oauth = makeOAuth();
+    const callTool = vi.fn();
+    const service = makeService(repo, oauth, callTool);
+
+    await service.flush(1);
+
+    expect(repo.findPendingAnnotations).not.toHaveBeenCalled();
+    expect(callTool).not.toHaveBeenCalled();
+    expect(repo.recordSyncedDay).not.toHaveBeenCalled();
+  });
+
+  it('sends the waited items once a disabled kind is turned back on', async () => {
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: null,
+        backfillRequestedAt: null,
+        syncAnnotations: true,
+        syncJournal: true,
+        syncFinished: true,
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([ANNOTATION]),
+    });
+    const oauth = makeOAuth();
+    const callTool = vi.fn().mockResolvedValueOnce({ found: false }).mockResolvedValueOnce({ id: 'doc-1' });
+    const service = makeService(repo, oauth, callTool);
+
+    await service.flush(1);
+
+    expect(repo.findPendingAnnotations).toHaveBeenCalled();
+    expect(repo.recordSyncedDay).toHaveBeenCalledWith(
+      1,
+      [expect.objectContaining({ kind: 'annotation', sourceKey: '1' })],
+      expect.objectContaining({ lastAnnotationId: 1 }),
+    );
+  });
+
+  it('keeps other kinds syncing independently while one kind is off', async () => {
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: null,
+        backfillRequestedAt: null,
+        syncAnnotations: false,
+        syncJournal: true,
+        syncFinished: true,
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([ANNOTATION]),
+      findPendingJournalEntries: vi.fn().mockResolvedValue([JOURNAL_ENTRY]),
+    });
+    const oauth = makeOAuth();
+    const callTool = vi.fn().mockResolvedValueOnce({ found: false }).mockResolvedValueOnce({ id: 'doc-1' });
+    const service = makeService(repo, oauth, callTool);
+
+    await service.flush(1);
+
+    expect(repo.findPendingAnnotations).not.toHaveBeenCalled();
+    expect(repo.findPendingJournalEntries).toHaveBeenCalled();
+    expect(repo.recordSyncedDay).toHaveBeenCalledWith(
+      1,
+      [expect.objectContaining({ kind: 'journal', sourceKey: 'journal-1' })],
+      expect.objectContaining({ lastJournalCreatedAt: JOURNAL_ENTRY.createdAt }),
+    );
+  });
+
+  it('previewBackfill only counts kinds that are enabled', async () => {
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: null,
+        backfillRequestedAt: null,
+        syncAnnotations: true,
+        syncJournal: false,
+        syncFinished: true,
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([ANNOTATION]),
+      findPendingJournalEntries: vi.fn().mockResolvedValue([JOURNAL_ENTRY]),
+      findPendingFinishedBooks: vi.fn().mockResolvedValue([FINISHED_BOOK]),
+    });
+    const oauth = makeOAuth();
+    const service = makeService(repo, oauth, vi.fn());
+
+    const preview = await service.previewBackfill(1);
+
+    expect(repo.findPendingJournalEntries).not.toHaveBeenCalled();
+    expect(preview.itemCount).toBe(2);
+  });
+
+  it('does nothing on flush when all three kinds are turned off', async () => {
+    const repo = makeRepo({
+      findSettings: vi.fn().mockResolvedValue({
+        enabled: true,
+        lastAnnotationId: 0,
+        lastJournalCreatedAt: null,
+        lastFinishedAt: null,
+        connectedAt: null,
+        backfillRequestedAt: null,
+        syncAnnotations: false,
+        syncJournal: false,
+        syncFinished: false,
+      }),
+      findPendingAnnotations: vi.fn().mockResolvedValue([ANNOTATION]),
+      findPendingJournalEntries: vi.fn().mockResolvedValue([JOURNAL_ENTRY]),
+      findPendingFinishedBooks: vi.fn().mockResolvedValue([FINISHED_BOOK]),
+    });
+    const oauth = makeOAuth();
+    const callTool = vi.fn();
+    const service = makeService(repo, oauth, callTool);
+
+    await service.flush(1);
+
+    expect(repo.findPendingAnnotations).not.toHaveBeenCalled();
+    expect(repo.findPendingJournalEntries).not.toHaveBeenCalled();
+    expect(repo.findPendingFinishedBooks).not.toHaveBeenCalled();
+    expect(callTool).not.toHaveBeenCalled();
+    expect(repo.recordSyncedDay).not.toHaveBeenCalled();
   });
 });

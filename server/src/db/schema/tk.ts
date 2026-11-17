@@ -33,6 +33,10 @@ export const tkUserSettings = pgTable('tk_user_settings', {
   lastJournalCreatedAt: timestamp('last_journal_created_at', { withTimezone: true }),
   lastFinishedAt: timestamp('last_finished_at', { withTimezone: true }),
 
+  syncAnnotations: boolean('sync_annotations').notNull().default(true),
+  syncJournal: boolean('sync_journal').notNull().default(true),
+  syncFinished: boolean('sync_finished').notNull().default(true),
+
   connectedAt: timestamp('connected_at', { withTimezone: true }),
   backfillRequestedAt: timestamp('backfill_requested_at', { withTimezone: true }),
 

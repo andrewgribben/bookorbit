@@ -26,13 +26,23 @@ export class TkSettingsService {
       lastSyncedAt: row?.lastSyncedAt?.toISOString() ?? null,
       connectedAt: row?.connectedAt?.toISOString() ?? null,
       backfillRequestedAt: row?.backfillRequestedAt?.toISOString() ?? null,
+      syncAnnotations: row?.syncAnnotations ?? true,
+      syncJournal: row?.syncJournal ?? true,
+      syncFinished: row?.syncFinished ?? true,
     };
   }
 
   async upsertSettings(userId: number, payload: UpsertTkSettingsPayload): Promise<TkSettings> {
+    const update: Partial<{ enabled: boolean; disabledReason: null; syncAnnotations: boolean; syncJournal: boolean; syncFinished: boolean }> = {};
     if (payload.enabled !== undefined) {
-      await this.repo.upsertSettings(userId, { enabled: payload.enabled, ...(payload.enabled ? { disabledReason: null } : {}) });
+      update.enabled = payload.enabled;
+      if (payload.enabled) update.disabledReason = null;
     }
+    if (payload.syncAnnotations !== undefined) update.syncAnnotations = payload.syncAnnotations;
+    if (payload.syncJournal !== undefined) update.syncJournal = payload.syncJournal;
+    if (payload.syncFinished !== undefined) update.syncFinished = payload.syncFinished;
+    if (Object.keys(update).length > 0) await this.repo.upsertSettings(userId, update);
+
     const settings = await this.getSettings(userId);
     if (settings.effectiveEnabled) this.scheduler.requestSync(userId);
     return settings;

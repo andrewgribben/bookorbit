@@ -1030,6 +1030,13 @@
       "when": 1794933919093,
       "tag": "0146_add_tk_daily_notes_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1794940247903,
+      "tag": "0147_tk_sync_per_kind_toggles",
+      "breakpoints": true
     }
   ]
 }

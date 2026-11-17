@@ -8,10 +8,16 @@ export interface TkSettings {
   lastSyncedAt: string | null;
   connectedAt: string | null;
   backfillRequestedAt: string | null;
+  syncAnnotations: boolean;
+  syncJournal: boolean;
+  syncFinished: boolean;
 }
 
 export interface UpsertTkSettingsPayload {
   enabled?: boolean;
+  syncAnnotations?: boolean;
+  syncJournal?: boolean;
+  syncFinished?: boolean;
 }
 
 export interface TkConnectStartResult {

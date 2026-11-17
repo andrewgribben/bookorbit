@@ -16,6 +16,9 @@ describe('useTkSettings', () => {
       lastSyncedAt: null,
       connectedAt: null,
       backfillRequestedAt: null,
+      syncAnnotations: true,
+      syncJournal: true,
+      syncFinished: true,
     }
     vi.spyOn(tkApi, 'fetchTkSettings').mockResolvedValue(settings)
     const { settings: settingsRef, error, fetchSettings } = useTkSettings()
@@ -59,6 +62,9 @@ describe('useTkSettings', () => {
       lastSyncedAt: null,
       connectedAt: null,
       backfillRequestedAt: '2026-01-01T00:00:00Z',
+      syncAnnotations: true,
+      syncJournal: true,
+      syncFinished: true,
     }
     vi.spyOn(tkApi, 'requestTkBackfill').mockResolvedValue(settings)
     const { settings: settingsRef, startBackfill } = useTkSettings()

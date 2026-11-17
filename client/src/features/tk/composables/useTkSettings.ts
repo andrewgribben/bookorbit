@@ -2,11 +2,14 @@ import { ref } from 'vue'
 import type { TkBackfillPreview, TkSettings, UpsertTkSettingsPayload } from '@bookorbit/types'
 import { disconnectTk, fetchTkSettings, finishTkConnect, previewTkBackfill, requestTkBackfill, startTkConnect, upsertTkSettings } from '../api/tk.api'
 
+type TkSyncKind = 'syncAnnotations' | 'syncJournal' | 'syncFinished'
+
 const settings = ref<TkSettings | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const connecting = ref(false)
 const error = ref<string | null>(null)
+const savingSyncKind = ref<TkSyncKind | null>(null)
 
 export function useTkSettings() {
   async function fetchSettings(): Promise<void> {
@@ -77,6 +80,25 @@ export function useTkSettings() {
     }
   }
 
+  /** Saves one sync-kind switch immediately, mirroring useReadingServices.setFeature's optimistic update with rollback. */
+  async function setSyncKind(kind: TkSyncKind, value: boolean): Promise<boolean> {
+    const previous = settings.value?.[kind]
+    if (settings.value) settings.value[kind] = value
+
+    savingSyncKind.value = kind
+    error.value = null
+    try {
+      settings.value = await upsertTkSettings({ [kind]: value })
+      return true
+    } catch (err) {
+      if (settings.value && previous !== undefined) settings.value[kind] = previous
+      error.value = err instanceof Error ? err.message : 'Failed to update sync settings'
+      return false
+    } finally {
+      savingSyncKind.value = null
+    }
+  }
+
   async function previewBackfill(): Promise<TkBackfillPreview | null> {
     try {
       return await previewTkBackfill()
@@ -104,6 +126,7 @@ export function useTkSettings() {
     saving,
     connecting,
     error,
+    savingSyncKind,
     fetchSettings,
     saveSettings,
     connectStart,
@@ -111,5 +134,6 @@ export function useTkSettings() {
     disconnect,
     previewBackfill,
     startBackfill,
+    setSyncKind,
   }
 }

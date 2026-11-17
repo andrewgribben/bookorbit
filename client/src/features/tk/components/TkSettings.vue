@@ -6,6 +6,8 @@ import { Link, Save, CheckCircle2, AlertCircle, Info, Loader2, History } from '@
 import { toast } from 'vue-sonner'
 import type { TkBackfillPreview, TkSyncDisabledReason } from '@bookorbit/types'
 import SettingsPageHeader from '@/features/settings/SettingsPageHeader.vue'
+import SettingsSection from '@/features/settings/components/SettingsSection.vue'
+import SettingsRow from '@/features/settings/components/SettingsRow.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import { useTkSettings } from '../composables/useTkSettings'
 
@@ -14,14 +16,48 @@ const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
 })
 const { t } = useI18n()
 
-const { settings, saving, connecting, error, fetchSettings, saveSettings, connectStart, connectFinish, disconnect, previewBackfill, startBackfill } =
-  useTkSettings()
+const {
+  settings,
+  saving,
+  connecting,
+  error,
+  savingSyncKind,
+  fetchSettings,
+  saveSettings,
+  connectStart,
+  connectFinish,
+  disconnect,
+  previewBackfill,
+  startBackfill,
+  setSyncKind,
+} = useTkSettings()
 
 const form = reactive({ enabled: false })
 const callbackUrlInput = ref('')
 const awaitingCallback = ref(false)
 const backfillPreview = ref<TkBackfillPreview | null>(null)
 const backfillLoading = ref(false)
+
+interface SyncKindRow {
+  kind: 'syncAnnotations' | 'syncJournal' | 'syncFinished'
+  labelKey: string
+  hintKey: string
+}
+
+const syncKindRows: SyncKindRow[] = [
+  { kind: 'syncAnnotations', labelKey: 'settings.tk.whatSyncs.annotations.label', hintKey: 'settings.tk.whatSyncs.annotations.hint' },
+  { kind: 'syncJournal', labelKey: 'settings.tk.whatSyncs.journal.label', hintKey: 'settings.tk.whatSyncs.journal.hint' },
+  { kind: 'syncFinished', labelKey: 'settings.tk.whatSyncs.finished.label', hintKey: 'settings.tk.whatSyncs.finished.hint' },
+]
+
+function isSyncKindEnabled(kind: SyncKindRow['kind']): boolean {
+  return settings.value?.[kind] ?? true
+}
+
+async function handleToggleSyncKind(kind: SyncKindRow['kind'], value: boolean): Promise<void> {
+  const ok = await setSyncKind(kind, value)
+  if (!ok) toast.error(error.value ?? 'Failed to update sync settings')
+}
 
 const disabledReasonMessages: Record<TkSyncDisabledReason, string> = {
   permission_denied: "Your account doesn't have TK sync permission.",
@@ -176,6 +212,25 @@ async function handleStartBackfill() {
         </Button>
       </div>
     </div>
+
+    <SettingsSection
+      v-if="settings?.connected"
+      :title="t('settings.tk.whatSyncs.title')"
+      :brief="t('settings.tk.whatSyncs.subtitle')"
+      data-testid="tk-what-syncs-section"
+    >
+      <div class="border border-border rounded-lg bg-card px-4 py-2 md:px-5 shadow-xs divide-y divide-border">
+        <SettingsRow v-for="row in syncKindRows" :key="row.kind" :label="t(row.labelKey)" :hint="t(row.hintKey)" :control-id="`tk-sync-${row.kind}`">
+          <span class="text-xs text-muted-foreground whitespace-nowrap">{{ t('settings.tk.whatSyncs.direction') }}</span>
+          <ToggleSwitch
+            :id="`tk-sync-${row.kind}`"
+            :model-value="isSyncKindEnabled(row.kind)"
+            :disabled="savingSyncKind === row.kind"
+            @update:model-value="(value) => handleToggleSyncKind(row.kind, value)"
+          />
+        </SettingsRow>
+      </div>
+    </SettingsSection>
 
     <div
       v-if="settings?.connected"

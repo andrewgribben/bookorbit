@@ -4,6 +4,18 @@ export class UpsertTkSettingsDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  syncAnnotations?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  syncJournal?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  syncFinished?: boolean;
 }
 
 export class TkConnectStartDto {

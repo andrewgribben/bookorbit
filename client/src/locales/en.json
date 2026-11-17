@@ -1762,6 +1762,25 @@
         "description": "Friends shelves from Readwise."
       }
     },
+    "tk": {
+      "whatSyncs": {
+        "title": "What syncs",
+        "subtitle": "Turn a kind off to pause it. Anything created while it's off is sent once you turn it back on.",
+        "direction": "To TK",
+        "annotations": {
+          "label": "Highlights and notes",
+          "hint": "Your book highlights and notes."
+        },
+        "journal": {
+          "label": "Journal entries",
+          "hint": "Entries you write about a book."
+        },
+        "finished": {
+          "label": "Finished books",
+          "hint": "Books you mark as read, with your rating."
+        }
+      }
+    },
     "readingServices": {
       "signIn": {
         "title": "Sign in",

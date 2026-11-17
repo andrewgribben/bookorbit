@@ -188,6 +188,9 @@ export class TkSyncService {
       lastFinishedAt: Date | null;
       connectedAt: Date | null;
       backfillRequestedAt: Date | null;
+      syncAnnotations: boolean;
+      syncJournal: boolean;
+      syncFinished: boolean;
     },
     forceAll: boolean,
   ): Promise<TkSyncItem[]> {
@@ -197,9 +200,9 @@ export class TkSyncService {
     const backfilling = forceAll || Boolean(settings.backfillRequestedAt);
 
     const [annotations, journalEntries, finishedBooks] = await Promise.all([
-      this.repo.findPendingAnnotations(userId, settings.lastAnnotationId, TK_FLUSH_PAGE_SIZE),
-      this.repo.findPendingJournalEntries(userId, settings.lastJournalCreatedAt, TK_FLUSH_PAGE_SIZE),
-      this.repo.findPendingFinishedBooks(userId, settings.lastFinishedAt, TK_FLUSH_PAGE_SIZE),
+      settings.syncAnnotations ? this.repo.findPendingAnnotations(userId, settings.lastAnnotationId, TK_FLUSH_PAGE_SIZE) : Promise.resolve([]),
+      settings.syncJournal ? this.repo.findPendingJournalEntries(userId, settings.lastJournalCreatedAt, TK_FLUSH_PAGE_SIZE) : Promise.resolve([]),
+      settings.syncFinished ? this.repo.findPendingFinishedBooks(userId, settings.lastFinishedAt, TK_FLUSH_PAGE_SIZE) : Promise.resolve([]),
     ]);
 
     const items: TkSyncItem[] = [
